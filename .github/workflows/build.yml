@@ -1,12 +1,14 @@
-# Har main'ga push: testlar -> self-contained win-x64 build (YtAuto.exe + YtAuto.Worker.exe) -> GitHub Release (zip).
+# Har main'ga push (app/ o'zgarganda): testlar -> self-contained win-x64 build (YtAuto.exe + YtAuto.Worker.exe) -> GitHub Release (zip).
 # Pull request'larda faqat build va testlar.
 name: Build
 
 on:
   push:
     branches: [main]
+    paths: ['app/**', '.github/workflows/build.yml']
   pull_request:
     branches: [main]
+    paths: ['app/**', '.github/workflows/build.yml']
   workflow_dispatch:
 
 permissions:
@@ -24,6 +26,9 @@ env:
 jobs:
   build:
     runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +47,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: YtAuto-win-x64-${{ env.VERSION }}
-          path: dist/YtAuto-win-x64.zip
+          path: app/dist/YtAuto-win-x64.zip
           retention-days: 30
 
       - name: GitHub Release
