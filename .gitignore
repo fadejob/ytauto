@@ -5,3 +5,16 @@ dist/
 .vs/
 TestResults/
 *.zip
+
+# bot (Next.js)
+node_modules/
+.next/
+out/
+.env
+.env*.local
+*.tsbuildinfo
+next-env.d.ts
+.vercel/
+
+# Claude Code lokal sozlamalari
+.claude/
