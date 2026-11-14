@@ -2,14 +2,19 @@
 using System.Runtime.InteropServices;
 using YtAuto.Core.Domain;
 using YtAuto.Core.Pipeline;
+using YtAuto.Core.Scheduling;
 using YtAuto.Infrastructure;
 
 namespace YtAuto.Worker;
 
 /// <summary>
-/// YtAuto worker: bitta ishga tushishda navbatdan BITTA vazifa. Oynasiz. Exit kodlar:
-/// 0 - muvaffaqiyatli yoki navbat bo'sh, 1 - xato (keyingi safar qayta uriniladi), 2 - e'tibor kerak, 3 - boshqa worker ishlamoqda, 4 - kutilmagan xato.
-/// Argumentlar: --scheduled | --manual | --selftest-local [--data DIR] | --check | --refresh | --console
+/// YtAuto worker. Oynasiz. Rejimlar:
+/// --scheduled: bazadan sinxronlash → navbatdagi mavzular soniga qarab 1-3 ta video (orasida 15 daqiqa tanaffus, <see cref="BatchPlanner"/>);
+/// --poll: faqat "Hozir chiqarish" so'rovlari (masofaviy buyruq; so'rov bo'lmasa darhol jim chiqadi);
+/// --manual: bitta vazifa. Har rejimda "Hozir chiqarish" so'rovlari birinchi bajariladi.
+/// Exit kodlar: 0 - muvaffaqiyatli yoki navbat bo'sh, 1 - xato (keyingi safar qayta uriniladi), 2 - e'tibor kerak,
+/// 3 - boshqa worker ishlamoqda, 4 - kutilmagan xato.
+/// Argumentlar: --scheduled | --poll | --manual | --selftest-local [--data DIR] | --check | --refresh | --console
 /// </summary>
 internal static class Program
 {
@@ -27,18 +32,29 @@ internal static class Program
         // OS darajasidagi yagona nusxa blokirovkasi (bazadagi atomar band qilishdan tashqari).
         var mutexName = dataRoot is null ? @"Global\YtAuto.Worker" : @"Global\YtAuto.Worker." + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(dataRoot))))[..16];
         using var mutex = new Mutex(false, mutexName);
+        var poll = args.Contains("--poll");
+        var scheduled = args.Contains("--scheduled");
         bool owned;
         try { owned = mutex.WaitOne(0); }
         catch (AbandonedMutexException) { owned = true; } // oldingi worker kutilmaganda o'lgan
+        // --poll har 2 daqiqada ishga tushadi: boshqa worker ishlayotgan bo'lsa (u "hozir chiqarish"ni ham tekshiradi) jim chiqamiz.
+        if (!owned && poll) return 3;
         AppServices svc;
         try { svc = new AppServices(dataRoot is null ? "worker" : "worker-selftest", dataRoot, console); }
         catch (Exception e) { Console.Error.WriteLine("Ishga tushmadi: " + e); return 4; }
+        if (!owned && scheduled)
+        {
+            // Masalan, "hozir chiqarish" videosi tayyorlanmoqda: kunlik ishga tushish yo'qolmasligi uchun kutamiz.
+            svc.Log.Info("Boshqa worker nusxasi ishlamoqda — u tugashini kutamiz (eng ko'pi 4 soat).");
+            try { owned = mutex.WaitOne(TimeSpan.FromHours(4)); }
+            catch (AbandonedMutexException) { owned = true; }
+        }
         if (!owned)
         {
             svc.Log.Warn("Boshqa worker nusxasi ishlamoqda - bu nusxa hech narsa qilmasdan chiqadi.");
             return 3;
         }
-        var trigger = args.Contains("--scheduled") ? "scheduled" : args.Contains("--selftest-local") ? "selftest" : args.Contains("--check") ? "check" : "manual";
+        var trigger = scheduled ? "scheduled" : poll ? "remote" : args.Contains("--selftest-local") ? "selftest" : args.Contains("--check") ? "check" : "manual";
         using var cts = new CancellationTokenSource();
         // ProcessExit Main tugaganidan keyin ham chaqiriladi: yopilgan CTS ga tegmaslik kerak (aks holda exit kodi buziladi).
         AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { cts.Cancel(); } catch (ObjectDisposedException) { } };
@@ -60,6 +76,9 @@ internal static class Program
             if (args.Contains("--check")) return await IntegrationCheck.RunAsync(svc, cts.Token);
             if (args.Contains("--selftest-local")) return await SelfTest.RunAsync(svc, cts.Token);
 
+            // Masofaviy buyruq kutuvchi: so'rov bo'lmasa hech narsa yozmasdan chiqadi (har 2 daqiqada log/baza to'lmasligi uchun).
+            if (poll && svc.Store.CountPublishNow(DateTimeOffset.UtcNow) == 0) return 0;
+
             using var self = Process.GetCurrentProcess();
             svc.Store.StartRun(svc.RunId, Environment.ProcessId, self.StartTime.ToUniversalTime(), trigger);
             svc.Log.Info($"Worker boshlandi ({trigger}), run {svc.RunId}. Bo'sh RAM {svc.Resources.AvailableRamGb():0.00}/{svc.Resources.TotalRamGb():0.0} GB.");
@@ -68,15 +87,27 @@ internal static class Program
             await RefreshYouTubeAsync(svc, runner, cts.Token);
             if (args.Contains("--refresh")) { svc.Store.FinishRun(svc.RunId, "refresh", null, null); return 0; }
 
-            var result = await runner.RunOnceAsync(svc.RunId, cts.Token);
-            svc.Store.FinishRun(svc.RunId, result.Outcome.ToString(), result.JobId, result.Message);
-            svc.Log.Info($"Worker tugadi: {result.Outcome}, vazifa {result.JobId?.ToString() ?? "-"}, {result.Elapsed.TotalMinutes:0.0} daqiqa.");
-            return result.Outcome switch
-            {
-                RunOutcome.QueueEmpty or RunOutcome.Completed or RunOutcome.StoppedBeforeUpload or RunOutcome.Cancelled => 0,
-                RunOutcome.Failed => 1,
-                _ => 2,
-            };
+            List<RunSummary> results;
+            if (poll) results = await RunPublishNowAsync(svc, runner, cts.Token);
+            else if (scheduled) results = await RunBatchAsync(svc, runner, cts.Token);
+            else results = new List<RunSummary> { await runner.RunOnceAsync(svc.RunId, cts.Token) };
+
+            var last = results.LastOrDefault(r => r.Outcome != RunOutcome.QueueEmpty) ?? results.LastOrDefault() ?? new RunSummary { Outcome = RunOutcome.QueueEmpty };
+            var worked = results.Where(r => r.Outcome != RunOutcome.QueueEmpty).ToList();
+            var outcome = worked.Count > 1 ? $"{worked.Count(r => r.Outcome == RunOutcome.Completed)}/{worked.Count} video tayyor" : last.Outcome.ToString();
+            var message = worked.Count > 1
+                ? string.Join("; ", worked.Select(r => $"#{r.JobId}{(r.PublishNow ? " (hozir)" : "")}: {r.Outcome}{(r.Message is null ? "" : " - " + r.Message)}"))
+                : last.Message;
+            svc.Store.FinishRun(svc.RunId, outcome, last.JobId, message);
+            svc.Log.Info($"Worker tugadi: {outcome}, vazifalar {(worked.Count == 0 ? "-" : string.Join(", ", worked.Select(r => "#" + r.JobId)))}, " +
+                         $"{results.Sum(r => r.Elapsed.TotalMinutes):0.0} daqiqa ish.");
+            return results.Count == 0 ? 0 : results.Max(r => ExitCode(r.Outcome));
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            svc.Log.Warn("Worker to'xtatildi (Windows/Task Scheduler jarayonni yakunladi).");
+            try { svc.Store.FinishRun(svc.RunId, "stopped", null, "Jarayon tashqaridan to'xtatildi"); } catch { }
+            return 1;
         }
         catch (Exception e)
         {
@@ -133,6 +164,77 @@ internal static class Program
             }
             catch { }
         }
+    }
+
+    private static int ExitCode(RunOutcome o) => o switch
+    {
+        RunOutcome.QueueEmpty or RunOutcome.Completed or RunOutcome.StoppedBeforeUpload or RunOutcome.Cancelled => 0,
+        RunOutcome.Failed => 1,
+        _ => 2,
+    };
+
+    /// <summary>
+    /// Jadval bo'yicha ishga tushish: avval "hozir chiqarish" so'rovlari, so'ng bazadan sinxronlab navbatdagi mavzular soniga qarab
+    /// 1-3 ta video (<see cref="BatchPlanner"/>). Videolar orasida 15 daqiqa tanaffus; tanaffusda kelgan "hozir chiqarish" so'rovlari
+    /// darhol bajariladi (ular reja soniga kirmaydi). Vaqtinchalik xato (tarmoq, limit) bo'lsa, qolgan videolar keyingi jadvalga qoladi.
+    /// </summary>
+    private static async Task<List<RunSummary>> RunBatchAsync(AppServices svc, JobRunner runner, CancellationToken ct)
+    {
+        var results = await RunPublishNowAsync(svc, runner, ct);
+        var pending = svc.Store.CountPending(DateTimeOffset.UtcNow);
+        var plan = BatchPlanner.VideosFor(pending);
+        svc.Log.Info($"Bazadan sinxronlandi ({svc.Store.Kind}): navbatda {pending} ta mavzu — {BatchPlanner.Describe(pending)}.");
+        int made = 0;
+        for (int guard = 0; made < plan && guard < plan + 10; guard++)
+        {
+            var r = await runner.RunOnceAsync(svc.RunId, ct);
+            results.Add(r);
+            if (r.Outcome == RunOutcome.QueueEmpty) { svc.Log.Info("Navbat bo'shadi — ishga tushish yakunlandi."); break; }
+            if (!r.PublishNow) made++;
+            svc.Log.Info($"{(r.PublishNow ? "Hozir chiqarish" : $"Video {made}/{plan}")}: #{r.JobId} {r.Outcome} ({r.Elapsed.TotalMinutes:0.0} daqiqa).");
+            if (r.Outcome == RunOutcome.Failed)
+            {
+                svc.Log.Warn("Vaqtinchalik xato — qolgan videolar keyingi jadvalda tayyorlanadi.");
+                break;
+            }
+            if (made >= plan) break;
+            svc.Log.Info($"{BatchPlanner.PauseBetweenVideos.TotalMinutes:0} daqiqa tanaffus, so'ng keyingi video.");
+            results.AddRange(await PauseAsync(svc, runner, BatchPlanner.PauseBetweenVideos, ct));
+        }
+        return results;
+    }
+
+    /// <summary>Tanaffus; har daqiqada online bazadan "hozir chiqarish" so'rovi tekshiriladi va bo'lsa darhol bajariladi.</summary>
+    private static async Task<List<RunSummary>> PauseAsync(AppServices svc, JobRunner runner, TimeSpan pause, CancellationToken ct)
+    {
+        var results = new List<RunSummary>();
+        var until = DateTimeOffset.UtcNow + pause;
+        while (true)
+        {
+            try
+            {
+                if (svc.Store.CountPublishNow(DateTimeOffset.UtcNow) > 0) results.AddRange(await RunPublishNowAsync(svc, runner, ct));
+            }
+            catch (Exception e) when (e is not OperationCanceledException) { svc.Log.Warn("Tanaffusda 'hozir chiqarish' tekshiruvi o'tmadi: " + e.Message); }
+            var left = until - DateTimeOffset.UtcNow;
+            if (left <= TimeSpan.Zero) return results;
+            await Task.Delay(left < TimeSpan.FromMinutes(1) ? left : TimeSpan.FromMinutes(1), ct);
+        }
+    }
+
+    /// <summary>Barcha "hozir chiqarish" so'rovlarini ketma-ket bajaradi (eng ko'pi 10 ta, vaqtinchalik xatoda to'xtaydi).</summary>
+    private static async Task<List<RunSummary>> RunPublishNowAsync(AppServices svc, JobRunner runner, CancellationToken ct)
+    {
+        var list = new List<RunSummary>();
+        for (int i = 0; i < 10; i++)
+        {
+            var r = await runner.RunOnceAsync(svc.RunId, publishNowOnly: true, ct);
+            if (r.Outcome == RunOutcome.QueueEmpty) break;
+            list.Add(r);
+            svc.Log.Info($"Hozir chiqarish: #{r.JobId} {r.Outcome} ({r.Elapsed.TotalMinutes:0.0} daqiqa).");
+            if (r.Outcome == RunOutcome.Failed) break;
+        }
+        return list;
     }
 
     /// <summary>Processing/Scheduled videolar holatini yengil API so'rovi bilan yangilaydi (og'ir dasturlar ochilmaydi).</summary>

@@ -38,6 +38,8 @@ public sealed class RunSummary
     public string? ErrorCode { get; set; }
     public string? Message { get; set; }
     public TimeSpan Elapsed { get; set; }
+    /// <summary>Vazifa "Hozir chiqarish" so'rovi bo'yicha bajarildi.</summary>
+    public bool PublishNow { get; set; }
 }
 
 /// <summary>
@@ -49,28 +51,63 @@ public sealed partial class JobRunner
     private readonly PipelineServices _x;
     public JobRunner(PipelineServices services) => _x = services;
 
-    public async Task<RunSummary> RunOnceAsync(string runId, CancellationToken ct)
+    public Task<RunSummary> RunOnceAsync(string runId, CancellationToken ct) => RunOnceAsync(runId, publishNowOnly: false, ct);
+
+    /// <summary>
+    /// Bitta vazifa. "Hozir chiqarish" so'rovlari har doim birinchi olinadi; <paramref name="publishNowOnly"/> bo'lsa oddiy navbatga tegilmaydi
+    /// (masofaviy buyruqni kutuvchi --poll rejimi).
+    /// </summary>
+    public async Task<RunSummary> RunOnceAsync(string runId, bool publishNowOnly, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
         var summary = new RunSummary();
         var released = _x.Store.ReleaseStaleClaims(runId);
         if (released > 0) _x.RunLog.Warn($"{released} ta eskirgan band qilish bo'shatildi (oldingi worker kutilmaganda to'xtagan).");
 
-        var job = _x.Store.ClaimNext(runId, _x.Clock.UtcNow);
+        var job = _x.Store.ClaimPublishNow(runId, _x.Clock.UtcNow);
+        if (job is null && !publishNowOnly) job = _x.Store.ClaimNext(runId, _x.Clock.UtcNow);
         if (job is null)
         {
-            _x.RunLog.Info("Navbatda bajariladigan vazifa yo'q. Og'ir dasturlar ochilmaydi.");
+            if (publishNowOnly) _x.RunLog.Debug("\"Hozir chiqarish\" so'rovi yo'q.");
+            else _x.RunLog.Info("Navbatda bajariladigan vazifa yo'q. Og'ir dasturlar ochilmaydi.");
             summary.Outcome = RunOutcome.QueueEmpty;
             return summary;
         }
-        summary.JobId = job.Id;
+        var publishNow = job.PublishNow;
+        summary.JobId = job.Id; summary.PublishNow = publishNow;
         var log = _x.JobLogFactory(job.Id);
-        _x.RunLog.Info($"Vazifa #{job.Id} band qilindi: \"{job.Topic}\" (holat {job.Status}, urinishlar {job.RunAttempts}).");
+        _x.RunLog.Info($"Vazifa #{job.Id} band qilindi{(publishNow ? " (HOZIR CHIQARISH)" : "")}: \"{job.Topic}\" (holat {job.Status}, urinishlar {job.RunAttempts}).");
 
         using var cancelCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var monitor = MonitorCancelAsync(job.Id, runId, cancelCts);
         try
         {
+            if (publishNow)
+            {
+                log.Info($"\"Hozir chiqarish\" so'rovi: video navbatdan tashqari tayyorlanadi va YouTube'ga darhol public chiqariladi (holat {job.Status}).");
+                if (job.Status == JobStatus.NeedsAttention && string.IsNullOrEmpty(job.YouTubeVideoId))
+                {
+                    // Foydalanuvchining aniq buyrug'i: urinishlar hisoblagichi yangilanadi, tayyor bosqichlar saqlanadi.
+                    job.Status = JobStatus.Queued; job.RunAttempts = 0; job.QaFixCycles = 0; job.AttentionReason = null; job.NextAttemptAtUtc = null;
+                    _x.Store.Update(job);
+                }
+                if (!string.IsNullOrEmpty(job.YouTubeVideoId) && !JobStateMachine.IsInProgress(job.Status))
+                {
+                    try { await MakeUploadedPublicAsync(job, log, cancelCts.Token).ConfigureAwait(false); }
+                    catch (PipelineException pe) when (pe.Category == ErrorCategory.Transient)
+                    {
+                        // Video joyida (yuklangan) qoladi: holat o'zgartirilmaydi, so'rov biroz keyin qayta bajariladi.
+                        job.NextAttemptAtUtc = _x.Clock.UtcNow.AddMinutes(10); job.LastErrorCode = pe.Code; job.LastErrorMessage = Shorten(pe.Message, 600);
+                        _x.Store.Update(job);
+                        log.Warn($"Videoni public qilib bo'lmadi ({pe.Message}); 10 daqiqadan keyin qayta uriniladi.", "Upload");
+                        summary.Outcome = RunOutcome.Failed; summary.Message = pe.Message;
+                        return summary;
+                    }
+                    summary.Outcome = job.Status == JobStatus.Published ? RunOutcome.Completed : RunOutcome.NeedsAttention;
+                    summary.Message = job.Status == JobStatus.Published ? null : job.AttentionReason;
+                    return summary;
+                }
+            }
             if (JobStateMachine.IsInProgress(job.Status))
             {
                 job.RunAttempts++;
@@ -83,7 +120,10 @@ public sealed partial class JobRunner
 
             var ctx = PrepareContext(job, runId, log, settingsNow);
             ctx.Ct = cancelCts.Token;
+            ctx.PublishNow = publishNow;
             await ExecutePipelineAsync(ctx).ConfigureAwait(false);
+            if (publishNow && !string.IsNullOrEmpty(job.YouTubeVideoId) && job.Status != JobStatus.Published)
+                await MakeUploadedPublicAsync(job, log, cancelCts.Token).ConfigureAwait(false);
 
             summary.Outcome = _x.StopBeforeUpload && job.Status == JobStatus.Archived ? RunOutcome.StoppedBeforeUpload : RunOutcome.Completed;
             job.LastErrorCode = null; job.LastErrorMessage = null; job.NextAttemptAtUtc = null;
@@ -106,6 +146,12 @@ public sealed partial class JobRunner
         {
             cancelCts.Cancel();
             try { await monitor.ConfigureAwait(false); } catch { /* ignore */ }
+            // "Hozir chiqarish" bayrog'i faqat vaqtinchalik xatoda qoladi (backoff bilan qayta uriniladi); qolgan natijalarda olib tashlanadi.
+            if (publishNow && summary.Outcome != RunOutcome.Failed)
+            {
+                try { _x.Store.SetPublishNow(job.Id, false); job.PublishNow = false; }
+                catch (Exception e) { _x.RunLog.Warn($"#{job.Id}: 'hozir chiqarish' bayrog'ini olib bo'lmadi: {e.Message}"); }
+            }
             _x.Store.ReleaseClaim(job.Id, runId);
             summary.Elapsed = sw.Elapsed;
         }

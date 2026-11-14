@@ -144,13 +144,15 @@ public sealed partial class JobDetailsViewModel : ObservableObject
     public bool CanRetry => Job is { Status: JobStatus.Failed or JobStatus.NeedsAttention };
     public bool CanCancel => Job is not null && !JobStateMachine.IsTerminal(Job.Status) && Job.Status != JobStatus.Published;
     public bool CanReschedule => Job is not null && string.IsNullOrEmpty(Job.YouTubeVideoId) && Job.Status is not (JobStatus.Cancelled or JobStatus.Published);
+    /// <summary>Hali chiqmagan har qanday video: navbatdagi, tayyorlanayotgan, xato bergan yoki yuklangan-lekin-chiqmagan (vaqti o'tib ketgan ham).</summary>
+    public bool CanPublishNow => Job is not null && !Job.PublishNow && !Job.CancelRequested && Job.Status is not (JobStatus.Published or JobStatus.Cancelled);
     public bool CanForceNewUpload => Job is { Status: JobStatus.NeedsAttention } && string.IsNullOrEmpty(Job.YouTubeVideoId) && Job.LastErrorCode is "upload_session_lost" or "upload_session_expired" or "upload_no_id";
 
     [RelayCommand]
     public void Load()
     {
         Job = _svc.Store.Get(JobId) ?? throw new InvalidOperationException("Vazifa topilmadi");
-        StatusText = JobStateMachine.Describe(Job.Status);
+        StatusText = JobStateMachine.Describe(Job.Status) + (Job.PublishNow ? " · ⚡ hozir chiqarish kutilmoqda" : "");
         var local = TimeZones.ToZone(Job.PublishAtUtc, Tz);
         NewPublishDate = local.Date; NewPublishTime = local.ToString("HH:mm");
         Stages.Clear();
@@ -167,7 +169,7 @@ public sealed partial class JobDetailsViewModel : ObservableObject
         var events = _svc.Store.GetEvents(JobId, 300);
         LogTail = string.Join(Environment.NewLine, events.Select(e => $"{e.AtUtc.ToLocalTime():MM-dd HH:mm:ss} {e.Level,-5} {(e.Stage is null ? "" : $"[{e.Stage}] ")}{e.Message}"));
         OnPropertyChanged(nameof(PublishText)); OnPropertyChanged(nameof(CanRetry)); OnPropertyChanged(nameof(CanCancel));
-        OnPropertyChanged(nameof(CanReschedule)); OnPropertyChanged(nameof(CanForceNewUpload));
+        OnPropertyChanged(nameof(CanReschedule)); OnPropertyChanged(nameof(CanForceNewUpload)); OnPropertyChanged(nameof(CanPublishNow));
         OnPropertyChanged(nameof(CanEdit)); OnPropertyChanged(nameof(EditNote));
     }
 
@@ -211,6 +213,45 @@ public sealed partial class JobDetailsViewModel : ObservableObject
         if (MessageBox.Show("Vazifa bekor qilinsinmi? YouTube'ga yuklangan video o'chirilmaydi.", "YtAuto", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         if (_svc.Store.TryCancelUnclaimed(JobId)) Message = "Bekor qilindi.";
         else { _svc.Store.RequestCancel(JobId); Message = "Worker ishlamoqda: bekor qilish so'rovi yuborildi (u o'zi ochgan jarayonlarni yopib to'xtaydi)."; }
+        Done();
+    }
+
+    /// <summary>
+    /// "Hozir chiqarish": so'rov online bazaga yoziladi. Internetga ulangan, jadvali yoqilgan kompyuterdagi worker uni bir necha daqiqada
+    /// oladi (Task Scheduler'dagi "YtAuto Remote Trigger"), videoni tayyorlaydi yoki tayyorini oladi va YouTube'ga darhol public chiqaradi.
+    /// Shu kompyuterda ham worker darhol ishga tushiriladi (kutmaslik uchun).
+    /// </summary>
+    [RelayCommand]
+    private void PublishNow()
+    {
+        if (!CanPublishNow) return;
+        var uploaded = !string.IsNullOrEmpty(Job.YouTubeVideoId);
+        var text = uploaded
+            ? "Video YouTube'ga yuklangan, lekin hali chiqmagan. U DARHOL public qilinsinmi? (rejalashtirilgan vaqt kutilmaydi)"
+            : "Video navbatdan tashqari HOZIR tayyorlanib, YouTube'ga darhol public chiqarilsinmi?\n\nTayyor bosqichlar (ssenariy, ovoz, render) qayta bajarilmaydi.";
+        if (MessageBox.Show(text, "YtAuto — Hozir chiqarish", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        _svc.Store.SetPublishNow(JobId, true);
+        _svc.Log.Info($"#{JobId}: 'hozir chiqarish' so'raldi.");
+        var exe = Shell.FindWorkerExe();
+        var local = false;
+        if (exe is not null)
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(exe, "--poll") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(exe) });
+                local = true;
+            }
+            catch (Exception e) { _svc.Log.Warn("Worker'ni darhol ishga tushirib bo'lmadi: " + e.Message); }
+        Message = "So'rov yuborildi. " + (local
+            ? "Worker shu kompyuterda ishga tushirildi; boshqa video tayyorlanayotgan bo'lsa, u tugagach darhol bajariladi."
+            : "Internetga ulangan, jadvali yoqilgan kompyuter uni bir necha daqiqada bajaradi.");
+        Done();
+    }
+
+    [RelayCommand]
+    private void CancelPublishNow()
+    {
+        _svc.Store.SetPublishNow(JobId, false);
+        Message = "'Hozir chiqarish' so'rovi bekor qilindi (worker allaqachon boshlagan bo'lsa, u davom etadi).";
         Done();
     }
 

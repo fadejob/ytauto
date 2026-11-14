@@ -43,6 +43,9 @@
 
                     <TextBlock Text="Amallar" Style="{StaticResource H2}"/>
                     <WrapPanel>
+                        <Button Content="⚡ Hozir chiqarish" Command="{Binding PublishNowCommand}" Style="{StaticResource Primary}" Visibility="{Binding CanPublishNow, Converter={StaticResource BoolVis}}" Margin="0,0,8,6"
+                                ToolTip="Video navbatdan tashqari hozir tayyorlanadi (yoki tayyori olinadi) va YouTube'ga darhol public chiqariladi. Buyruq online baza orqali boradi."/>
+                        <Button Content="Hozir chiqarishni bekor qilish" Command="{Binding CancelPublishNowCommand}" Visibility="{Binding Job.PublishNow, Converter={StaticResource BoolVis}}" Margin="0,0,8,6"/>
                         <Button Content="Qayta urinish" Command="{Binding RetryCommand}" IsEnabled="{Binding CanRetry}" Margin="0,0,8,6"/>
                         <Button Content="Joriy sozlamalar bilan qayta" Command="{Binding RetryWithCurrentSettingsCommand}" IsEnabled="{Binding CanRetry}" Margin="0,0,8,6"/>
                         <Button Content="Bekor qilish" Command="{Binding CancelCommand}" IsEnabled="{Binding CanCancel}" Margin="0,0,8,6"/>

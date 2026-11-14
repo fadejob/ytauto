@@ -2,10 +2,13 @@
 
 Windows uchun yengil desktop ilova: navbatdagi mavzu bo'yicha ssenariy (Gemini), ovoz (VoiceStudio), so'z darajasidagi subtitr
 (faster-whisper), montaj (Claude Code + OpenFilm), render va sifat tekshiruvi, arxiv va YouTube'ga **rejalashtirilgan** upload.
-Ish Windows Task Scheduler orqali, foydalanuvchi aralashuvisiz, **har ishga tushishda bitta vazifa** bajariladi.
+Ish Windows Task Scheduler orqali, foydalanuvchi aralashuvisiz: jadval vaqtida bazadan mavzular sinxronlanadi va navbatga qarab
+**1–3 ta video** tayyorlanadi (orasida 15 daqiqa tanaffus). Online bazadan **"Hozir chiqarish"** buyrug'i ham qabul qilinadi.
 
 - `YtAuto.exe` — boshqaruv oynasi (WPF). Ochilishi video tayyorlashni boshlamaydi.
-- `YtAuto.Worker.exe` — oynasiz worker. Jadval bo'yicha ishga tushadi, bitta vazifani bajaradi yoki davom ettiradi va chiqadi.
+- `YtAuto.Worker.exe` — oynasiz worker. Jadval bo'yicha ishga tushadi, vazifalarni bajaradi yoki davom ettiradi va chiqadi.
+
+Tayyor exe: GitHub → **Releases** (har `main` ga push'da avtomatik build, [`.github/workflows/build.yml`](.github/workflows/build.yml)).
 
 Real sinov natijalari va o'lchovlar: [docs/TEST-REPORT.md](docs/TEST-REPORT.md).
 
@@ -52,6 +55,10 @@ Manba koddan yig'ish (.NET 10 SDK bilan):
 powershell -NoProfile -ExecutionPolicy Bypass -File .\publish.ps1
 ```
 
+**Avtomatik build (CI)**: `main` ga har push'da GitHub Actions (`windows-latest`, .NET 10) testlarni ishga tushiradi, `publish.ps1`
+bilan self-contained `YtAuto-win-x64.zip` yig'adi va uni `v1.0.<build raqami>` nomli GitHub Release sifatida chiqaradi
+(zip workflow artifact sifatida ham 30 kun saqlanadi). Pull request'larda faqat build va testlar.
+
 ## Birinchi sozlash
 
 **Sozlamalar** sahifasida:
@@ -74,7 +81,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\publish.ps1
    "Claude autentifikatsiyasini ham tekshirish" belgilansa, Claude'ga juda kichik so'rov yuboriladi.
 
 So'ng **Jadval va worker** sahifasida vaqtni (standart `01:00`, `Asia/Tashkent`) tanlab **Jadvalni yoqish**.
-Task Scheduler'da bitta `YtAuto Daily Worker` vazifasi yaratiladi; vaqt o'zgarsa o'sha vazifa yangilanadi (dublikat yaratilmaydi).
+Task Scheduler'da ikkita vazifa yaratiladi (vaqt o'zgarsa yangilanadi, dublikat yaratilmaydi):
+- `YtAuto Daily Worker` — kunlik ishga tushish (`--scheduled`);
+- `YtAuto Remote Trigger` — siz Windows'ga kirgan va internet bor paytda har 2 daqiqada yengil `--poll`: online bazada
+  "Hozir chiqarish" so'rovi bo'lsa bajaradi, bo'lmasa bir zumda jim chiqadi. Eski o'rnatmalarda ilova ochilganda avtomatik qo'shiladi.
 
 ### Google OAuth client yaratish (bir marta)
 
@@ -109,8 +119,29 @@ avtomatik ko'chiriladi. Supabase'ning `db.*.supabase.co` manzili faqat IPv6 — 
 
 - **Yangi mavzu**: mavzu, izoh, til, davomiylik, format, shablon, ovoz profili, chiqish sanasi/soati. Sana taklifi:
   oxirgi (bekor qilinmagan, navbatdagilar ham) rejalashtirilgan sana + 2 kun; o'tgan bo'lsa yoki vazifa yo'q bo'lsa — bugun.
-- Worker har ishga tushishda: OS mutex → eskirgan band qilishlarni bo'shatish → eng eski yaroqli vazifani **atomar** band qilish →
-  tugallanmagan bosqichdan davom ettirish → chiqish. Navbat bo'sh bo'lsa og'ir dasturlar ochilmaydi.
+- Worker har vazifada: OS mutex → eskirgan band qilishlarni bo'shatish → eng eski yaroqli vazifani **atomar** band qilish →
+  tugallanmagan bosqichdan davom ettirish. Navbat bo'sh bo'lsa og'ir dasturlar ochilmaydi.
+- **Jadval vaqtida (`--scheduled`)**: avval "Hozir chiqarish" so'rovlari bajariladi, so'ng online bazadan navbatdagi mavzular
+  soni olinadi (sinxronlash) va shunga qarab bir ishga tushishda nechta video qilinishi belgilanadi:
+
+  | Navbatdagi mavzular | Videolar | Tartib |
+  |---|---|---|
+  | 1–2 | 1 | video → worker yopiladi |
+  | 3–4 | 2 | video → 15 daqiqa tanaffus → video |
+  | 5–7 | 3 | video → 15 daq → video → 15 daq → video |
+  | 7 dan ko'p | 3 (ko'pi bilan) | 4–5 video qilinmaydi; qolganlari keyingi kunlarga qoladi |
+
+  Har videodan oldin mavzu bazadan qayta olinadi (boshqa kompyuterda o'zgargan bo'lsa ham). Vaqtinchalik xato (tarmoq, API limit)
+  bo'lsa qolgan videolar keyingi jadvalga qoladi. Tanaffus paytida kelgan "Hozir chiqarish" so'rovi darhol bajariladi (reja soniga kirmaydi).
+  Shu sababli kunlik vazifaning ish vaqti limiti kamida 10 soat.
+- **"Hozir chiqarish"** (tafsilotlar sahifasidagi ⚡ tugma yoki Supabase'da `ytauto.jobs.publish_now = true`): so'rov online bazaga
+  yoziladi; internetga ulangan, jadvali yoqilgan kompyuter uni ~2 daqiqa ichida oladi va o'zi ishga tushadi:
+  - video hali tayyorlanmagan bo'lsa — navbatdan tashqari tayyorlanadi va YouTube'ga **darhol public** yuklanadi;
+  - video tayyor, lekin yuklanmagan bo'lsa (masalan vaqti o'tib ketgan yoki kanal ulanmagan edi) — qayta yaratilmaydi, arxivdagisi darhol public yuklanadi;
+  - video yuklangan, lekin hali chiqmagan bo'lsa (private/rejalashtirilgan) — YouTube'da darhol public qilinadi, qayta yuklanmaydi.
+
+  Boshqa video tayyorlanayotgan bo'lsa, so'rov u tugagach bajariladi. Vaqtinchalik xatoda so'rov saqlanib, biroz keyin qayta uriniladi.
+  Supabase SQL misoli: `update ytauto.jobs set publish_now = true where id = 42;`
 - Vazifa boshlanganda sozlamalar, promptlar va shablon versiyasi **snapshot** qilinadi; keyingi sozlama o'zgarishlari unga ta'sir qilmaydi
   (tafsilotlarda "Joriy sozlamalar bilan qayta" tugmasi snapshot'ni yangilaydi). Tashqi dastur yo'llari esa joriy sozlamadan olinadi.
 - Holatlar: `Queued, Scripting, GeneratingVoice, Aligning, Editing, Rendering, Validating, Archived, Uploading, Processing, Scheduled, Published, Failed, NeedsAttention, Cancelled`.
@@ -150,7 +181,8 @@ avtomatik ko'chiriladi. Supabase'ning `db.*.supabase.co` manzili faqat IPv6 — 
 ## Worker buyruqlari
 
 ```powershell
-YtAuto.Worker.exe --scheduled          # Task Scheduler ishlatadi
+YtAuto.Worker.exe --scheduled          # Task Scheduler: sinxronlash + 1-3 video (15 daq tanaffus bilan)
+YtAuto.Worker.exe --poll               # Task Scheduler (har 2 daq): faqat "Hozir chiqarish" so'rovlari
 YtAuto.Worker.exe --manual             # qo'lda: bitta vazifa
 YtAuto.Worker.exe --refresh            # faqat YouTube holatlarini yangilash
 YtAuto.Worker.exe --check [--deep]     # integratsiyalar tekshiruvi -> %LOCALAPPDATA%\YtAuto\logs\last-check.txt

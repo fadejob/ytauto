@@ -78,6 +78,14 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
             Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','1')", tx);
             tx.Commit();
         }
+        if (version < 2)
+        {
+            // v2: "Hozir chiqarish" so'rovi.
+            using var tx = c.BeginTransaction();
+            Exec(c, "ALTER TABLE jobs ADD COLUMN publish_now INTEGER NOT NULL DEFAULT 0", tx);
+            Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','2')", tx);
+            tx.Commit();
+        }
     }
 
     // ------------------------------------------------------------------ helpers
@@ -100,7 +108,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
     private static DateTimeOffset? ParseTs(object? o) => o is string s && s.Length > 0 ? DateTimeOffset.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind) : null;
     private static string? Str(SqliteDataReader r, string n) { var i = r.GetOrdinal(n); return r.IsDBNull(i) ? null : r.GetString(i); }
 
-    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned";
+    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now";
 
     private static VideoJob ReadJob(SqliteDataReader r) => new()
     {
@@ -121,6 +129,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
         YouTubeVideoId = Str(r, "youtube_video_id"), YouTubePrivacy = Str(r, "youtube_privacy"), YouTubeUploadStatus = Str(r, "youtube_upload_status"),
         YouTubeProcessingStatus = Str(r, "youtube_processing_status"), YouTubeCheckedAtUtc = ParseTs(Str(r, "youtube_checked_at_utc")),
         PublishedAtUtc = ParseTs(Str(r, "published_at_utc")), WorkDir = Str(r, "work_dir"), WorkDirCleaned = r.GetInt32(r.GetOrdinal("work_dir_cleaned")) != 0,
+        PublishNow = r.GetInt32(r.GetOrdinal("publish_now")) != 0,
     };
 
     private static void BindJob(SqliteCommand cmd, VideoJob j)
@@ -154,11 +163,12 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
 INSERT INTO jobs(topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc,
  run_attempts, next_attempt_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description,
  thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status,
- youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned)
+ youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now)
 VALUES($topic,$notes,$language,$dur,$format,$tpl,$voice,$pub,$status,$created,$updated,$attempts,$next,$cancel,$qa,$errc,$errm,$attn,$snap,$title,$desc,
- $thumb,$va,$aa,$sa,$adur,$yid,$ypriv,$yup,$yproc,$ychk,$pubd,$wd,$wdc) RETURNING id;
+ $thumb,$va,$aa,$sa,$adur,$yid,$ypriv,$yup,$yproc,$ychk,$pubd,$wd,$wdc,$pn) RETURNING id;
 """;
         BindJob(cmd, job);
+        cmd.Parameters.AddWithValue("$pn", job.PublishNow ? 1 : 0);
         job.Id = (long)cmd.ExecuteScalar()!;
         return job.Id;
     }
@@ -211,6 +221,51 @@ RETURNING {JobColumns};
         cmd.Parameters.AddWithValue("$now", Ts(nowUtc));
         using var r = cmd.ExecuteReader();
         return r.Read() ? ReadJob(r) : null;
+    }
+
+    private static string ClaimableIn => string.Join(",", JobStateMachine.ClaimableStatuses.Select(s => (int)s));
+    private static string NotFinalIn => $"{(int)JobStatus.Published},{(int)JobStatus.Cancelled}";
+
+    public int CountPending(DateTimeOffset nowUtc)
+    {
+        using var c = Open();
+        return Convert.ToInt32(Scalar(c, $"SELECT COUNT(*) FROM jobs WHERE status IN ({ClaimableIn}) AND cancel_requested = 0 AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= $now)",
+            ("$now", Ts(nowUtc))));
+    }
+
+    public int CountPublishNow(DateTimeOffset nowUtc)
+    {
+        using var c = Open();
+        return Convert.ToInt32(Scalar(c, $"SELECT COUNT(*) FROM jobs WHERE publish_now = 1 AND status NOT IN ({NotFinalIn}) AND claimed_by IS NULL AND cancel_requested = 0 AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= $now)",
+            ("$now", Ts(nowUtc))));
+    }
+
+    public VideoJob? ClaimPublishNow(string runId, DateTimeOffset nowUtc)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = $"""
+UPDATE jobs SET claimed_by=$run, claimed_at_utc=$now, updated_at_utc=$now
+WHERE id = (
+  SELECT id FROM jobs
+  WHERE publish_now = 1 AND status NOT IN ({NotFinalIn}) AND claimed_by IS NULL AND cancel_requested = 0
+    AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= $now)
+  ORDER BY id LIMIT 1)
+  AND claimed_by IS NULL
+RETURNING {JobColumns};
+""";
+        cmd.Parameters.AddWithValue("$run", runId);
+        cmd.Parameters.AddWithValue("$now", Ts(nowUtc));
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? ReadJob(r) : null;
+    }
+
+    public void SetPublishNow(long jobId, bool value)
+    {
+        using var c = Open();
+        // So'rov qo'yilganda backoff kutilmaydi: foydalanuvchi aniq buyruq berdi.
+        Exec(c, "UPDATE jobs SET publish_now=$v, updated_at_utc=$now" + (value ? ", next_attempt_at_utc=NULL" : "") + " WHERE id=$id", null,
+            ("$v", value ? 1 : 0), ("$now", Ts(DateTimeOffset.UtcNow)), ("$id", jobId));
     }
 
     public void ReleaseClaim(long jobId, string runId)

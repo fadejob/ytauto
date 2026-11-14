@@ -24,6 +24,11 @@ public sealed class VideoJob
     public string? ClaimedBy { get; set; }
     public DateTimeOffset? ClaimedAtUtc { get; set; }
     public bool CancelRequested { get; set; }
+    /// <summary>
+    /// "Hozir chiqarish" so'rovi (online bazadan ham qo'yilishi mumkin): worker shu vazifani navbatdan tashqari darhol tayyorlaydi
+    /// va YouTube'ga darhol public qiladi. Update() bu maydonni yozmaydi - faqat alohida atomar amallar (SetPublishNow).
+    /// </summary>
+    public bool PublishNow { get; set; }
     /// <summary>Sifat tekshiruvidan keyin Claude'ga qaytarilgan tuzatish sikllari soni.</summary>
     public int QaFixCycles { get; set; }
 

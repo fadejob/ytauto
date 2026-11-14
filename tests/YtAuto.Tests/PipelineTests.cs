@@ -160,6 +160,7 @@ internal sealed class FakeMedia : IMediaProbe
 internal sealed class FakeUploader : IVideoUploader
 {
     public bool Connected = true; public int Initiations, Resumes; public int FailAfterSession; public bool LoseSession;
+    public readonly HashSet<string> Public = new(); public int MakePublicCalls; public bool? LastPublishNow;
     public bool IsConnected => Connected;
     public Task<string> UploadAsync(UploadRequest r, IUploadStateSink state, IJobLog log, CancellationToken ct)
     {
@@ -172,13 +173,17 @@ internal sealed class FakeUploader : IVideoUploader
             state.SaveVideoId("vid-1"); return Task.FromResult("vid-1");
         }
         Initiations++;
+        LastPublishNow = r.PublishNow;
+        if (r.PublishNow) Public.Add("vid-1");
         state.SaveSessionUri("https://upload.example/session?upload_id=SECRET", DateTimeOffset.UtcNow);
         if (FailAfterSession > 0) { FailAfterSession--; throw PipelineException.Transient("youtube_network", "connection reset"); }
         state.SaveVideoId("vid-1");
         return Task.FromResult("vid-1");
     }
-    public Task<YouTubeVideoStatus> GetStatusAsync(string id, CancellationToken ct) =>
-        Task.FromResult(new YouTubeVideoStatus { VideoId = id, Exists = true, UploadStatus = "processed", PrivacyStatus = "private", ProcessingStatus = "succeeded", PublishAtUtc = DateTimeOffset.UtcNow.AddDays(2) });
+    public Task<YouTubeVideoStatus> GetStatusAsync(string id, CancellationToken ct) => Task.FromResult(Public.Contains(id)
+        ? new YouTubeVideoStatus { VideoId = id, Exists = true, UploadStatus = "processed", PrivacyStatus = "public", ProcessingStatus = "succeeded", PublishedAtUtc = DateTimeOffset.UtcNow }
+        : new YouTubeVideoStatus { VideoId = id, Exists = true, UploadStatus = "processed", PrivacyStatus = "private", ProcessingStatus = "succeeded", PublishAtUtc = DateTimeOffset.UtcNow.AddDays(2) });
+    public Task MakePublicAsync(string id, CancellationToken ct) { MakePublicCalls++; Public.Add(id); return Task.CompletedTask; }
     public Task<string?> FindRecentUploadAsync(string title, DateTimeOffset since, CancellationToken ct) => Task.FromResult<string?>(null);
     public Task<bool> SetThumbnailAsync(string id, string img, CancellationToken ct) => Task.FromResult(true);
 }

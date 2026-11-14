@@ -23,6 +23,14 @@ public interface IJobStore
     void Update(VideoJob job);
     /// <summary>Navbatdan eng eski yaroqli vazifani atomar band qiladi.</summary>
     VideoJob? ClaimNext(string runId, DateTimeOffset nowUtc);
+    /// <summary>Navbatda kutayotgan (band qilinishi mumkin bo'lgan) mavzular soni - ishga tushishda bazadan sinxronlash uchun.</summary>
+    int CountPending(DateTimeOffset nowUtc);
+    /// <summary>"Hozir chiqarish" so'ralgan va hali bajarilmagan vazifalar soni.</summary>
+    int CountPublishNow(DateTimeOffset nowUtc);
+    /// <summary>"Hozir chiqarish" so'ralgan eng eski vazifani atomar band qiladi (Published/Cancelled bo'lmagan).</summary>
+    VideoJob? ClaimPublishNow(string runId, DateTimeOffset nowUtc);
+    /// <summary>"Hozir chiqarish" bayrog'ini qo'yadi yoki olib tashlaydi (Update()'dan alohida, poyga bo'lmasligi uchun).</summary>
+    void SetPublishNow(long jobId, bool value);
     void ReleaseClaim(long jobId, string runId);
     /// <summary>OS mutex ostida chaqiriladi: tirik bo'lmagan worker'larning band qilishlarini bo'shatadi.</summary>
     int ReleaseStaleClaims(string currentRunId);
@@ -192,6 +200,8 @@ public sealed class UploadRequest
     public string CategoryId { get; init; } = "27";
     public string Language { get; init; } = "en";
     public DateTimeOffset PublishAtUtc { get; init; }
+    /// <summary>true - video darhol public yuklanadi (publishAt yuborilmaydi).</summary>
+    public bool PublishNow { get; init; }
     public bool MadeForKids { get; init; }
     public bool ContainsSyntheticMedia { get; init; }
     public string? ThumbnailPath { get; init; }
@@ -235,6 +245,8 @@ public interface IVideoUploader
     /// <summary>Noaniq holatda: kanal yuklamalari orasidan shu sarlavhali, shu vaqtdan keyin yuklangan videoni qidiradi.</summary>
     Task<string?> FindRecentUploadAsync(string title, DateTimeOffset sinceUtc, CancellationToken ct);
     Task<bool> SetThumbnailAsync(string videoId, string imagePath, CancellationToken ct);
+    /// <summary>Yuklangan (private/rejalashtirilgan) videoni darhol public qiladi. Allaqachon public bo'lsa hech narsa qilmaydi.</summary>
+    Task MakePublicAsync(string videoId, CancellationToken ct);
 }
 
 public interface IResourceMonitor

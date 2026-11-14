@@ -26,6 +26,24 @@ public sealed partial class ScheduleViewModel : ObservableObject
 
     public ScheduleViewModel(AppServices svc) => _svc = svc;
 
+    /// <summary>
+    /// Yangilanishdan keyin: jadval yoqilgan, lekin masofaviy buyruq vazifasi ("YtAuto Remote Trigger") hali yo'q bo'lsa -
+    /// ikkala vazifa joriy worker yo'li bilan qayta ro'yxatga olinadi (dublikat yaratilmaydi).
+    /// </summary>
+    public static void EnsureRemoteTrigger(AppServices svc)
+    {
+        try
+        {
+            var s = svc.Settings.Load();
+            var exe = Shell.FindWorkerExe();
+            var ts = new TaskSchedulerService();
+            if (!s.Schedule.Enabled || exe is null || ts.PollTaskExists()) return;
+            ts.Register(s.Schedule, exe);
+            svc.Log.Info("Masofaviy 'hozir chiqarish' vazifasi Task Scheduler'ga qo'shildi.");
+        }
+        catch (Exception e) { svc.Log.Warn("Masofaviy buyruq vazifasini qo'shib bo'lmadi: " + e.Message); }
+    }
+
     public ScheduleViewModel Load()
     {
         var s = _svc.Settings.Load();
@@ -42,7 +60,8 @@ public sealed partial class ScheduleViewModel : ObservableObject
         {
             var t = _ts.Query();
             TaskState = !t.Exists ? "Task Scheduler'da vazifa yo'q."
-                : $"Holat: {t.State}{(t.Enabled ? "" : " (o'chirilgan)")}\nKeyingi ishga tushish: {t.NextRunTime:yyyy-MM-dd HH:mm}\nOxirgi ishga tushish: {(t.LastRunTime is null ? "-" : t.LastRunTime.Value.ToString("yyyy-MM-dd HH:mm"))}\nOxirgi natija: {TaskSchedulerService.DescribeResult(t.LastResult)}\nBuyruq: {t.Command} --scheduled";
+                : $"Holat: {t.State}{(t.Enabled ? "" : " (o'chirilgan)")}\nKeyingi ishga tushish: {t.NextRunTime:yyyy-MM-dd HH:mm}\nOxirgi ishga tushish: {(t.LastRunTime is null ? "-" : t.LastRunTime.Value.ToString("yyyy-MM-dd HH:mm"))}\nOxirgi natija: {TaskSchedulerService.DescribeResult(t.LastResult)}\nBuyruq: {t.Command} --scheduled"
+                  + $"\nMasofaviy 'Hozir chiqarish': {(_ts.PollTaskExists() ? $"yoqilgan (har {TaskSchedulerService.PollIntervalMinutes} daqiqada, faqat internet bo'lsa)" : "yo'q — jadvalni qayta yoqing")}";
         }
         catch (Exception e) { TaskState = "Task Scheduler holatini o'qib bo'lmadi: " + e.Message; }
         Runs.Clear();
@@ -71,7 +90,7 @@ public sealed partial class ScheduleViewModel : ObservableObject
         {
             _ts.Register(_svc.Settings.Load().Schedule, exe); // mavjud bo'lsa yangilanadi, dublikat yaratilmaydi
             Enabled = true;
-            Message = $"Jadval yoqildi: har kuni {StartTime} ({TimeZone}).";
+            Message = $"Jadval yoqildi: har kuni {StartTime} ({TimeZone}). Navbatga qarab 1–3 ta video, orasida 15 daqiqa tanaffus. Masofaviy 'Hozir chiqarish' ham yoqildi.";
         }
         catch (Exception e) { Message = "Jadvalni yaratib bo'lmadi: " + e.Message; }
         RefreshState();

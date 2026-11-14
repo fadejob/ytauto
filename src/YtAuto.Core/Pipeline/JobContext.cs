@@ -13,6 +13,8 @@ public sealed class JobContext
     public required IJobLog Log { get; init; }
     public required string RunId { get; init; }
     public CancellationToken Ct { get; set; }
+    /// <summary>"Hozir chiqarish": upload darhol public (rejalashtirilmaydi).</summary>
+    public bool PublishNow { get; set; }
 
     public AppSettings S => Snapshot.Settings;
 

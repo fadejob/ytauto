@@ -26,7 +26,13 @@ public sealed partial class JobRunner
             throw new AttentionRequiredException("youtube_not_connected", "YouTube kanali ulanmagan. Video arxivda saqlandi; Sozlamalarda kanalni ulang va vazifani qayta navbatga qo'ying.");
 
         var lead = TimeSpan.FromMinutes(Math.Max(15, c.S.YouTube.MinLeadMinutes));
-        if (c.Job.PublishAtUtc <= _x.Clock.UtcNow + lead)
+        if (c.PublishNow)
+        {
+            c.Job.PublishAtUtc = _x.Clock.UtcNow;
+            _x.Store.Update(c.Job);
+            c.Log.Info("Hozir chiqarish: video rejalashtirilmaydi — darhol public yuklanadi.", "Upload");
+        }
+        else if (c.Job.PublishAtUtc <= _x.Clock.UtcNow + lead)
         {
             // Video tayyor bo'lguncha chiqish vaqti o'tib ketgan: hozirgi vaqtdan 35 daqiqa keyinga suriladi.
             var old = c.Job.PublishAtUtc;
@@ -47,7 +53,7 @@ public sealed partial class JobRunner
         var req = new UploadRequest
         {
             VideoPath = c.Job.VideoArchivePath!, Title = Trunc(c.Job.DisplayTitle, 100), Description = c.Job.Description ?? "",
-            Tags = tags, CategoryId = c.S.YouTube.CategoryId, Language = c.Job.Language, PublishAtUtc = c.Job.PublishAtUtc,
+            Tags = tags, CategoryId = c.S.YouTube.CategoryId, Language = c.Job.Language, PublishAtUtc = c.Job.PublishAtUtc, PublishNow = c.PublishNow,
             MadeForKids = c.S.YouTube.MadeForKids, ContainsSyntheticMedia = c.S.YouTube.ContainsSyntheticMedia, ThumbnailPath = c.Job.ThumbnailPath,
             License = c.S.YouTube.License == "creativeCommon" ? "creativeCommon" : "youtube", Embeddable = c.S.YouTube.Embeddable,
             PublicStatsViewable = c.S.YouTube.PublicStatsViewable, NotifySubscribers = c.S.YouTube.NotifySubscribers,
@@ -65,7 +71,9 @@ public sealed partial class JobRunner
             var outputs = Deserialize(rec.OutputsJson); outputs.Values["video_id"] = videoId;
             rec.OutputsJson = JsonSerializer.Serialize(outputs);
             _x.Store.SaveStage(rec);
-            c.Log.Info($"YouTube'ga private yuklandi, publish vaqti {c.Job.PublishAtUtc:u}: {c.Job.YouTubeUrl} ({sw.Elapsed.TotalSeconds:0}s).", "Upload");
+            c.Log.Info(c.PublishNow
+                ? $"YouTube'ga darhol PUBLIC yuklandi: {c.Job.YouTubeUrl} ({sw.Elapsed.TotalSeconds:0}s)."
+                : $"YouTube'ga private yuklandi, publish vaqti {c.Job.PublishAtUtc:u}: {c.Job.YouTubeUrl} ({sw.Elapsed.TotalSeconds:0}s).", "Upload");
             if (!string.IsNullOrEmpty(req.ThumbnailPath) && File.Exists(req.ThumbnailPath))
             {
                 try
@@ -145,6 +153,22 @@ public sealed partial class JobRunner
         if (before != fresh.Status) log.Info($"YouTube holati: {before} → {fresh.Status} (privacy={st.PrivacyStatus}, upload={st.UploadStatus}, processing={st.ProcessingStatus}).", "YouTube");
         if (fresh.Status is JobStatus.Scheduled or JobStatus.Published) CleanupWorkDir(fresh, log);
         return fresh.Status;
+    }
+
+    /// <summary>
+    /// Yuklangan, lekin hali chiqmagan (private/rejalashtirilgan yoki vaqti o'tib ketgan) videoni YouTube'da darhol public qiladi.
+    /// Video qayta yaratilmaydi va qayta yuklanmaydi.
+    /// </summary>
+    private async Task MakeUploadedPublicAsync(VideoJob job, IJobLog log, CancellationToken ct)
+    {
+        if (!_x.Uploader.IsConnected)
+            throw new AttentionRequiredException("youtube_not_connected", "YouTube kanali ulanmagan — videoni public qilib bo'lmadi. Sozlamalarda kanalni ulang va 'Hozir chiqarish'ni qayta bosing.");
+        await _x.Uploader.MakePublicAsync(job.YouTubeVideoId!, ct).ConfigureAwait(false);
+        job.PublishAtUtc = _x.Clock.UtcNow;
+        job.LastErrorCode = null; job.LastErrorMessage = null; job.NextAttemptAtUtc = null; job.AttentionReason = null;
+        _x.Store.Update(job);
+        log.Info($"YouTube'da darhol public qilindi: {job.YouTubeUrl}", "Upload");
+        await RefreshYouTubeStatusAsync(job, log, ct).ConfigureAwait(false);
     }
 
     /// <summary>Faqat ilovaga tegishli job papkasi chegarasida tozalaydi. Arxiv, records va shablonlar tegilmaydi.</summary>

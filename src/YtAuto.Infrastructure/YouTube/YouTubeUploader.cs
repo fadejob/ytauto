@@ -171,13 +171,15 @@ public sealed class YouTubeUploader : IVideoUploader
             },
             ["status"] = new JsonObject
             {
-                ["privacyStatus"] = "private",
-                ["publishAt"] = r.PublishAtUtc.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture),
+                ["privacyStatus"] = r.PublishNow ? "public" : "private",
                 ["selfDeclaredMadeForKids"] = r.MadeForKids,
                 ["containsSyntheticMedia"] = r.ContainsSyntheticMedia,
                 ["embeddable"] = r.Embeddable, ["license"] = r.License, ["publicStatsViewable"] = r.PublicStatsViewable,
             },
         };
+        // Rejalashtirilgan chiqish: private + publishAt. "Hozir chiqarish"da publishAt yuborilmaydi (YouTube faqat private uchun qabul qiladi).
+        if (!r.PublishNow)
+            ((JsonObject)body["status"]!)["publishAt"] = r.PublishAtUtc.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
         var parts = "snippet,status";
         if (r.RecordingDateUtc is not null || !string.IsNullOrWhiteSpace(r.LocationDescription))
         {
@@ -274,6 +276,27 @@ public sealed class YouTubeUploader : IVideoUploader
                 return it?["contentDetails"]?["videoId"]?.GetValue<string>();
         }
         return null;
+    }
+
+    /// <summary>
+    /// videos.update(part=status): privacyStatus=public, publishAt olib tashlanadi. part=status yangilanganda yuborilmagan yoziladigan
+    /// maydonlar standartga qaytadi, shuning uchun joriy qiymatlar (embeddable, license, bolalar/AI belgilari) o'qilib, qayta yuboriladi.
+    /// </summary>
+    public async Task MakePublicAsync(string videoId, CancellationToken ct)
+    {
+        using var get = await SendAsync(() => new HttpRequestMessage(HttpMethod.Get,
+            $"https://www.googleapis.com/youtube/v3/videos?part=status&id={Uri.EscapeDataString(videoId)}"), ct).ConfigureAwait(false);
+        if (!get.IsSuccessStatusCode) throw await ApiError(get, "Video holatini olish", ct).ConfigureAwait(false);
+        var cur = (JsonNode.Parse(await get.Content.ReadAsStringAsync(ct).ConfigureAwait(false))?["items"] as JsonArray)?.FirstOrDefault()?["status"]
+                  ?? throw PipelineException.Config("youtube_video_missing", $"YouTube'da video topilmadi ({videoId}) — public qilib bo'lmadi.");
+        if (cur["privacyStatus"]?.GetValue<string>() == "public") return;
+        var status = new JsonObject { ["privacyStatus"] = "public" };
+        foreach (var key in new[] { "embeddable", "license", "publicStatsViewable", "selfDeclaredMadeForKids", "containsSyntheticMedia" })
+            if (cur[key] is JsonNode v) status[key] = v.DeepClone();
+        var body = new JsonObject { ["id"] = videoId, ["status"] = status };
+        using var resp = await SendAsync(() => new HttpRequestMessage(HttpMethod.Put, "https://www.googleapis.com/youtube/v3/videos?part=status")
+        { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") }, ct).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode) throw await ApiError(resp, "Videoni public qilish", ct).ConfigureAwait(false);
     }
 
     public async Task<bool> SetThumbnailAsync(string videoId, string imagePath, CancellationToken ct)

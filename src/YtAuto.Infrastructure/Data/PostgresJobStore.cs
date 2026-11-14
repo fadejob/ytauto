@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS {T("worker_runs")} (
   finished_at_utc TIMESTAMPTZ, outcome TEXT, job_id BIGINT, message TEXT, trigger TEXT, machine TEXT
 );
 CREATE TABLE IF NOT EXISTS {T("shared_settings")} (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at_utc TIMESTAMPTZ NOT NULL);
+-- v2: "Hozir chiqarish" so'rovi. Supabase Table Editor'da shu ustunni TRUE qilish ham yetarli - worker o'zi oladi.
+ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS publish_now BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS ix_jobs_publish_now ON {T("jobs")}(id) WHERE publish_now;
 """);
         tx.Commit();
     }
@@ -98,7 +101,7 @@ CREATE TABLE IF NOT EXISTS {T("shared_settings")} (key TEXT PRIMARY KEY, value T
     private static DateTimeOffset? D(NpgsqlDataReader r, string col) { var i = r.GetOrdinal(col); return r.IsDBNull(i) ? null : r.GetFieldValue<DateTimeOffset>(i); }
     private static string? S(NpgsqlDataReader r, string col) { var i = r.GetOrdinal(col); return r.IsDBNull(i) ? null : r.GetString(i); }
 
-    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned";
+    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now";
 
     private static VideoJob ReadJob(NpgsqlDataReader r) => new()
     {
@@ -117,6 +120,7 @@ CREATE TABLE IF NOT EXISTS {T("shared_settings")} (key TEXT PRIMARY KEY, value T
         YouTubeVideoId = S(r, "youtube_video_id"), YouTubePrivacy = S(r, "youtube_privacy"), YouTubeUploadStatus = S(r, "youtube_upload_status"),
         YouTubeProcessingStatus = S(r, "youtube_processing_status"), YouTubeCheckedAtUtc = D(r, "youtube_checked_at_utc"),
         PublishedAtUtc = D(r, "published_at_utc"), WorkDir = S(r, "work_dir"), WorkDirCleaned = r.GetBoolean(r.GetOrdinal("work_dir_cleaned")),
+        PublishNow = r.GetBoolean(r.GetOrdinal("publish_now")),
     };
 
     private static void BindJob(NpgsqlCommand cmd, VideoJob j)
@@ -156,12 +160,13 @@ CREATE TABLE IF NOT EXISTS {T("shared_settings")} (key TEXT PRIMARY KEY, value T
 INSERT INTO {T("jobs")}(topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc,
  run_attempts, next_attempt_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description,
  thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status,
- youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned)
+ youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now)
 VALUES(@topic,@notes,@language,@dur,@format,@tpl,@voice,@pub,@status,@created,@updated,@attempts,@next,@cancel,@qa,@errc,@errm,@attn,@snap,@title,@desc,
- @thumb,@va,@aa,@sa,@adur,@yid,@ypriv,@yup,@yproc,@ychk,@pubd,@wd,@wdc) RETURNING id
+ @thumb,@va,@aa,@sa,@adur,@yid,@ypriv,@yup,@yproc,@ychk,@pubd,@wd,@wdc,@pn) RETURNING id
 """, c);
         if (job.CreatedAtUtc == default) job.CreatedAtUtc = DateTimeOffset.UtcNow;
         BindJob(cmd, job);
+        cmd.Parameters.AddWithValue("pn", job.PublishNow);
         job.Id = (long)cmd.ExecuteScalar()!;
         return job.Id;
     }
@@ -203,6 +208,48 @@ WHERE id = (
 RETURNING {JobColumns}
 """, ("run", runId), ("now", U(nowUtc)), ("st", JobStateMachine.ClaimableStatuses.Select(s => (int)s).ToArray()));
         return ReadJobs(cmd).FirstOrDefault();
+    }
+
+    private static int[] Claimable => JobStateMachine.ClaimableStatuses.Select(s => (int)s).ToArray();
+    private static readonly int[] FinalStatuses = { (int)JobStatus.Published, (int)JobStatus.Cancelled };
+
+    public int CountPending(DateTimeOffset nowUtc)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"SELECT COUNT(*) FROM {T("jobs")} WHERE status = ANY(@st) AND cancel_requested = FALSE AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= @now)",
+            ("st", Claimable), ("now", U(nowUtc)));
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    public int CountPublishNow(DateTimeOffset nowUtc)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"SELECT COUNT(*) FROM {T("jobs")} WHERE publish_now AND NOT (status = ANY(@fin)) AND claimed_by IS NULL AND cancel_requested = FALSE AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= @now)",
+            ("fin", FinalStatuses), ("now", U(nowUtc)));
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    public VideoJob? ClaimPublishNow(string runId, DateTimeOffset nowUtc)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+UPDATE {T("jobs")} SET claimed_by=@run, claimed_at_utc=@now, updated_at_utc=@now
+WHERE id = (
+  SELECT id FROM {T("jobs")}
+  WHERE publish_now AND NOT (status = ANY(@fin)) AND claimed_by IS NULL AND cancel_requested = FALSE
+    AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= @now)
+  ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
+  AND claimed_by IS NULL
+RETURNING {JobColumns}
+""", ("run", runId), ("now", U(nowUtc)), ("fin", FinalStatuses));
+        return ReadJobs(cmd).FirstOrDefault();
+    }
+
+    public void SetPublishNow(long jobId, bool value)
+    {
+        using var c = Open();
+        Exec(c, null, $"UPDATE {T("jobs")} SET publish_now=@v, updated_at_utc=@now" + (value ? ", next_attempt_at_utc=NULL" : "") + " WHERE id=@id",
+            ("v", value), ("now", DateTimeOffset.UtcNow), ("id", jobId));
     }
 
     public void ReleaseClaim(long jobId, string runId)

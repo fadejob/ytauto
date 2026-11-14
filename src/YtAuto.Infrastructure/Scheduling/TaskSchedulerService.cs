@@ -26,6 +26,11 @@ public sealed class ScheduledTaskInfo
 public sealed class TaskSchedulerService
 {
     public const string TaskName = "YtAuto Daily Worker";
+    /// <summary>Masofaviy "Hozir chiqarish" buyrug'ini kutuvchi vazifa: har bir necha daqiqada yengil --poll (navbatga tegmaydi).</summary>
+    public const string PollTaskName = "YtAuto Remote Trigger";
+    public const int PollIntervalMinutes = 2;
+    /// <summary>Bir ishga tushishda 3 tagacha video + tanaffuslar: ish vaqti limiti kamida shuncha soat.</summary>
+    public const int MinBatchExecutionHours = 10;
     private const int TASK_CREATE_OR_UPDATE = 6;
     private const int TASK_LOGON_INTERACTIVE_TOKEN = 3;
 
@@ -47,7 +52,7 @@ public sealed class TaskSchedulerService
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Author>YtAuto</Author>
-    <Description>YtAuto: navbatdan bitta mavzu bo'yicha video tayyorlaydi va YouTube'ga rejalashtirib yuklaydi.</Description>
+    <Description>YtAuto: bazadan mavzularni sinxronlab, navbatga qarab 1-3 ta video tayyorlaydi (orasida 15 daqiqa tanaffus) va YouTube'ga rejalashtirib yuklaydi.</Description>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
@@ -76,13 +81,72 @@ public sealed class TaskSchedulerService
     <Hidden>false</Hidden>
     <RunOnlyIfIdle>false</RunOnlyIfIdle>
     <WakeToRun>{(s.WakeToRun ? "true" : "false")}</WakeToRun>
-    <ExecutionTimeLimit>PT{Math.Clamp(s.ExecutionLimitHours, 1, 23)}H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>PT{Math.Clamp(Math.Max(s.ExecutionLimitHours, MinBatchExecutionHours), 1, 23)}H</ExecutionTimeLimit>
     <Priority>7</Priority>
   </Settings>
   <Actions Context="Author">
     <Exec>
       <Command>{X(workerExe)}</Command>
       <Arguments>--scheduled</Arguments>
+      <WorkingDirectory>{X(dir)}</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
+""";
+    }
+
+    /// <summary>
+    /// Masofaviy buyruq kutuvchi: foydalanuvchi tizimda bo'lganda har <see cref="PollIntervalMinutes"/> daqiqada, faqat internet bo'lsa,
+    /// "YtAuto.Worker.exe --poll" ishga tushadi. So'rov bo'lmasa worker bir zumda chiqadi; bo'lsa videoni tayyorlab, darhol chiqaradi.
+    /// </summary>
+    public static string BuildPollXml(string workerExe, DateTimeOffset nowUtc)
+    {
+        var start = nowUtc.ToLocalTime();
+        var boundary = start.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture) + start.ToString("zzz", CultureInfo.InvariantCulture);
+        var user = $"{Environment.UserDomainName}\\{Environment.UserName}";
+        string X(string v) => SecurityElement.Escape(v) ?? "";
+        var dir = Path.GetDirectoryName(workerExe)!;
+        return $"""
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>YtAuto</Author>
+    <Description>YtAuto: online bazadagi "Hozir chiqarish" buyrug'ini kutadi. Buyruq bo'lsa videoni tayyorlab, YouTube'ga darhol chiqaradi.</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <TimeTrigger>
+      <Repetition><Interval>PT{PollIntervalMinutes}M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>
+      <StartBoundary>{boundary}</StartBoundary>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>{X(user)}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
+    <IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>true</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT8H</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>{X(workerExe)}</Command>
+      <Arguments>--poll</Arguments>
       <WorkingDirectory>{X(dir)}</WorkingDirectory>
     </Exec>
   </Actions>
@@ -105,15 +169,26 @@ public sealed class TaskSchedulerService
         dynamic svc = Service();
         dynamic folder = svc.GetFolder("\\");
         folder.RegisterTask(TaskName, xml, TASK_CREATE_OR_UPDATE, null, null, TASK_LOGON_INTERACTIVE_TOKEN, null);
+        folder.RegisterTask(PollTaskName, BuildPollXml(workerExe, DateTimeOffset.UtcNow), TASK_CREATE_OR_UPDATE, null, null, TASK_LOGON_INTERACTIVE_TOKEN, null);
     }
 
     public void Unregister()
     {
         dynamic svc = Service();
         dynamic folder = svc.GetFolder("\\");
-        try { folder.DeleteTask(TaskName, 0); }
-        catch (COMException e) when ((uint)e.HResult == 0x80070002) { }
-        catch (FileNotFoundException) { }
+        foreach (var name in new[] { TaskName, PollTaskName })
+        {
+            try { folder.DeleteTask(name, 0); }
+            catch (COMException e) when ((uint)e.HResult == 0x80070002) { }
+            catch (FileNotFoundException) { }
+        }
+    }
+
+    /// <summary>Masofaviy buyruq vazifasi ro'yxatda bormi (UI holati uchun).</summary>
+    public bool PollTaskExists()
+    {
+        try { dynamic svc = Service(); svc.GetFolder("\\").GetTask(PollTaskName); return true; }
+        catch (Exception e) when (e is COMException or FileNotFoundException || (uint)e.HResult == 0x80070002) { return false; }
     }
 
     public void RunNow()

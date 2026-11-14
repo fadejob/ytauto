@@ -19,6 +19,7 @@ public partial class App : Application
             MessageBox.Show("Ilova ma'lumotlar bazasini ochib bo'lmadi:\n" + ex.Message, "YtAuto", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1); return;
         }
+        ScheduleViewModel.EnsureRemoteTrigger(Services);
         // Desktop ochilishi video tayyorlashni BOSHLAMAYDI: faqat boshqaruv.
         var main = new MainWindow { DataContext = new MainViewModel(Services) };
         MainWindow = main;
