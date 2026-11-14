@@ -1,0 +1,16 @@
+exit=1 
+2026-11-14 08:21:46Z
+[Ok] RAM: Jami 7.7 GB, bo'sh 0.5 GB. Og'ir bosqichlar ketma-ket bajariladi.
+[Ok] Ish papkasi: D:\YtAuto\jobs - yozish mumkin, bo'sh 177.2 GB
+[Ok] Video arxiv: D:\YtAuto\archive\video - yozish mumkin, bo'sh 177.2 GB
+[Ok] Ovoz arxiv: D:\YtAuto\archive\audio - yozish mumkin, bo'sh 177.2 GB
+[Failed] Gemini: Gemini API kaliti kiritilmagan (Sozlamalar → Gemini).
+[Ok] VoiceStudio: O'rnatilgan (D:\AppData\VoiceStudio\VoiceStudio.exe); hozir ishlamayapti - worker kerak bo'lganda o'zi ishga tushiradi va keyin yopadi.
+[Ok] Subtitr timing (faster-whisper): Alignment muhiti tayyor: {"python": "3.11.16", "faster_whisper": "1.2.1", "ctranslate2": "4.4.0", "model": "Systran/faster-whisper-base", "model_cached": true, "ok": true}
+[Ok] OpenFilm CLI: Bundled CLI versiyasi: 0.3.2 (D:\AppData\Local\OpenFilm\resources\app.asar\node_modules\openfilm\bin\openfilm.mjs)
+[Ok] ffmpeg/ffprobe: ffmpeg version 9.0.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers (D:\AppData\Local\OpenFilm\resources\runtime\ffmpeg)
+[Ok] Headless brauzer: D:\AppData\Local\OpenFilm\resources\runtime\ms-playwright
+[Ok] Claude Code: 2.1.310 (Claude Code) (C:\Users\User\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe)
+[Ok] Claude autentifikatsiyasi: Shu Windows kontekstida ishlaydi (11s, sessiya 7155f3b6-f200-4188-bec5-ecb717013585).
+[Warning] YouTube: Kanal ulanmagan (Sozlamalar → YouTube → Ulash).
+[Ok] Windows jadvali: Tayyor, keyingi: 2026-11-15 01:00, oxirgi natija: 0 (muvaffaqiyatli)

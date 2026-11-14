@@ -1,0 +1,58 @@
+{
+  "narration_text": "Every night at one o'clock, a small program wakes up on this computer. First, it takes the oldest topic from the queue and writes a short script. Then a local voice engine reads the script aloud, and a speech model finds the exact time of every word. Next, an editor builds the scenes, and the video is rendered and checked frame by frame. Only a video that passes every check is saved and scheduled. By morning, the work is done.",
+  "subtitle_text": "Every night at one o'clock, a small program wakes up on this computer. First, it takes the oldest topic from the queue and writes a short script. Then a local voice engine reads the script aloud, and a speech model finds the exact time of every word. Next, an editor builds the scenes, and the video is rendered and checked frame by frame. Only a video that passes every check is saved and scheduled. By morning, the work is done.",
+  "scenes": [
+    {
+      "index": 1,
+      "narration": "Every night at one o'clock, a small program wakes up on this computer.",
+      "visual": "A dark desk scene: a clock showing 01:00 and a small glowing computer icon that lights up.",
+      "on_screen_text": "01:00 - worker wakes",
+      "approx_seconds": 0
+    },
+    {
+      "index": 2,
+      "narration": "First, it takes the oldest topic from the queue and writes a short script.",
+      "visual": "A vertical queue of topic cards; the bottom (oldest) card slides out and turns into a page of text lines.",
+      "on_screen_text": "Oldest topic → script",
+      "approx_seconds": 0
+    },
+    {
+      "index": 3,
+      "narration": "Then a local voice engine reads the script aloud, and a speech model finds the exact time of every word.",
+      "visual": "A waveform grows from left to right; small word labels snap onto the waveform with time ticks.",
+      "on_screen_text": "Voice + word timing",
+      "approx_seconds": 0
+    },
+    {
+      "index": 4,
+      "narration": "Next, an editor builds the scenes, and the video is rendered and checked frame by frame.",
+      "visual": "Four scene thumbnails assemble on a timeline; a check mark passes over each frame.",
+      "on_screen_text": "Build, render, check",
+      "approx_seconds": 0
+    },
+    {
+      "index": 5,
+      "narration": "Only a video that passes every check is saved and scheduled. By morning, the work is done.",
+      "visual": "A shield with a check mark, then a calendar page with a sunrise.",
+      "on_screen_text": "Checked → scheduled",
+      "approx_seconds": 0
+    }
+  ],
+  "on_screen_texts": [
+    "01:00 - worker wakes",
+    "Oldest topic → script",
+    "Voice + word timing",
+    "Build, render, check",
+    "Checked → scheduled"
+  ],
+  "youtube_title": "How a Night Worker Builds a Video",
+  "youtube_description": "A self-test video made by the local pipeline.",
+  "tags": [
+    "selftest"
+  ],
+  "sources": [],
+  "unverified_claims": [],
+  "grounded_sources": [],
+  "fact_sheet": "",
+  "sources_verified": false
+}

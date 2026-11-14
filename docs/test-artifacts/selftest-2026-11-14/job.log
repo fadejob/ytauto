@@ -1,0 +1,78 @@
+﻿2026-11-14 12:51:26.470 +05:00 INFO  Sozlamalar, promptlar va shablon versiyasi snapshot qilindi (shablon: yo'q, versiya none).
+2026-11-14 12:51:26.610 +05:00 INFO  Ish papkasi: C:\Users\User\AppData\Local\YtAuto-selftest\jobs\job-1. Bo'sh disk 7.2 GB, bo'sh RAM 0.7/7.7 GB.
+2026-11-14 12:51:26.764 +05:00 INFO  [Script] Script: boshlandi (urinish 1, bo'sh RAM 0.67 GB).
+2026-11-14 12:51:26.827 +05:00 INFO  [Script] Self-test: Gemini o'rniga tayyor ssenariy ishlatildi.
+2026-11-14 12:51:27.321 +05:00 INFO  [Script] Ssenariy tayyor: "How a Night Worker Builds a Video", 5 sahna, 80 so'z, tasdiqlangan manbalar: 0.
+2026-11-14 12:51:27.464 +05:00 INFO  [Script] Script: tugadi (0.7s). words=80, scenes=5, prompt_tokens=0, output_tokens=0, ram_free_before_gb=0.67, ram_free_after_gb=0.69
+2026-11-14 12:51:27.512 +05:00 INFO  [Voice] Voice: boshlandi (urinish 1, bo'sh RAM 0.70 GB).
+2026-11-14 12:51:27.553 +05:00 WARN  [Voice] Bo'sh RAM kam (0.70 GB < 1 GB). Boshqa og'ir dasturlarni yopish tavsiya etiladi; TTS ketma-ket, bo'laklab bajariladi.
+2026-11-14 12:51:27.626 +05:00 INFO  [Voice] TTS: 1 bo'lak, 1 tasi yaratiladi (0 tasi oldingi urinishdan tayyor).
+2026-11-14 12:51:33.485 +05:00 INFO  [Voice] VoiceStudio worker tomonidan ishga tushirildi (pid 6808); API tayyorligi kutilmoqda (≤300s).
+2026-11-14 12:53:22.948 +05:00 INFO  [Voice] VoiceStudio tayyor: v0.5.7, 113s.
+2026-11-14 12:53:24.704 +05:00 INFO  [Voice] TTS modeli o'rnatilgan: KittenML/kitten-tts-mini-0.8.
+2026-11-14 12:56:45.757 +05:00 INFO  [Voice] TTS bo'lak 1/1 tayyor (41.4s).
+2026-11-14 12:56:52.421 +05:00 INFO  [Voice] VoiceStudio yopildi (stage finished): WM_CLOSE 1 oynaga, majburan 0 jarayon, tashqariga chiqqan 0. Peak 4616 MB, bo'sh RAM 0.86 → 1.68 GB.
+2026-11-14 12:56:54.577 +05:00 INFO  [Voice] Ovoz tayyor: 41.42s, peak -2.2 dB, RMS -19.3 dB.
+2026-11-14 12:56:54.592 +05:00 INFO  [Voice] Voice: tugadi (327.1s). tts_startup_sec=112.61, tts_synth_sec=200.8, tts_chars=430, tts_peak_mb=4615.97, audio_sec=41.42, peak_db=-2.19, rms_db=-19.33, speech_ratio=0.68, ram_free_before_gb=0.7, ram_free_after_gb=1.64
+2026-11-14 12:56:54.609 +05:00 INFO  [Align] Align: boshlandi (urinish 1, bo'sh RAM 1.64 GB).
+2026-11-14 12:56:54.623 +05:00 INFO  [Align] Alignment: Systran/faster-whisper-base (CPU, int8), til 'en'.
+2026-11-14 12:56:54.656 +05:00 DEBUG aligner: pid 11436 ishga tushdi (C:\Users\User\AppData\Roaming\VoiceStudio\runtime\project\.venv\Scripts\python.exe).
+2026-11-14 12:57:32.116 +05:00 INFO  [Align] Alignment tugadi: 81 so'z, til en, 37s, peak 1191 MB. Jarayon yopildi (model xotirada qolmadi).
+2026-11-14 12:57:32.148 +05:00 WARN  [Align] Transkripsiya asl matndan farq qiladi (o'xshashlik 98%, mos so'zlar 100%). Subtitr asl matndan olinadi, mos kelmagan so'zlar vaqti qo'shnilaridan interpolyatsiya qilindi. Farqlar: ortiqcha (ASR): "o"
+2026-11-14 12:57:32.213 +05:00 INFO  [Align] Align: tugadi (37.6s). align_sec=37.44, align_peak_mb=1190.71, align_cpu_sec=46.75, align_leftover_killed=0, align_words=81, similarity=0.98, matched_ratio=1, cues=17, ram_free_before_gb=1.64, ram_free_after_gb=1.46
+2026-11-14 12:57:32.223 +05:00 INFO  [Edit] Edit: boshlandi (urinish 1, bo'sh RAM 1.46 GB).
+2026-11-14 12:57:34.255 +05:00 INFO  [Edit] Claude Code: yangi non-interactive sessiya (Read, Write, Edit, Glob, Grep + openfilm), timeout 45 daqiqa.
+2026-11-14 12:57:34.288 +05:00 DEBUG claude: pid 7180 ishga tushdi (C:\Users\User\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe).
+2026-11-14 12:59:20.505 +05:00 DEBUG claude: tugagandan keyin qolgan 2 ta child jarayon to'xtatildi.
+2026-11-14 12:59:20.539 +05:00 INFO  [Edit] Claude sessiyasidan qolgan 2 ta child jarayon (masalan, OpenFilm Studio) yopildi.
+2026-11-14 12:59:20.564 +05:00 INFO  [Edit] Claude montaj loyihasini yaratdi (106s, sessiya b032d560-4f44-4524-aaaf-89fc13faf28e).
+2026-11-14 12:59:20.567 +05:00 INFO  [Edit] Edit: tugadi (108.3s). claude_sec=106.26, claude_peak_mb=716.92, claude_cost_usd=0.29, ram_free_before_gb=1.46, ram_free_after_gb=1.09
+2026-11-14 12:59:20.572 +05:00 INFO  [Render] Render: boshlandi (urinish 1, bo'sh RAM 1.10 GB).
+2026-11-14 12:59:20.627 +05:00 DEBUG openfilm-look: pid 10744 ishga tushdi (D:\AppData\Local\OpenFilm\OpenFilm.exe).
+2026-11-14 12:59:38.403 +05:00 INFO  [Render] openfilm look  → exit 0 (18s).
+2026-11-14 12:59:38.409 +05:00 INFO  [Render] OpenFilm render: 1 parallel renderer, 30 fps, -14 LUFS, subtitrlar kuydiriladi.
+2026-11-14 12:59:38.445 +05:00 DEBUG openfilm-render: pid 1800 ishga tushdi (D:\AppData\Local\OpenFilm\OpenFilm.exe).
+2026-11-14 13:01:46.885 +05:00 INFO  [Render] Render: tugadi (146.3s). look_sec=17.77, render_sec=128.39, render_peak_mb=752.05, render_cpu_sec=157.98, ram_free_before_gb=1.1, ram_free_after_gb=1.48
+2026-11-14 13:01:46.889 +05:00 INFO  [Validate] Validate: boshlandi (urinish 1, bo'sh RAM 1.48 GB).
+2026-11-14 13:01:52.297 +05:00 DEBUG openfilm-look: pid 14576 ishga tushdi (D:\AppData\Local\OpenFilm\OpenFilm.exe).
+2026-11-14 13:02:03.097 +05:00 INFO  [Render] openfilm look --full C:\Users\User\AppData\Local\YtAuto-selftest\jobs\job-1\render\final.mp4 → exit 0 (11s).
+2026-11-14 13:02:03.133 +05:00 INFO  [Validate] Sifat tekshiruvi o'tdi (streams, timeline, cuts_vs_cues, subtitles, black_frames, audio_levels, sample_frames, openfilm_look_full); ogohlantirishlar: 0.
+2026-11-14 13:02:03.137 +05:00 INFO  [Validate] Validate: tugadi (16.2s). qa_video_duration=41.43, qa_first_visual_at=0, qa_visual_end=41.43, qa_cuts_on_cue_ratio=1, qa_max_volume_db=-2, qa_integrated_lufs=-14, qa_sampled_frames=5, qa_look_full_sec=10.81, ram_free_before_gb=1.48, ram_free_after_gb=1.42
+2026-11-14 13:02:03.139 +05:00 INFO  [Archive] Archive: boshlandi (urinish 1, bo'sh RAM 1.42 GB).
+2026-11-14 13:02:03.563 +05:00 INFO  [Archive] Arxivlandi va SHA-256 bilan tekshirildi: C:\Users\User\AppData\Local\YtAuto-selftest\archive\video\2026-11-16_job1_how-a-night-worker-builds-a-video.mp4, C:\Users\User\AppData\Local\YtAuto-selftest\archive\audio\2026-11-16_job1_how-a-night-worker-builds-a-video.wav
+2026-11-14 13:02:03.564 +05:00 INFO  [Archive] Archive: tugadi (0.4s). ram_free_before_gb=1.42, ram_free_after_gb=1.39
+2026-11-14 13:02:03.565 +05:00 INFO  Self-test rejimi: upload bosqichi o'tkazib yuborildi.
+2026-11-14 13:02:03.569 +05:00 INFO  Ishga tushish yakunlandi: holat Archived.
+2026-11-14 13:05:02.197 +05:00 WARN  Oldingi ishga tushish Rendering bosqichida uzilib qolgan. Saqlangan fayllar tekshirilib, davom ettiriladi (urinish 1).
+2026-11-14 13:05:02.229 +05:00 INFO  Ish papkasi: C:\Users\User\AppData\Local\YtAuto-selftest\jobs\job-1. Bo'sh disk 5.0 GB, bo'sh RAM 1.2/7.7 GB.
+2026-11-14 13:05:02.274 +05:00 INFO  [Script] Script: oldin tugagan, natijalar joyida - o'tkazib yuborildi.
+2026-11-14 13:05:02.298 +05:00 INFO  [Voice] Voice: oldin tugagan, natijalar joyida - o'tkazib yuborildi.
+2026-11-14 13:05:02.317 +05:00 INFO  [Align] Align: oldin tugagan, natijalar joyida - o'tkazib yuborildi.
+2026-11-14 13:05:02.330 +05:00 INFO  [Edit] Edit: oldin tugagan, natijalar joyida - o'tkazib yuborildi.
+2026-11-14 13:05:02.340 +05:00 INFO  [Render] Render: boshlandi (urinish 2, bo'sh RAM 1.15 GB).
+2026-11-14 13:05:02.416 +05:00 DEBUG openfilm-look: pid 15660 ishga tushdi (D:\AppData\Local\OpenFilm\OpenFilm.exe).
+2026-11-14 13:05:17.910 +05:00 INFO  [Render] openfilm look  → exit 0 (16s).
+2026-11-14 13:05:17.917 +05:00 INFO  [Render] OpenFilm render: 1 parallel renderer, 30 fps, -14 LUFS, subtitrlar kuydiriladi.
+2026-11-14 13:05:17.943 +05:00 DEBUG openfilm-render: pid 3980 ishga tushdi (D:\AppData\Local\OpenFilm\OpenFilm.exe).
+2026-11-14 13:05:56.027 +05:00 WARN  Oldingi ishga tushish Rendering bosqichida uzilib qolgan. Saqlangan fayllar tekshirilib, davom ettiriladi (urinish 2).
+2026-11-14 13:05:56.067 +05:00 INFO  Ish papkasi: C:\Users\User\AppData\Local\YtAuto-selftest\jobs\job-1. Bo'sh disk 5.0 GB, bo'sh RAM 1.4/7.7 GB.
+2026-11-14 13:05:56.108 +05:00 INFO  [Script] Script: oldin tugagan, natijalar joyida - o'tkazib yuborildi.
+2026-11-14 13:05:56.126 +05:00 INFO  [Voice] Voice: oldin tugagan, natijalar joyida - o'tkazib yuborildi.
+2026-11-14 13:05:56.142 +05:00 INFO  [Align] Align: oldin tugagan, natijalar joyida - o'tkazib yuborildi.
+2026-11-14 13:05:56.152 +05:00 INFO  [Edit] Edit: oldin tugagan, natijalar joyida - o'tkazib yuborildi.
+2026-11-14 13:05:56.160 +05:00 INFO  [Render] Render: boshlandi (urinish 3, bo'sh RAM 1.39 GB).
+2026-11-14 13:05:56.235 +05:00 DEBUG openfilm-look: pid 11564 ishga tushdi (D:\AppData\Local\OpenFilm\OpenFilm.exe).
+2026-11-14 13:06:10.931 +05:00 INFO  [Render] openfilm look  → exit 0 (15s).
+2026-11-14 13:06:10.937 +05:00 INFO  [Render] OpenFilm render: 1 parallel renderer, 30 fps, -14 LUFS, subtitrlar kuydiriladi.
+2026-11-14 13:06:10.967 +05:00 DEBUG openfilm-render: pid 14848 ishga tushdi (D:\AppData\Local\OpenFilm\OpenFilm.exe).
+2026-11-14 13:08:31.334 +05:00 INFO  [Render] Render: tugadi (155.2s). look_sec=14.73, render_sec=140.33, render_peak_mb=736.29, render_cpu_sec=178.84, ram_free_before_gb=1.39, ram_free_after_gb=1.09
+2026-11-14 13:08:31.339 +05:00 INFO  [Validate] Validate: boshlandi (urinish 2, bo'sh RAM 1.09 GB).
+2026-11-14 13:08:37.670 +05:00 DEBUG openfilm-look: pid 6772 ishga tushdi (D:\AppData\Local\OpenFilm\OpenFilm.exe).
+2026-11-14 13:08:48.784 +05:00 INFO  [Render] openfilm look --full C:\Users\User\AppData\Local\YtAuto-selftest\jobs\job-1\render\final.mp4 → exit 0 (11s).
+2026-11-14 13:08:48.836 +05:00 INFO  [Validate] Sifat tekshiruvi o'tdi (streams, timeline, cuts_vs_cues, subtitles, black_frames, audio_levels, sample_frames, openfilm_look_full); ogohlantirishlar: 0.
+2026-11-14 13:08:48.841 +05:00 INFO  [Validate] Validate: tugadi (17.5s). qa_video_duration=41.43, qa_first_visual_at=0, qa_visual_end=41.43, qa_cuts_on_cue_ratio=1, qa_max_volume_db=-2, qa_integrated_lufs=-14, qa_sampled_frames=5, qa_look_full_sec=11.12, ram_free_before_gb=1.09, ram_free_after_gb=1.01
+2026-11-14 13:08:48.845 +05:00 INFO  [Archive] Archive: boshlandi (urinish 2, bo'sh RAM 1.01 GB).
+2026-11-14 13:08:49.360 +05:00 INFO  [Archive] Arxivlandi va SHA-256 bilan tekshirildi: C:\Users\User\AppData\Local\YtAuto-selftest\archive\video\2026-11-16_job1_how-a-night-worker-builds-a-video.mp4, C:\Users\User\AppData\Local\YtAuto-selftest\archive\audio\2026-11-16_job1_how-a-night-worker-builds-a-video.wav
+2026-11-14 13:08:49.361 +05:00 INFO  [Archive] Archive: tugadi (0.5s). ram_free_before_gb=1.01, ram_free_after_gb=1
+2026-11-14 13:08:49.363 +05:00 INFO  Self-test rejimi: upload bosqichi o'tkazib yuborildi.
+2026-11-14 13:08:49.364 +05:00 INFO  Ishga tushish yakunlandi: holat Archived.

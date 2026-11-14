@@ -1,0 +1,26 @@
+{
+  "job_id": 1,
+  "topic": "Self-test: night worker",
+  "title": "How a Night Worker Builds a Video",
+  "description": "A self-test video made by the local pipeline.",
+  "tags": [
+    "selftest"
+  ],
+  "language": "en",
+  "format": "Landscape16x9",
+  "publish_at_utc": "2026-11-16T07:51:25.3500161+00:00",
+  "audio_duration_sec": 41.421,
+  "sources": [],
+  "sources_verified": false,
+  "unverified_claims": [],
+  "video": "C:\\Users\\User\\AppData\\Local\\YtAuto-selftest\\archive\\video\\2026-11-16_job1_how-a-night-worker-builds-a-video.mp4",
+  "audio": "C:\\Users\\User\\AppData\\Local\\YtAuto-selftest\\archive\\audio\\2026-11-16_job1_how-a-night-worker-builds-a-video.wav",
+  "subtitles": "C:\\Users\\User\\AppData\\Local\\YtAuto-selftest\\archive\\video\\2026-11-16_job1_how-a-night-worker-builds-a-video.srt",
+  "integration_versions": {
+    "claude": "2.1.310 (Claude Code)",
+    "openfilm": "0.3.2",
+    "ffmpeg": "ffmpeg version 9.0.2-essentials_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+    "aligner": "faster-whisper Systran/faster-whisper-base via C:\\Users\\User\\AppData\\Roaming\\VoiceStudio\\runtime\\project\\.venv\\Scripts\\python.exe"
+  },
+  "archived_at_utc": "2026-11-14T08:08:49.3450554+00:00"
+}

@@ -1,0 +1,120 @@
+using YtAuto.Core.Domain;
+using YtAuto.Core.Pipeline;
+using YtAuto.Infrastructure.Claude;
+using YtAuto.Infrastructure.Data;
+using YtAuto.Infrastructure.Gemini;
+using YtAuto.Infrastructure.Media;
+using YtAuto.Infrastructure.OpenFilm;
+using YtAuto.Infrastructure.Security;
+using YtAuto.Infrastructure.Voice;
+using YtAuto.Infrastructure.YouTube;
+
+namespace YtAuto.Infrastructure;
+
+/// <summary>UI va worker uchun umumiy kompozitsiya (bir xil Core/Infrastructure kodi).</summary>
+public sealed class AppServices
+{
+    public AppPaths Paths { get; }
+    /// <summary>Mavzular va ularning holati: online PostgreSQL (ulangan bo'lsa) yoki lokal SQLite.</summary>
+    public IAppStore Store { get; }
+    /// <summary>Kompyuterga xos ma'lumotlar (lokal sozlamalar, VoiceStudio katalogi keshi).</summary>
+    public SqliteJobStore LocalDb { get; }
+    public SqliteSettingsStore Settings { get; }
+    public bool IsOnline => Store is PostgresJobStore;
+    public DpapiSecretStore Secrets { get; }
+    public HttpClient Http { get; }
+    public YouTubeAuth YouTubeAuth { get; }
+    public YouTubeUploader Uploader { get; }
+    public GeminiScriptGenerator Gemini { get; }
+    public ResourceMonitor Resources { get; } = new();
+    public RunLog Log { get; }
+    public string RunId { get; }
+
+    public AppServices(string component, string? dataRoot = null, bool console = false)
+    {
+        Paths = new AppPaths(dataRoot);
+        var machine = new string(Environment.MachineName.Where(char.IsLetterOrDigit).ToArray());
+        RunId = $"{component}-{machine}-{DateTime.UtcNow:yyyyMMddHHmmss}-{Environment.ProcessId}";
+        Log = new RunLog(new RollingFileLog(Path.Combine(Paths.LogsDir, $"{component}.log")), console);
+        Secrets = new DpapiSecretStore(Paths.SecretsDir);
+        LocalDb = new SqliteJobStore(Paths.DatabasePath);
+        // Online baza: self-test (alohida dataRoot) uni ishlatmaydi.
+        var pg = dataRoot is null ? Secrets.Get(SecretNames.PostgresConnection) : null;
+        if (!string.IsNullOrWhiteSpace(pg))
+        {
+            try
+            {
+                var remote = new PostgresJobStore(pg);
+                var moved = remote.ImportFrom(LocalDb);
+                if (moved > 0) Log.Info($"{moved} ta lokal mavzu online bazaga ko'chirildi.");
+                Store = remote;
+            }
+            catch (Exception e)
+            {
+                Log.Error("Online bazaga (PostgreSQL) ulanib bo'lmadi: " + e.Message);
+                throw new InvalidOperationException("Online bazaga ulanib bo'lmadi (internetni tekshiring): " + e.Message.Split('\n')[0], e);
+            }
+        }
+        else Store = LocalDb;
+        Settings = new SqliteSettingsStore(LocalDb, DefaultSettings, Store is PostgresJobStore ? Store : null);
+        Http = new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }) { Timeout = TimeSpan.FromMinutes(10) };
+        YouTubeAuth = new YouTubeAuth(Secrets, () => Settings.Load().YouTube, Http);
+        Uploader = new YouTubeUploader(YouTubeAuth, Http);
+        Gemini = new GeminiScriptGenerator(Secrets);
+        // Ma'lum sirlarni log redaktoriga oldindan ro'yxatga olamiz.
+        Secrets.Get(SecretNames.GeminiApiKey); Secrets.Get(SecretNames.YouTubeClientSecret); Secrets.Get(SecretNames.YouTubeTokens);
+    }
+
+    public static AppSettings DefaultSettings()
+    {
+        var s = AppSettings.CreateDefault(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+        s.Claude.ExecutablePath = YtAuto.Infrastructure.Claude.ClaudeLocator.Find() ?? s.Claude.ExecutablePath;
+        // Tizim diskida joy kam bo'lsa (sinovdagi kompyuterda C: da ~2.7 GB), ish va arxiv papkalari eng ko'p bo'sh joyli
+        // mahalliy diskka qo'yiladi. Foydalanuvchi Sozlamalarda o'zgartirishi mumkin.
+        try
+        {
+            var sys = new DriveInfo(Path.GetPathRoot(s.Paths.WorkDir)!);
+            var best = DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady)
+                .OrderByDescending(d => d.AvailableFreeSpace).FirstOrDefault();
+            if (best is not null && sys.AvailableFreeSpace < 20L * 1024 * 1024 * 1024 && best.AvailableFreeSpace > sys.AvailableFreeSpace * 2
+                && !string.Equals(best.Name, sys.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                var root = Path.Combine(best.RootDirectory.FullName, "YtAuto");
+                s.Paths.WorkDir = Path.Combine(root, "jobs");
+                s.Paths.VideoArchiveDir = Path.Combine(root, "archive", "video");
+                s.Paths.AudioArchiveDir = Path.Combine(root, "archive", "audio");
+                s.Paths.TemplatesDir = Path.Combine(root, "templates");
+            }
+        }
+        catch { }
+        return s;
+    }
+
+    public OpenFilmTool FilmTool(Func<OpenFilmSettings>? s = null) => new(s ?? (() => Settings.Load().OpenFilm), Store, RunId);
+    public FfmpegMediaProbe Media(OpenFilmTool film) => new(() => film.FfmpegDir);
+    public WhisperAligner Aligner(Func<VoiceStudioSettings>? s = null) => new(s ?? (() => Settings.Load().VoiceStudio));
+    public ClaudeEditorAgent Claude(Func<ClaudeSettings>? s = null) => new(s ?? (() => Settings.Load().Claude), Store, RunId);
+
+    /// <summary>
+    /// Pipeline servislarini yaratadi. Tashqi vositalar (Claude, OpenFilm, Python) yo'llari JORIY sozlamadan olinadi,
+    /// prompt/shablon/limitlar esa vazifa snapshot'idan (JobRunner ichida).
+    /// </summary>
+    public PipelineServices Pipeline(bool stopBeforeUpload = false, IScriptGenerator? scriptOverride = null, TimeSpan? postUploadPoll = null)
+    {
+        var film = FilmTool();
+        return new PipelineServices
+        {
+            Store = Store, Settings = Settings, Secrets = Secrets,
+            ScriptGenerator = scriptOverride ?? Gemini,
+            Tts = new VoiceStudioTtsService(Store, RunId),
+            Aligner = Aligner(), Editor = Claude(), Film = film, Media = Media(film),
+            Uploader = Uploader, Resources = Resources, Paths = Paths, Clock = new SystemClock(),
+            JobLogFactory = id => new JobLog(id, Paths.RecordDirFor(id), Store, Log),
+            RunLog = Log, AppVersion = typeof(AppServices).Assembly.GetName().Version?.ToString() ?? "1.0.0",
+            StopBeforeUpload = stopBeforeUpload,
+            PostUploadPoll = postUploadPoll ?? TimeSpan.FromMinutes(8),
+        };
+    }
+}

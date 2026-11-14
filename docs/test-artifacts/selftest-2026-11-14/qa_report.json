@@ -1,0 +1,23 @@
+{
+  "issues": [],
+  "metrics": {
+    "video_duration": 41.433333,
+    "first_visual_at": 0,
+    "visual_end": 41.43,
+    "cuts_on_cue_ratio": 1,
+    "max_volume_db": -2,
+    "integrated_lufs": -14,
+    "sampled_frames": 5,
+    "look_full_sec": 11.1229403
+  },
+  "checked": [
+    "streams",
+    "timeline",
+    "cuts_vs_cues",
+    "subtitles",
+    "black_frames",
+    "audio_levels",
+    "sample_frames",
+    "openfilm_look_full"
+  ]
+}

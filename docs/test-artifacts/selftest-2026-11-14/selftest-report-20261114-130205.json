@@ -1,0 +1,129 @@
+{
+  "job_id": 1,
+  "outcome": "StoppedBeforeUpload",
+  "status": "Archived",
+  "error": null,
+  "total_minutes": 10.67,
+  "ram_free_before_gb": 0.57,
+  "ram_free_after_gb": 1.44,
+  "leftover_processes_started_by_run": [],
+  "audio_sec": 41.421,
+  "video": "C:\\Users\\User\\AppData\\Local\\YtAuto-selftest\\archive\\video\\2026-11-16_job1_how-a-night-worker-builds-a-video.mp4",
+  "audio": "C:\\Users\\User\\AppData\\Local\\YtAuto-selftest\\archive\\audio\\2026-11-16_job1_how-a-night-worker-builds-a-video.wav",
+  "qa_fix_cycles": 0,
+  "stages": [
+    {
+      "stage": "Script",
+      "state": "Done",
+      "attempts": 1,
+      "seconds": 0.6,
+      "error": null,
+      "metrics": {
+        "words": 80,
+        "scenes": 5,
+        "prompt_tokens": 0,
+        "output_tokens": 0,
+        "ram_free_before_gb": 0.67,
+        "ram_free_after_gb": 0.69
+      }
+    },
+    {
+      "stage": "Voice",
+      "state": "Done",
+      "attempts": 1,
+      "seconds": 327.1,
+      "error": null,
+      "metrics": {
+        "tts_startup_sec": 112.6087139,
+        "tts_synth_sec": 200.7952209,
+        "tts_chars": 430,
+        "tts_peak_mb": 4615.96875,
+        "audio_sec": 41.420541666666665,
+        "peak_db": -2.189101875358275,
+        "rms_db": -19.329528236759405,
+        "speech_ratio": 0.6768115942028986,
+        "ram_free_before_gb": 0.7,
+        "ram_free_after_gb": 1.64
+      }
+    },
+    {
+      "stage": "Align",
+      "state": "Done",
+      "attempts": 1,
+      "seconds": 37.6,
+      "error": null,
+      "metrics": {
+        "align_sec": 37.4443569,
+        "align_peak_mb": 1190.71484375,
+        "align_cpu_sec": 46.75,
+        "align_leftover_killed": 0,
+        "align_words": 81,
+        "similarity": 0.981,
+        "matched_ratio": 1,
+        "cues": 17,
+        "ram_free_before_gb": 1.64,
+        "ram_free_after_gb": 1.46
+      }
+    },
+    {
+      "stage": "Edit",
+      "state": "Done",
+      "attempts": 1,
+      "seconds": 108.3,
+      "error": null,
+      "metrics": {
+        "claude_sec": 106.2568038,
+        "claude_peak_mb": 716.921875,
+        "claude_cost_usd": 0.28692880000000004,
+        "ram_free_before_gb": 1.46,
+        "ram_free_after_gb": 1.09
+      }
+    },
+    {
+      "stage": "Render",
+      "state": "Done",
+      "attempts": 1,
+      "seconds": 146.3,
+      "error": null,
+      "metrics": {
+        "look_sec": 17.773789,
+        "render_sec": 128.3919514,
+        "render_peak_mb": 752.0546875,
+        "render_cpu_sec": 157.984375,
+        "ram_free_before_gb": 1.1,
+        "ram_free_after_gb": 1.48
+      }
+    },
+    {
+      "stage": "Validate",
+      "state": "Done",
+      "attempts": 1,
+      "seconds": 16.2,
+      "error": null,
+      "metrics": {
+        "qa_video_duration": 41.433333,
+        "qa_first_visual_at": 0,
+        "qa_visual_end": 41.43,
+        "qa_cuts_on_cue_ratio": 1,
+        "qa_max_volume_db": -2,
+        "qa_integrated_lufs": -14,
+        "qa_sampled_frames": 5,
+        "qa_look_full_sec": 10.8053589,
+        "ram_free_before_gb": 1.48,
+        "ram_free_after_gb": 1.42
+      }
+    },
+    {
+      "stage": "Archive",
+      "state": "Done",
+      "attempts": 1,
+      "seconds": 0.4,
+      "error": null,
+      "metrics": {
+        "ram_free_before_gb": 1.42,
+        "ram_free_after_gb": 1.39
+      }
+    }
+  ],
+  "record_dir": "C:\\Users\\User\\AppData\\Local\\YtAuto-selftest\\records\\job-1"
+}

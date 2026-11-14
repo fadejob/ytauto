@@ -1,0 +1,68 @@
+1
+00:00:00,000 --> 00:00:00,940
+Every night
+
+2
+00:00:01,540 --> 00:00:05,300
+at one o'clock, a small program wakes up
+
+3
+00:00:05,300 --> 00:00:06,380
+on this computer.
+
+4
+00:00:06,940 --> 00:00:07,740
+First,
+
+5
+00:00:08,300 --> 00:00:10,920
+it takes the oldest topic from the queue
+
+6
+00:00:10,920 --> 00:00:13,000
+and writes a short script.
+
+7
+00:00:13,820 --> 00:00:17,640
+Then a local voice engine reads the script
+
+8
+00:00:17,640 --> 00:00:18,440
+aloud,
+
+9
+00:00:19,140 --> 00:00:22,340
+and a speech model finds the exact time of
+
+10
+00:00:22,340 --> 00:00:23,280
+every word.
+
+11
+00:00:23,280 --> 00:00:27,060
+Next, an editor builds the scenes,
+
+12
+00:00:27,060 --> 00:00:29,820
+and the video is rendered and checked
+
+13
+00:00:29,820 --> 00:00:31,240
+frame by frame.
+
+14
+00:00:31,960 --> 00:00:35,920
+Only a video that passes every check is
+
+15
+00:00:35,920 --> 00:00:37,740
+saved and scheduled.
+
+16
+00:00:37,740 --> 00:00:39,440
+By morning,
+
+17
+00:00:40,060 --> 00:00:41,100
+the work is done.
+

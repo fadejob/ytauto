@@ -1,0 +1,3 @@
+final.mp4  1920×1080 · 41.433s · 30 fps · with sound
+✓ every frame watched at 30 fps: no white flash, jumping frame, still picture or black
+→ .film\cache\look\final-0-41.433s.png
