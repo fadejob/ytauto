@@ -26,7 +26,7 @@ const CATEGORIES: [string, string][] = [
   ["26", "Qo'llanma va uslub"], ["27", "Ta'lim"], ["28", "Fan va texnologiya"], ["29", "Notijorat va faollik"],
 ];
 
-export default function Settings({ catalog, toast }: { catalog: Catalog | null; toast: Toast }) {
+export default function Settings({ catalog, toast, onSaved, onLogout }: { catalog: Catalog | null; toast: Toast; onSaved?: () => void; onLogout?: () => void }) {
   const [sch, setSch] = useState<Sch | null>(null);
   const [schSaved, setSchSaved] = useState<Sch | null>(null);
   const [cfg, setCfg] = useState<Draft | null>(null);
@@ -89,6 +89,7 @@ export default function Settings({ catalog, toast }: { catalog: Catalog | null; 
         const newApiKeys = newKeys.split(/[\s,;]+/).map((k) => k.trim()).filter(Boolean);
         const c = await api<BotConfig>("/api/config", { ...cfg, gemini: { ...cfg.gemini, newApiKeys } });
         setCfgSaved(c); setCfg(toDraft(c)); setNewKeys("");
+        onSaved?.(); // Gemini kaliti qo'shilgan bo'lsa mavzular va AI yordamchi ochiladi
       }
       toast("Sozlamalar saqlandi.");
     } catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
@@ -108,7 +109,7 @@ export default function Settings({ catalog, toast }: { catalog: Catalog | null; 
       <header className="head">
         <div>
           <h1>Sozlamalar</h1>
-          <div className="sub">Barcha kompyuterlar uchun umumiy (online baza)</div>
+          <div className="sub">Faqat sizning hisobingiz uchun (online baza)</div>
         </div>
       </header>
       <div className="list">
@@ -254,6 +255,11 @@ export default function Settings({ catalog, toast }: { catalog: Catalog | null; 
             </div>
           </>
         )}
+        {onLogout ? (
+          <button className="btn ghost block" onClick={async () => { if (await confirmBox("Bu Telegram hisobi YtAuto hisobidan uzilsinmi? Qayta kirish uchun token kerak bo'ladi.")) onLogout(); }}>
+            Hisobdan chiqish (boshqa token bilan kirish)
+          </button>
+        ) : null}
         <div className="grid2" style={{ position: "sticky", bottom: 78 }}>
           <button className="btn block" disabled={!dirty || saving} onClick={() => { if (schSaved) setSch(schSaved); if (cfgSaved) setCfg(toDraft(cfgSaved)); }}>Qaytarish</button>
           <button className="btn primary block" disabled={!dirty || saving} onClick={save}>{saving ? "Saqlanmoqda…" : "Saqlash"}</button>

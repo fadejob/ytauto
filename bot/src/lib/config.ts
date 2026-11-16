@@ -55,13 +55,23 @@ function storedKeys(s: Stored): string[] {
 const keyId = (k: string) => createHash("sha256").update(k).digest("hex").slice(0, 12);
 const keyInfo = (k: string): GeminiKeyInfo => ({ id: keyId(k), hint: k.length > 12 ? `${k.slice(0, 4)}…${k.slice(-4)}` : "…" });
 
-/** Faqat server ichida: Gemini kalitlari (AI yordamchi uchun). Brauzerga qaytarilmaydi. */
+/**
+ * Faqat server ichida: shu hisobning Gemini kalitlari (AI yordamchi uchun). Brauzerga qaytarilmaydi.
+ * Har foydalanuvchi o'z kalitini ishlatadi; GEMINI_API_KEY (server kaliti) faqat demo rejimda.
+ */
 export async function getGeminiKeys(): Promise<{ keys: string[]; model: string }> {
   const s = await readStored();
   const keys = storedKeys(s);
-  const env = process.env.GEMINI_API_KEY?.trim();
+  const env = isDemo() ? process.env.GEMINI_API_KEY?.trim() : undefined;
   return { keys: keys.length ? keys : env ? [env] : [], model: s.gemini?.model?.trim() || DEF.gemini.model };
 }
+
+/** Gemini kaliti kiritilganmi: yo'q bo'lsa mavzu qo'shib bo'lmaydi, AI yordamchi o'chiq, mavjud mavzular muzlatilgan. */
+export async function geminiReady(): Promise<boolean> {
+  return (await getGeminiKeys()).keys.length > 0;
+}
+
+export const GEMINI_REQUIRED = "Gemini kaliti kiritilmagan: avval Sozlamalar → Gemini'ga kalit qo'shing (mavzular shungacha muzlatilgan).";
 
 function view(s: Stored): BotConfig {
   const g = { ...(s.gemini ?? {}) };
@@ -163,6 +173,6 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
   const json = JSON.stringify(next);
   await sql()`
     INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${KEY}, ${json}, now())
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
+    ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
   return view(next);
 }

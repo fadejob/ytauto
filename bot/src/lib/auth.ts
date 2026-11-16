@@ -4,7 +4,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export type Viewer = { id: number; name: string; dev: boolean };
 
 export class AuthError extends Error {
-  constructor(message: string, public status = 401, public telegramId?: number) {
+  /** code "token_required" - Telegram foydalanuvchisi hali hech bir hisobga token bilan kirmagan (yoki token almashtirilgan). */
+  constructor(message: string, public status = 401, public telegramId?: number, public code?: string) {
     super(message);
   }
 }
@@ -12,7 +13,8 @@ export class AuthError extends Error {
 /**
  * Telegram Web App initData tekshiruvi (https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app):
  * secret = HMAC_SHA256("WebAppData", bot_token); hash = HMAC_SHA256(secret, data_check_string).
- * Faqat ALLOWED_TELEGRAM_IDS dagi foydalanuvchilar kiradi. ALLOW_BROWSER_DEV=1 bo'lsa initData'siz (brauzerda) kirish mumkin.
+ * Bu faqat "kim" ekanini aniqlaydi. Qaysi ma'lumotlarni ko'rishi - token bilan bog'langan hisob (accounts.ts, api.ts).
+ * ALLOW_BROWSER_DEV=1 bo'lsa initData'siz (brauzerda, faqat lokal) kirish mumkin - Telegram ID 0 sifatida.
  */
 export function authenticate(req: Request): Viewer {
   const initData = req.headers.get("x-tg-init") ?? "";
@@ -37,8 +39,5 @@ export function authenticate(req: Request): Viewer {
 
   const user = JSON.parse(params.get("user") ?? "{}") as { id?: number; first_name?: string; username?: string };
   if (!user.id) throw new AuthError("Foydalanuvchi aniqlanmadi.");
-  const allowed = (process.env.ALLOWED_TELEGRAM_IDS ?? "").split(/[,\s]+/).filter(Boolean).map(Number);
-  if (!allowed.includes(user.id))
-    throw new AuthError(`Sizga ruxsat yo'q. Telegram ID: ${user.id} — uni ALLOWED_TELEGRAM_IDS ga qo'shing.`, 403, user.id);
   return { id: user.id, name: user.first_name ?? user.username ?? String(user.id), dev: false };
 }

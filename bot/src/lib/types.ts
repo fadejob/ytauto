@@ -100,7 +100,11 @@ export type Catalog = {
   known: boolean; // false — desktop ilova katalogni hali yubormagan (standart qiymatlar)
 };
 
-export type State = { topics: Topic[]; catalog: Catalog; viewer: { name: string; dev: boolean }; now: string; demo: boolean };
+export type State = {
+  topics: Topic[]; catalog: Catalog; viewer: { name: string; dev: boolean }; now: string; demo: boolean;
+  /** Gemini kaliti bormi: yo'q bo'lsa mavzu qo'shish va AI yordamchi o'chiq, mavjud mavzular muzlatilgan. */
+  gemini: { ready: boolean };
+};
 
 export type PromptKey = "script" | "montage";
 export type Prompts = Record<PromptKey, string>;

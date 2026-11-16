@@ -22,7 +22,7 @@ const MONTHS = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "
 const isLate = (iso: string) => new Date(iso).getTime() <= Date.now() + 30 * 60000;
 const fmt = (d: { date: string; time: string }) => `${Number(d.date.slice(8, 10))} ${MONTHS[Number(d.date.slice(5, 7)) - 1]}, ${d.time}`;
 
-export default function Topics({ state, loading, refresh, run }: { state: State | null; loading: boolean; refresh: () => Promise<void>; run: Run }) {
+export default function Topics({ state, loading, refresh, run, locked }: { state: State | null; loading: boolean; refresh: () => Promise<void>; run: Run; locked?: boolean }) {
   const [group, setGroup] = useState<Group>("queue");
   const [sheet, setSheet] = useState<{ mode: "new" } | { mode: "edit"; topic: Topic } | null>(null);
   const [open, setOpen] = useState<number | null>(null);
@@ -117,7 +117,8 @@ export default function Topics({ state, loading, refresh, run }: { state: State 
       </div>
 
       {group !== "done" && (
-        <button className="fab" onClick={() => { haptic.tap(); setSheet({ mode: "new" }); }}><IconPlus />Mavzu</button>
+        <button className="fab" disabled={locked} title={locked ? "Avval Gemini kalitini qo'shing" : undefined}
+          onClick={() => { haptic.tap(); setSheet({ mode: "new" }); }}><IconPlus />Mavzu</button>
       )}
       {sheet && state && <TopicSheet sheet={sheet} catalog={state.catalog} close={() => setSheet(null)} run={run} />}
       {resched && <RescheduleSheet topic={resched} close={() => setResched(null)} run={run} />}

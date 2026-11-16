@@ -9,6 +9,7 @@ import Ai from "./Ai";
 import Prompts from "./Prompts";
 import History from "./History";
 import Settings from "./Settings";
+import TokenLogin from "./TokenLogin";
 
 type Tab = "topics" | "ai" | "prompts" | "history" | "settings";
 export type Run = (actions: Action[]) => Promise<ActionResult[]>;
@@ -19,6 +20,7 @@ export default function App() {
   const [state, setState] = useState<State | null>(null);
   const [loading, setLoading] = useState(true);
   const [denied, setDenied] = useState<{ text: string; id?: number } | null>(null);
+  const [needToken, setNeedToken] = useState(false);
   const [toast, setToast] = useState<{ text: string; bad?: boolean } | null>(null);
 
   const show: Toast = useCallback((text, bad) => {
@@ -33,8 +35,10 @@ export default function App() {
       setState(s);
       cache.set("state", s);
       setDenied(null);
+      setNeedToken(false);
     } catch (e) {
-      if (e instanceof ApiError && (e.status === 401 || e.status === 403)) setDenied({ text: e.message, id: e.telegramId });
+      if (e instanceof ApiError && e.code === "token_required") { setNeedToken(true); setState(null); cache.set("state", null); }
+      else if (e instanceof ApiError && (e.status === 401 || e.status === 403)) setDenied({ text: e.message, id: e.telegramId });
       else show(e instanceof Error ? e.message : String(e), true);
     } finally {
       setLoading(false);
@@ -67,6 +71,8 @@ export default function App() {
     }
   }, [refresh, show]);
 
+  if (needToken) return <TokenLogin onDone={() => { setTab("topics"); void refresh(); }} />;
+
   if (denied)
     return (
       <main className="shell">
@@ -78,7 +84,17 @@ export default function App() {
       </main>
     );
 
-  const go = (t: Tab) => { if (t !== tab) { haptic.tap(); setTab(t); window.scrollTo({ top: 0 }); } };
+  // Gemini kaliti yo'q: mavzu qo'shish va AI yordamchi o'chiq, mavjud mavzular muzlatilgan (worker ularni tayyorlamaydi).
+  const geminiOff = !!state && state.gemini?.ready === false;
+  const go = (t: Tab) => {
+    if (t === "ai" && geminiOff) { haptic.fail(); show("AI yordamchi uchun avval Sozlamalar → Gemini'ga kalit qo'shing.", true); return; }
+    if (t !== tab) { haptic.tap(); setTab(t); window.scrollTo({ top: 0 }); }
+  };
+  const logout = async () => {
+    try { await api("/api/login", { logout: true }); } catch {}
+    cache.set("state", null);
+    setState(null); setNeedToken(true);
+  };
 
   return (
     <main className="shell">
@@ -88,17 +104,24 @@ export default function App() {
         <div className="banner">Desktop ilova hali katalog yubormagan — mavzular standart ovoz/shablon bilan qo'shiladi. YtAuto'ni bir marta oching.</div>
       ) : null}
 
-      {tab === "topics" && <Topics state={state} loading={loading} refresh={refresh} run={run} />}
-      {tab === "ai" && <Ai run={run} toast={show} />}
+      {geminiOff ? (
+        <div className="banner">
+          Gemini kaliti kiritilmagan — mavzular muzlatilgan, yangi mavzu qo&apos;shish va AI yordamchi o&apos;chiq.{" "}
+          {tab !== "settings" ? <button className="linkbtn" onClick={() => go("settings")}>Sozlamalar → Gemini</button> : null}
+        </div>
+      ) : null}
+
+      {tab === "topics" && <Topics state={state} loading={loading} refresh={refresh} run={run} locked={geminiOff} />}
+      {tab === "ai" && !geminiOff && <Ai run={run} toast={show} />}
       {tab === "prompts" && <Prompts run={run} toast={show} />}
       {tab === "history" && <History state={state} toast={show} />}
-      {tab === "settings" && <Settings catalog={state?.catalog ?? null} toast={show} />}
+      {tab === "settings" && <Settings catalog={state?.catalog ?? null} toast={show} onSaved={() => void refresh()} onLogout={logout} />}
 
       {toast ? <div className={`toast${toast.bad ? " bad" : ""}`} role="status">{toast.text}</div> : null}
 
       <nav className="tabbar">
         <button className={tab === "topics" ? "on" : ""} onClick={() => go("topics")}><IconList />Mavzular</button>
-        <button className={tab === "ai" ? "on" : ""} onClick={() => go("ai")}><IconSpark />AI yordamchi</button>
+        <button className={tab === "ai" ? "on" : ""} onClick={() => go("ai")} disabled={geminiOff}><IconSpark />AI yordamchi</button>
         <button className={tab === "prompts" ? "on" : ""} onClick={() => go("prompts")}><IconDoc />Promptlar</button>
         <button className={tab === "history" ? "on" : ""} onClick={() => go("history")}><IconHistory />Tarix</button>
         <button className={tab === "settings" ? "on" : ""} onClick={() => go("settings")}><IconGear />Sozlamalar</button>

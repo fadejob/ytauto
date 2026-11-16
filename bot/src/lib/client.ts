@@ -54,7 +54,8 @@ export function confirmBox(message: string): Promise<boolean> {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public status: number, public telegramId?: number) { super(message); }
+  /** code "token_required" - botga hali YtAuto ilovasidagi token bilan kirilmagan. */
+  constructor(message: string, public status: number, public telegramId?: number, public code?: string) { super(message); }
 }
 
 export async function api<T>(path: string, body?: unknown): Promise<T> {
@@ -65,7 +66,7 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
     cache: "no-store",
   });
   const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-  if (!res.ok) throw new ApiError(data.error ?? `HTTP ${res.status}`, res.status, data.telegramId);
+  if (!res.ok) throw new ApiError(data.error ?? `HTTP ${res.status}`, res.status, data.telegramId, data.code);
   return data as T;
 }
 

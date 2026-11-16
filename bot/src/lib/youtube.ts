@@ -1,7 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { getYouTubeClient } from "./config";
-import { sql } from "./db";
+import { currentAccountId, sql } from "./db";
 import { isDemo } from "./demo";
 
 /**
@@ -31,20 +31,23 @@ const redirectOf = (origin: string) => `${origin}/api/youtube/callback`;
 
 const hmac = (p: string) => crypto.createHmac("sha256", process.env.TELEGRAM_BOT_TOKEN || "ytauto-dev").update(p).digest("base64url");
 
-export function makeState(): string {
-  const p = `${Date.now()}.${crypto.randomBytes(8).toString("hex")}`;
+/** OAuth state: vaqt, tasodifiy qiymat va HISOB (Google qaytarganda token aynan shu foydalanuvchi hisobiga yoziladi), imzolangan. */
+export function makeState(accountId: string): string {
+  const p = `${Date.now()}.${crypto.randomBytes(8).toString("hex")}.${accountId}`;
   return `${p}.${hmac(p)}`;
 }
 
-export function checkState(state: string | null): boolean {
-  if (!state) return false;
+/** To'g'ri va eskirmagan bo'lsa hisob id'sini qaytaradi. */
+export function checkState(state: string | null): string | null {
+  if (!state) return null;
   const i = state.lastIndexOf(".");
-  if (i < 0) return false;
+  if (i < 0) return null;
   const p = state.slice(0, i), sig = state.slice(i + 1);
   const a = Buffer.from(sig), b = Buffer.from(hmac(p));
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
-  const ts = Number(p.split(".")[0]);
-  return Number.isFinite(ts) && Date.now() - ts >= 0 && Date.now() - ts < STATE_TTL_MS;
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  const [tsRaw, , acc] = p.split(".");
+  const ts = Number(tsRaw);
+  return Number.isFinite(ts) && Date.now() - ts >= 0 && Date.now() - ts < STATE_TTL_MS && acc ? acc : null;
 }
 
 let demoStored: Stored | null = null;
@@ -69,7 +72,7 @@ export async function startYouTube(origin: string): Promise<{ url: string }> {
   if (isDemo()) throw new Error("Demo rejimda YouTube ulanmaydi.");
   const q = new URLSearchParams({
     response_type: "code", client_id: c.clientId, redirect_uri: redirectOf(origin), scope: SCOPES.join(" "),
-    access_type: "offline", prompt: "consent", include_granted_scopes: "true", state: makeState(),
+    access_type: "offline", prompt: "consent", include_granted_scopes: "true", state: makeState(currentAccountId()),
   });
   return { url: `https://accounts.google.com/o/oauth2/v2/auth?${q}` };
 }
@@ -99,7 +102,7 @@ async function writeStored(s: Stored | null) {
   const json = JSON.stringify(s);
   await sql()`
     INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${KEY}, ${json}, now())
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
+    ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
 }
 
 export const disconnectYouTube = () => writeStored(null);

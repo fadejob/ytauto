@@ -47,6 +47,6 @@ export async function saveSchedule(input: Partial<Schedule>): Promise<Schedule> 
   const json = JSON.stringify({ enabled: next.enabled, startTime: next.startTime, endTime: next.endTime, timeZoneId: next.timeZoneId, wakeToRun: next.wakeToRun, executionLimitHours: next.executionLimitHours });
   await sql()`
     INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${KEY}, ${json}, now())
-    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
+    ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
   return next;
 }

@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { sql } from "./db";
+import { currentAccountId, sql } from "./db";
 import { isDemo } from "./demo";
 import { BUCKET, storageCfg } from "./storage";
 import type { PreparedUpload, TemplateUpload } from "./types";
@@ -16,18 +16,6 @@ const KINDS = ["Mp4Reference", "OpenFilmProject"] as const;
 
 const cfg = storageCfg;
 
-let tableReady = false;
-async function ensureTable() {
-  if (tableReady) return;
-  await sql()`
-    CREATE TABLE IF NOT EXISTS ytauto.template_uploads (
-      id BIGSERIAL PRIMARY KEY, group_id TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, storage_path TEXT NOT NULL, size_bytes BIGINT NOT NULL DEFAULT 0,
-      machine TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', progress INT NOT NULL DEFAULT 0, message TEXT, download_url TEXT,
-      cleaned BOOLEAN NOT NULL DEFAULT FALSE, created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
-    )`;
-  tableReady = true;
-}
-
 export async function prepareUpload(i: { name: string; kind: string; filename: string; size: number }): Promise<PreparedUpload> {
   const name = i.name?.trim();
   if (!name || name.length > 60) throw new Error("Shablon nomi 1–60 belgi bo'lsin.");
@@ -39,7 +27,7 @@ export async function prepareUpload(i: { name: string; kind: string; filename: s
   if (isDemo()) return { groupId: "demo", path: "demo/template" + ext, uploadUrl: "" };
   const { url, headers } = cfg();
   const groupId = crypto.randomBytes(8).toString("hex");
-  const path = `${groupId}/template${ext}`;
+  const path = `acc/${currentAccountId()}/${groupId}/template${ext}`; // har hisob o'z papkasida
   const r = await fetch(`${url}/storage/v1/object/upload/sign/${BUCKET}/${path}`, { method: "POST", headers, body: "{}" });
   const j = (await r.json().catch(() => ({}))) as { url?: string; message?: string };
   if (!r.ok || !j.url) throw new Error(`Yuklash havolasi olinmadi: ${j.message ?? r.status}`);
@@ -49,12 +37,11 @@ export async function prepareUpload(i: { name: string; kind: string; filename: s
 export async function commitUpload(i: { groupId: string; path: string; name: string; kind: string; size: number; machines: string[] }) {
   if (!i.machines?.length) throw new Error("Kamida bitta kompyuter tanlang.");
   if (!KINDS.includes(i.kind as (typeof KINDS)[number])) throw new Error("Shablon turi noto'g'ri.");
-  if (!i.path.startsWith(`${i.groupId}/`) || i.path.includes("..")) throw new Error("Noto'g'ri fayl yo'li.");
+  if (!isDemo() && (!/^[0-9a-f]{16}$/.test(i.groupId) || !i.path.startsWith(`acc/${currentAccountId()}/${i.groupId}/`) || i.path.includes(".."))) throw new Error("Noto'g'ri fayl yo'li.");
   if (isDemo()) {
     for (const m of i.machines) demoRows.push({ id: demoId++, name: i.name, kind: i.kind as TemplateUpload["kind"], machine: m, status: "pending", progress: 0, message: null, createdAt: new Date().toISOString(), size: i.size, t0: Date.now() });
     return { ok: true };
   }
-  await ensureTable();
   const { url, headers } = cfg();
   const info = await fetch(`${url}/storage/v1/object/info/${BUCKET}/${i.path}`, { headers });
   if (!info.ok) throw new Error("Fayl Storage'da topilmadi — yuklash tugamagan bo'lishi mumkin.");
@@ -71,7 +58,6 @@ export async function commitUpload(i: { groupId: string; path: string; name: str
 
 export async function listUploads(): Promise<TemplateUpload[]> {
   if (isDemo()) return demoList();
-  await ensureTable();
   // Muddati o'tgan (imzolangan havola 24 soat) kutayotganlar xato deb belgilanadi.
   await sql()`UPDATE ytauto.template_uploads SET status = 'error', message = 'Muddati o''tdi (kompyuter 24 soat ichida olmadi)', updated_at_utc = now()
               WHERE status = 'pending' AND created_at_utc < now() - interval '23 hours'`;

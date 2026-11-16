@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { withAccount } from "@/lib/db";
 import { checkState, finishYouTube, originOf } from "@/lib/youtube";
 
 /** Google shu manzilga qaytaradi (brauzerda). Telegram auth yo'q: so'rov imzolangan `state` bilan tekshiriladi. */
@@ -14,12 +15,13 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 export async function GET(req: Request) {
   await connection();
   const q = new URL(req.url).searchParams;
-  if (!checkState(q.get("state"))) return page("Havola eskirgan yoki noto'g'ri", "Telegramdagi botga qaytib, «YouTube'ni ulash» ni qayta bosing.", false);
+  const accountId = checkState(q.get("state"));
+  if (!accountId) return page("Havola eskirgan yoki noto'g'ri", "Telegramdagi botga qaytib, «YouTube'ni ulash» ni qayta bosing.", false);
   if (q.get("error")) return page("Ruxsat berilmadi", `Google: ${esc(q.get("error")!)}. Telegramga qaytib, qayta urinib ko'ring.`, false);
   const code = q.get("code");
   if (!code) return page("Kod kelmadi", "Telegramga qaytib, qayta urinib ko'ring.", false);
   try {
-    const title = await finishYouTube(code, originOf(req));
+    const title = await withAccount(accountId, () => finishYouTube(code, originOf(req)));
     return page("YouTube ulandi ✓", `Kanal: <b>${esc(title)}</b>. Endi Telegramdagi botga qaytishingiz mumkin.`, true);
   } catch (e) {
     return page("Ulanmadi", esc(e instanceof Error ? e.message : String(e)), false);

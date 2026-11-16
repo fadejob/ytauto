@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:check": "node --env-file=.env.local scripts/db-check.mjs",
+    "db:migrate": "node --env-file=.env.local scripts/db-migrate.mjs",
     "db:import": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/import-db-from-app.ps1"
   },
   "dependencies": {

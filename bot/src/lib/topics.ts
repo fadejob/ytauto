@@ -1,7 +1,7 @@
 import "server-only";
 import { sql } from "./db";
 import { queueForAll } from "./commands";
-import { getConfig } from "./config";
+import { GEMINI_REQUIRED, geminiReady, getConfig } from "./config";
 import { templateCatalog } from "./library";
 import { attachAudio } from "./audio";
 import { removeObjects } from "./storage";
@@ -41,18 +41,6 @@ type Row = {
 };
 
 const cols = () => sql()`id::int AS id, topic, notes, title, status, publish_at_utc, youtube_video_id, video_archive_path, publish_now, upload_requested, claimed_by, cancel_requested, last_error_message, attention_reason, template_name, format, voice_profile, manual_script, manual_title, manual_audio_path, manual_audio_url`;
-
-/** Qo'lda matn/ovoz ustunlari (kompyuterdagi ilova ham qo'shadi; bot undan oldin yangilangan bo'lsa shu yerda qo'shiladi). */
-let manualColumnsReady = false;
-async function ensureManualColumns() {
-  if (manualColumnsReady) return;
-  const [r] = await sql()`SELECT count(*)::int AS n FROM information_schema.columns
-                          WHERE table_schema = 'ytauto' AND table_name = 'jobs' AND column_name IN ('manual_script', 'manual_title', 'manual_audio_path', 'manual_audio_url')`;
-  if ((r?.n as number) < 4)
-    await sql()`ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS manual_script TEXT, ADD COLUMN IF NOT EXISTS manual_title TEXT,
-                ADD COLUMN IF NOT EXISTS manual_audio_path TEXT, ADD COLUMN IF NOT EXISTS manual_audio_url TEXT`;
-  manualColumnsReady = true;
-}
 
 const TITLE_MAX = 100;
 const SCRIPT_MAX = 30000;
@@ -130,7 +118,6 @@ export async function getCatalog(): Promise<Catalog> {
 
 export async function listTopics(tz: string): Promise<Topic[]> {
   if (isDemo()) return demoTopics();
-  await ensureManualColumns();
   try { await cleanupAudio(); } catch (e) { console.warn("[audio] tozalash:", e instanceof Error ? e.message : e); }
   // Chiqmaganlar hammasi + oxirgi 30 ta chiqqan.
   const rows = await sql()<Row[]>`
@@ -177,11 +164,11 @@ export async function applyAction(a: Action): Promise<ActionResult> {
     if (a.type === "update_prompt") { const p = await previewPrompt(a); if ("error" in p) return { ok: false, message: p.error }; }
     return demoApply(a);
   }
-  await ensureManualColumns();
   const cat = await getCatalog();
   const tz = cat.youtube.timeZone;
   switch (a.type) {
     case "create_topics": {
+      if (!(await geminiReady())) return { ok: false, message: GEMINI_REQUIRED };
       // Qo'lda matn berilib mavzu bo'sh qolsa, title mavzu nomi bo'ladi.
       const items = (a.topics ?? []).map((t) => {
         const script = clean(t.script), title = clean(t.title).replace(/\s+/g, " ");
@@ -294,7 +281,7 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       if ("error" in res) return { ok: false, message: res.error };
       await sql()`
         INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${PROMPT_KEYS[a.key]}, ${res.text}, now())
-        ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at_utc = excluded.updated_at_utc`;
+        ON CONFLICT (account_id, key) DO UPDATE SET value = excluded.value, updated_at_utc = excluded.updated_at_utc`;
       return { ok: true, message: `${a.key === "script" ? "Ssenariy (Gemini)" : "Montaj (Claude)"} prompti yangilandi — keyingi yangi vazifalardan boshlab ishlaydi.` };
     }
     case "retry":
