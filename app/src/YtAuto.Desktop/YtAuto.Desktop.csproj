@@ -7,11 +7,17 @@
     <RootNamespace>YtAuto.Desktop</RootNamespace>
     <AssemblyName>YtAuto</AssemblyName>
     <ApplicationIcon></ApplicationIcon>
+    <!-- Yagona exe: oyna ham, oynasiz worker ham shu exe ichida (EntryPoint argumentlarga qarab tanlaydi). -->
+    <StartupObject>YtAuto.Desktop.EntryPoint</StartupObject>
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\YtAuto.Infrastructure\YtAuto.Infrastructure.csproj" />
+    <ProjectReference Include="..\YtAuto.Worker\YtAuto.Worker.csproj" />
   </ItemGroup>
 </Project>

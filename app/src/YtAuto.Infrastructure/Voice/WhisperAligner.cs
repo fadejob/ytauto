@@ -20,7 +20,32 @@ public sealed class WhisperAligner : IAligner
     public WhisperAligner(Func<VoiceStudioSettings> settings, string? scriptPath = null)
     {
         _settings = settings;
-        _script = scriptPath ?? Path.Combine(AppPaths.ResourcesDir, "align_words.py");
+        _script = scriptPath ?? ResolveScript();
+    }
+
+    /// <summary>
+    /// align_words.py: exe yonidagi Resources papkasida bo'lsa o'sha; bitta exe (single-file) distributivida esa exe ichidagi nusxa
+    /// %LOCALAPPDATA%\YtAuto\Resources ga chiqariladi (mazmuni o'zgargan bo'lsa yangilanadi).
+    /// </summary>
+    private static string ResolveScript()
+    {
+        var beside = Path.Combine(AppPaths.ResourcesDir, "align_words.py");
+        if (File.Exists(beside)) return beside;
+        var target = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YtAuto", "Resources", "align_words.py");
+        try
+        {
+            using var res = typeof(WhisperAligner).Assembly.GetManifestResourceStream("YtAuto.align_words.py");
+            if (res is null) return beside;
+            using var ms = new MemoryStream(); res.CopyTo(ms);
+            var bytes = ms.ToArray();
+            if (!File.Exists(target) || !File.ReadAllBytes(target).AsSpan().SequenceEqual(bytes))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.WriteAllBytes(target, bytes);
+            }
+            return target;
+        }
+        catch { return File.Exists(target) ? target : beside; }
     }
 
     public string Describe() { var s = _settings(); return $"faster-whisper {s.WhisperModel} via {s.PythonPath}"; }

@@ -16,11 +16,14 @@ namespace YtAuto.Worker;
 /// 3 - boshqa worker ishlamoqda, 4 - kutilmagan xato.
 /// Argumentlar: --scheduled | --poll | --manual | --selftest-local [--data DIR] | --check | --refresh | --console
 /// </summary>
-internal static class Program
+public static class Program
 {
     [DllImport("kernel32.dll")] private static extern bool AttachConsole(int pid);
 
-    private static async Task<int> Main(string[] args)
+    /// <summary>Yagona YtAuto.exe ichidan ham chaqiriladi (worker rejimi: --poll, --scheduled, --batch-now va h.k.).</summary>
+    private static Task<int> Main(string[] args) => RunAsync(args);
+
+    public static async Task<int> RunAsync(string[] args)
     {
         var console = args.Contains("--console") || args.Contains("--selftest-local") || args.Contains("--check");
         if (console) AttachConsole(-1);

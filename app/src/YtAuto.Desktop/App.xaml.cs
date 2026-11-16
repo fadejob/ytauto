@@ -13,6 +13,11 @@ public partial class App : Application
     {
         base.OnStartup(e);
         DispatcherUnhandledException += OnUnhandled;
+        // Birinchi ochilish (yoki yangi versiya): doimiy papkani tanlab o'rnatish. O'rnatilgan nusxa ishga tushsa, bu jarayon yopiladi.
+        var mode = ShutdownMode;
+        ShutdownMode = ShutdownMode.OnExplicitShutdown; // o'rnatish oynasi yopilganda ilova o'zi yopilib qolmasligi uchun
+        if (Ui.Installer.OfferIfNeeded()) { Shutdown(0); return; }
+        ShutdownMode = mode;
         try { Services = new AppServices("desktop"); }
         catch (Exception ex)
         {

@@ -18,16 +18,13 @@ public static class Shell
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
-    /// <summary>Worker exe: distributivda Desktop bilan bir papkada; dev rejimida qo'shni loyiha chiqishi.</summary>
+    /// <summary>
+    /// Worker - shu exe'ning o'zi: YtAuto.exe worker argumentlari (--poll, --scheduled, --batch-now ...) bilan ishga tushirilsa
+    /// oynasiz worker rejimida ishlaydi (<see cref="EntryPoint"/>). Task Scheduler ham, bot buyruqlari ham shu exe'ni chaqiradi.
+    /// </summary>
     public static string? FindWorkerExe()
     {
-        var here = Path.Combine(AppContext.BaseDirectory, "YtAuto.Worker.exe");
-        if (File.Exists(here)) return here;
-        foreach (var cfg in new[] { "Release", "Debug" })
-        {
-            var dev = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "YtAuto.Worker", "bin", cfg, "net10.0-windows10.0.17763.0", "YtAuto.Worker.exe"));
-            if (File.Exists(dev)) return dev;
-        }
-        return null;
+        var self = Environment.ProcessPath;
+        return !string.IsNullOrEmpty(self) && File.Exists(self) ? self : null;
     }
 }

@@ -1,4 +1,4 @@
-# Har main'ga push (app/ o'zgarganda): testlar -> self-contained win-x64 build (YtAuto.exe + YtAuto.Worker.exe) -> GitHub Release (zip).
+# Har main'ga push (app/ o'zgarganda): testlar -> BITTA YtAuto.exe (self-contained single-file, win-x64; oyna va worker ichida) -> GitHub Release.
 # Pull request'larda faqat build va testlar.
 name: Build
 
@@ -39,15 +39,15 @@ jobs:
       - name: Testlar
         run: dotnet test tests/YtAuto.Tests -c Release --logger "console;verbosity=normal"
 
-      - name: Exe yig'ish (self-contained win-x64)
+      - name: Bitta exe yig'ish (self-contained single-file win-x64)
         shell: pwsh
         run: ./publish.ps1 -Dotnet dotnet -Version $env:VERSION
 
       - name: Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YtAuto-win-x64-${{ env.VERSION }}
-          path: app/dist/YtAuto-win-x64.zip
+          name: YtAuto-${{ env.VERSION }}
+          path: app/dist/YtAuto.exe
           retention-days: 30
 
       - name: GitHub Release
@@ -57,5 +57,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "v$env:VERSION"
-          $notes = "Avtomatik build: ``$env:GITHUB_SHA``.`n`nO'rnatish: ``YtAuto-win-x64.zip`` ni oching va ``YtAuto.exe`` ni ishga tushiring (.NET o'rnatish shart emas)."
-          gh release create $tag dist/YtAuto-win-x64.zip --title "YtAuto $env:VERSION" --notes $notes --target $env:GITHUB_SHA
+          $notes = "Avtomatik build: ``$env:GITHUB_SHA``.`n`nO'rnatish: ``YtAuto.exe`` ni yuklab ishga tushiring - birinchi ochilishda doimiy papkani so'raydi (standart: %LOCALAPPDATA%\Programs\YtAuto), o'zini o'sha yerga ko'chirib, yorliq yaratadi. Yangi versiyani ham shunday ochsangiz, o'rnatilganini yangilaydi. .NET o'rnatish shart emas."
+          gh release create $tag dist/YtAuto.exe --title "YtAuto $env:VERSION" --notes $notes --target $env:GITHUB_SHA
