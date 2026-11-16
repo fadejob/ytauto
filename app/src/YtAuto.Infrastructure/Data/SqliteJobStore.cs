@@ -652,7 +652,12 @@ public sealed class SqliteSettingsStore : ISettingsStore
             var root = System.Text.Json.Nodes.JsonNode.Parse(json);
             if (root?["gemini"] is { } g)
             {
-                if (g["apiKey"]?.GetValue<string>() is { Length: > 0 } k) s.Gemini.RemoteApiKey = k.Trim();
+                // apiKeys - bir nechta kalit (botdagi tartibda); apiKey - eski botlar yozgan bitta kalit.
+                var keys = new List<string>();
+                if (g["apiKeys"] is System.Text.Json.Nodes.JsonArray arr)
+                    foreach (var n in arr) if (n?.GetValue<string>()?.Trim() is { Length: > 0 } ak && !keys.Contains(ak)) keys.Add(ak);
+                if (g["apiKey"]?.GetValue<string>()?.Trim() is { Length: > 0 } k && !keys.Contains(k)) keys.Add(k);
+                s.Gemini.RemoteApiKeys = keys;
                 if (g["model"]?.GetValue<string>() is { Length: > 0 } m) s.Gemini.Model = m.Trim();
                 if (g["temperature"] is { } t) s.Gemini.Temperature = t.GetValue<double>();
                 if (g["useSearchGrounding"] is { } sg) s.Gemini.UseSearchGrounding = sg.GetValue<bool>();

@@ -79,8 +79,11 @@ public sealed class GeminiSettings
     public bool UseSearchGrounding { get; set; } = true;
     public int TimeoutSec { get; set; } = 180;
     public double Temperature { get; set; } = 0.7;
-    /// <summary>Bot orqali online bazaga kiritilgan kalit. Hech qachon saqlanmaydi/snapshotga tushmaydi (JsonIgnore).</summary>
-    [JsonIgnore] public string RemoteApiKey { get; set; } = "";
+    /// <summary>
+    /// Bot orqali online bazaga kiritilgan kalitlar (tartib bilan). Biri limitga (429) tushsa keyingisi ishlatiladi.
+    /// Hech qachon saqlanmaydi/snapshotga tushmaydi (JsonIgnore).
+    /// </summary>
+    [JsonIgnore] public List<string> RemoteApiKeys { get; set; } = new();
 }
 
 public sealed class ClaudeSettings

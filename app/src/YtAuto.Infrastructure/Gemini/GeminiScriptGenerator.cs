@@ -27,28 +27,32 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
         _http = http ?? new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }) { Timeout = Timeout.InfiniteTimeSpan };
     }
 
-    /// <summary>Online bazadan (bot orqali kiritilgan) kalit. Bo'lsa lokal DPAPI kalitidan ustun turadi.</summary>
-    public Func<string?>? RemoteKey { get; set; }
+    /// <summary>Online bazadan (bot orqali kiritilgan) kalitlar, tartib bilan. Bo'lsa lokal DPAPI kalitidan ustun turadi.</summary>
+    public Func<IReadOnlyList<string>?>? RemoteKeys { get; set; }
 
-    private string Key()
+    /// <summary>Oxirgi muvaffaqiyatli kalit: keyingi chaqiruvlar limiti tugagan kalitni qayta-qayta urmasdan shundan boshlaydi.</summary>
+    private int _active;
+
+    private List<string> Keys()
     {
-        string? remote = null;
-        try { remote = RemoteKey?.Invoke(); } catch { }
-        if (!string.IsNullOrWhiteSpace(remote)) return remote.Trim();
-        return _secrets.Get(SecretNames.GeminiApiKey) is { Length: > 0 } k ? k
+        IReadOnlyList<string>? remote = null;
+        try { remote = RemoteKeys?.Invoke(); } catch { }
+        var keys = (remote ?? Array.Empty<string>()).Select(k => k?.Trim() ?? "").Where(k => k.Length > 0).Distinct().ToList();
+        if (keys.Count > 0) return keys;
+        return _secrets.Get(SecretNames.GeminiApiKey) is { Length: > 0 } k ? new List<string> { k }
             : throw PipelineException.Config("gemini_key_missing", "Gemini API kaliti kiritilmagan (Telegram bot → Sozlamalar → Gemini).");
     }
 
     public async Task<ScriptResult> GenerateAsync(ScriptRequest req, IJobLog log, CancellationToken ct)
     {
-        var key = Key();
+        var keys = Keys();
         var model = string.IsNullOrWhiteSpace(req.Model) ? "gemini-2.5-flash" : req.Model.Trim();
         string factSheet = ""; var grounded = new List<SourceRef>();
         if (req.UseSearchGrounding)
         {
             try
             {
-                (factSheet, grounded) = await FactSheetAsync(key, model, req, ct).ConfigureAwait(false);
+                (factSheet, grounded) = await FactSheetAsync(keys, model, req, log, ct).ConfigureAwait(false);
                 log.Info($"Fakt varag'i Google Search grounding bilan olindi: {grounded.Count} manba.", "Script");
             }
             catch (PipelineException e) when (e.Category == ErrorCategory.Transient) { throw; }
@@ -74,7 +78,7 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
                 ["responseSchema"] = ScriptSchema(),
             },
         };
-        var (json, raw) = await CallAsync(key, model, body, TimeSpan.FromSeconds(240), ct).ConfigureAwait(false);
+        var (json, raw) = await CallAsync(keys, model, body, TimeSpan.FromSeconds(240), log, ct).ConfigureAwait(false);
         var text = ExtractText(json);
         VideoScript script;
         try { script = VideoScript.FromJson(text); }
@@ -90,7 +94,7 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
         };
     }
 
-    private async Task<(string, List<SourceRef>)> FactSheetAsync(string key, string model, ScriptRequest req, CancellationToken ct)
+    private async Task<(string, List<SourceRef>)> FactSheetAsync(List<string> keys, string model, ScriptRequest req, IJobLog log, CancellationToken ct)
     {
         var prompt = Fill(string.IsNullOrWhiteSpace(req.FactSheetPromptTemplate) ? DefaultPrompts.FactSheet : req.FactSheetPromptTemplate, req, "");
         var body = new JsonObject
@@ -99,7 +103,7 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
             ["tools"] = new JsonArray(new JsonObject { ["google_search"] = new JsonObject() }),
             ["generationConfig"] = new JsonObject { ["temperature"] = 0.2, ["maxOutputTokens"] = 4096 },
         };
-        var (json, _) = await CallAsync(key, model, body, TimeSpan.FromSeconds(120), ct).ConfigureAwait(false);
+        var (json, _) = await CallAsync(keys, model, body, TimeSpan.FromSeconds(120), log, ct).ConfigureAwait(false);
         var text = ExtractText(json);
         var sources = new List<SourceRef>();
         var chunks = json["candidates"]?[0]?["groundingMetadata"]?["groundingChunks"] as JsonArray;
@@ -155,7 +159,40 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
             .Replace("{format}", r.Format).Replace("{fact_sheet}", factSheet);
     }
 
-    private async Task<(JsonNode Json, string Raw)> CallAsync(string key, string model, JsonObject body, TimeSpan timeout, CancellationToken ct)
+    /// <summary>
+    /// Kalitlarni navbat bilan sinaydi: 429 (limit tugadi) yoki kalit yaroqsiz bo'lsa keyingisiga o'tadi.
+    /// Hammasi limitda bo'lsa - Configuration xatosi: ish to'xtaydi (NeedsAttention), ko'r-ko'rona qayta urinilmaydi.
+    /// </summary>
+    internal async Task<(JsonNode Json, string Raw)> CallAsync(List<string> keys, string model, JsonObject body, TimeSpan timeout, IJobLog? log, CancellationToken ct)
+    {
+        var start = Math.Clamp(Volatile.Read(ref _active), 0, keys.Count - 1);
+        PipelineException? lastAuth = null; string? lastLimit = null; int limited = 0;
+        for (int i = 0; i < keys.Count; i++)
+        {
+            var idx = (start + i) % keys.Count;
+            try
+            {
+                var r = await CallOnceAsync(keys[idx], model, body, timeout, ct).ConfigureAwait(false);
+                Volatile.Write(ref _active, idx);
+                return r;
+            }
+            catch (PipelineException e) when (e.Code is "gemini_rate_limit" or "gemini_auth")
+            {
+                if (e.Code == "gemini_rate_limit") { limited++; lastLimit = e.Message; } else lastAuth = e;
+                var why = e.Code == "gemini_rate_limit" ? "limiti tugadi (429)" : "yaroqsiz";
+                if (i + 1 < keys.Count)
+                    log?.Warn($"Gemini {idx + 1}-kaliti {why}, {(idx + 1) % keys.Count + 1}-kalit bilan davom etiladi.", "Script");
+                else if (keys.Count > 1)
+                    log?.Warn($"Gemini {idx + 1}-kaliti ham {why}: boshqa kalit qolmadi.", "Script");
+            }
+        }
+        if (limited == 0 && lastAuth is not null) throw lastAuth;
+        throw PipelineException.Config("gemini_quota_exhausted", keys.Count == 1
+            ? $"Gemini kalitining limiti tugadi (429), ish to'xtatildi. Botda (Sozlamalar → Gemini) yana kalit qo'shing yoki limit tiklanishini kuting. {lastLimit}"
+            : $"Barcha {keys.Count} ta Gemini kalitining limiti tugadi (429), ish to'xtatildi. Botda yangi kalit qo'shing yoki limit tiklanishini kuting. {lastLimit}");
+    }
+
+    private async Task<(JsonNode Json, string Raw)> CallOnceAsync(string key, string model, JsonObject body, TimeSpan timeout, CancellationToken ct)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(timeout);
@@ -232,11 +269,27 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
         };
     }
 
-    /// <summary>Integratsiya tekshiruvi: kalit va model mavjudligini tekshiradi (generatsiya qilmaydi).</summary>
+    /// <summary>Integratsiya tekshiruvi: har kalit va model mavjudligini tekshiradi (generatsiya qilmaydi).</summary>
     public async Task<(bool Ok, string Message, List<string> Models)> CheckAsync(string model, CancellationToken ct)
     {
-        string key;
-        try { key = Key(); } catch (PipelineException e) { return (false, e.Message, new()); }
+        List<string> keys;
+        try { keys = Keys(); } catch (PipelineException e) { return (false, e.Message, new()); }
+        var models = new List<string>(); var problems = new List<string>(); int working = 0;
+        for (int i = 0; i < keys.Count; i++)
+        {
+            var (ok, msg, list) = await CheckKeyAsync(keys[i], model, ct).ConfigureAwait(false);
+            if (ok) { working++; if (models.Count == 0) models = list; }
+            else problems.Add(keys.Count > 1 ? $"{i + 1}-kalit: {msg}" : msg);
+        }
+        if (working == 0) return (false, string.Join(" | ", problems), models);
+        var has = models.Contains(model, StringComparer.OrdinalIgnoreCase);
+        var head = keys.Count > 1 ? $"{working}/{keys.Count} kalit ishlaydi" : "Kalit ishlaydi";
+        var tail = problems.Count > 0 ? " (" + string.Join(" | ", problems) + ")" : "";
+        return (has, has ? $"{head}, model mavjud: {model}{tail}" : $"{head}, lekin '{model}' modeli ro'yxatda yo'q.{tail}", models);
+    }
+
+    private async Task<(bool Ok, string Message, List<string> Models)> CheckKeyAsync(string key, string model, CancellationToken ct)
+    {
         using var msg = new HttpRequestMessage(HttpMethod.Get, $"{Base}models?pageSize=200");
         msg.Headers.Add("x-goog-api-key", key);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct); cts.CancelAfter(TimeSpan.FromSeconds(20));
@@ -248,8 +301,7 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
             var models = (JsonNode.Parse(raw)?["models"] as JsonArray ?? new JsonArray())
                 .Select(m => m?["name"]?.GetValue<string>()?.Replace("models/", "") ?? "")
                 .Where(n => n.StartsWith("gemini", StringComparison.OrdinalIgnoreCase)).ToList();
-            var has = models.Contains(model, StringComparer.OrdinalIgnoreCase);
-            return (has, has ? $"Kalit ishlaydi, model mavjud: {model}" : $"Kalit ishlaydi, lekin '{model}' modeli ro'yxatda yo'q.", models);
+            return (true, "ok", models);
         }
         catch (Exception e) { return (false, "Gemini'ga ulanib bo'lmadi: " + e.Message, new()); }
     }

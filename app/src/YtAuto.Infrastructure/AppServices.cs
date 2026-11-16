@@ -60,7 +60,7 @@ public sealed class AppServices
         Http = new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }) { Timeout = TimeSpan.FromMinutes(10) };
         YouTubeAuth = new YouTubeAuth(Secrets, () => Settings.Load().YouTube, Http);
         Uploader = new YouTubeUploader(YouTubeAuth, Http);
-        Gemini = new GeminiScriptGenerator(Secrets) { RemoteKey = () => Settings.Load().Gemini.RemoteApiKey };
+        Gemini = new GeminiScriptGenerator(Secrets) { RemoteKeys = () => Settings.Load().Gemini.RemoteApiKeys };
         // Ma'lum sirlarni log redaktoriga oldindan ro'yxatga olamiz.
         Secrets.Get(SecretNames.GeminiApiKey); Secrets.Get(SecretNames.YouTubeClientSecret); Secrets.Get(SecretNames.YouTubeTokens);
     }
