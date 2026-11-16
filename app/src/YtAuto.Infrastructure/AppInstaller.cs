@@ -91,6 +91,42 @@ public static class AppInstaller
     }
 
     /// <summary>
+    /// Claude Code: rasmiy Windows o'rnatuvchisi (https://claude.ai/install.ps1, foydalanuvchi papkasiga, administrator huquqisiz).
+    /// O'rnatilgach claude.exe <see cref="Claude.ClaudeLocator"/> orqali topiladi. Tizimga kirish (login) foydalanuvchining o'zi qiladi.
+    /// </summary>
+    public static async Task<string> InstallClaudeCodeAsync(IProgress<InstallProgress> progress, CancellationToken ct)
+    {
+        progress.Report(new("install", -1, "Claude Code o'rnatilmoqda (rasmiy o'rnatuvchi, bir necha daqiqa)…"));
+        var log = Path.Combine(DownloadDir(), "claude-install.log");
+        var psi = new ProcessStartInfo("powershell.exe")
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+        };
+        foreach (var a in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "irm https://claude.ai/install.ps1 | iex" }) psi.ArgumentList.Add(a);
+        using var p = Process.Start(psi) ?? throw new InvalidOperationException("PowerShell ishga tushmadi.");
+        var outTask = p.StandardOutput.ReadToEndAsync(ct);
+        var errTask = p.StandardError.ReadToEndAsync(ct);
+        using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            timeout.CancelAfter(TimeSpan.FromMinutes(15));
+            try { await p.WaitForExitAsync(timeout.Token); }
+            catch (OperationCanceledException) { try { p.Kill(true); } catch { } throw new InvalidOperationException("Claude Code o'rnatish 15 daqiqada tugamadi."); }
+        }
+        await File.WriteAllTextAsync(log, await outTask + Environment.NewLine + await errTask, CancellationToken.None);
+        var exe = Claude.ClaudeLocator.Find();
+        if (exe is null) throw new InvalidOperationException($"Claude Code o'rnatilmadi (kod {p.ExitCode}). Batafsil: {log}");
+        progress.Report(new("done", 1, $"Claude Code tayyor: {exe}"));
+        return exe;
+    }
+
+    /// <summary>Claude Code'ga kirilganmi (taxminiy: hisob ma'lumotlari fayli bor).</summary>
+    public static bool ClaudeLoggedIn()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return File.Exists(Path.Combine(home, ".claude", ".credentials.json"));
+    }
+
+    /// <summary>
     /// HuggingFace modelini (faster-whisper, KittenTTS va h.k.) HuggingFace dan HF kesh tuzilmasida yuklaydi:
     /// models--ORG--NAME/snapshots/&lt;sha&gt;/..., refs/main. VoiceStudio worker'i HF_HUB_OFFLINE=1 bilan aynan shu keshdan o'qiydi.
     /// </summary>

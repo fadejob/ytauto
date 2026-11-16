@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Threading;
 using YtAuto.Desktop.ViewModels;
 using YtAuto.Infrastructure;
@@ -24,14 +24,22 @@ public partial class App : Application
             MessageBox.Show("Ilova ma'lumotlar bazasini ochib bo'lmadi:\n" + ex.Message, "YtAuto", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1); return;
         }
+        // Hisob sozlanmagan bo'lsa - bitta tugmali sozlash oynasi; tayyor bo'lgach online qism shu yerda ishga tushadi.
+        // Desktop ochilishi video tayyorlashni BOSHLAMAYDI: faqat boshqaruv.
+        if (Services.IsAccountReady) StartOnline();
+        var main = new MainWindow { DataContext = new MainViewModel(Services, online => { Services = online; StartOnline(); }) };
+        MainWindow = main;
+        main.Show();
+    }
+
+    /// <summary>Online qism: Task Scheduler sinxroni, bot katalogi, kompyuter holati va har 30 soniyalik heartbeat/buyruqlar.</summary>
+    private void StartOnline()
+    {
+        if (_beat is not null) return;
         // Jadval botda (online bazada) boshqariladi: shu kompyuterdagi Task Scheduler unga moslanadi.
         Infrastructure.Scheduling.ScheduleSync.Apply(Services, Ui.Shell.FindWorkerExe());
         try { Services.Settings.PublishCatalog(); } catch (Exception ex) { Services.Log.Warn("Bot katalogi yuborilmadi: " + ex.Message); }
         Infrastructure.Heartbeat.ToolStatus.Publish(Services);
-        // Desktop ochilishi video tayyorlashni BOSHLAMAYDI: faqat boshqaruv.
-        var main = new MainWindow { DataContext = new MainViewModel(Services) };
-        MainWindow = main;
-        main.Show();
 
         // Heartbeat: ilova ochiqligi har 30 soniyada bazaga yoziladi; botdan tekshiruv so'rovi kelsa shu yerda ham bajariladi.
         var workerExe = Ui.Shell.FindWorkerExe();
@@ -53,7 +61,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         try { _beat?.Dispose(); } catch { }
-        try { if (Services is not null) Infrastructure.Heartbeat.MachineBeat.Beat(Services, appOpen: false); } catch { }
+        try { if (Services is not null && Services.IsOnline) Infrastructure.Heartbeat.MachineBeat.Beat(Services, appOpen: false); } catch { }
         base.OnExit(e);
     }
 

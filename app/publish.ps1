@@ -8,7 +8,9 @@ param(
   [string]$Dotnet = $(if (Get-Command dotnet -ErrorAction SilentlyContinue) { 'dotnet' } else { 'D:\dotnet-sdk\dotnet.exe' }),
   [string]$Out = "$PSScriptRoot\dist",
   # CI: har build uchun versiya (masalan 1.0.42). Bo'sh bo'lsa Directory.Build.props dagi versiya.
-  [string]$Version = ''
+  [string]$Version = '',
+  # Telegram bot (web app) manzili: sozlashda hisob shu bot orqali yaratiladi. Bo'sh bo'lsa ilova sozlashda so'raydi.
+  [string]$BotUrl = ''
 )
 $ErrorActionPreference = 'Stop'
 if ($Dotnet -like 'D:\dotnet-sdk*') { $env:DOTNET_ROOT = 'D:\dotnet-sdk'; $env:NUGET_PACKAGES = 'D:\dotnet-sdk\nuget-packages' }
@@ -29,6 +31,7 @@ $publishArgs = @(
   '-o', $tmp
 )
 if ($Version) { $publishArgs += "-p:Version=$Version" }
+if ($BotUrl) { $publishArgs += "-p:YtAutoBotUrl=$BotUrl" }
 & $Dotnet @publishArgs
 if ($LASTEXITCODE -ne 0) { throw "Publish xato" }
 

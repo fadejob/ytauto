@@ -1,0 +1,65 @@
+<UserControl x:Class="YtAuto.Desktop.Views.SetupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:YtAuto.Desktop.Ui">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel MaxWidth="720" HorizontalAlignment="Center" Margin="0,8,0,24">
+            <TextBlock Text="YtAuto'ni sozlash" Style="{StaticResource H1}" FontSize="24"/>
+            <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,16"
+                       Text="Bitta tugma: kerakli dasturlar va modellar yuklanadi (kompyuterda bori qayta yuklanmaydi), online hisob va token yaratiladi, sozlamalar serverga yuboriladi va Task Scheduler sozlanadi. Keyin tokenni Telegram botga kiritasiz — qolgan hamma narsa (Gemini kaliti, YouTube, promptlar, mavzular) botda."/>
+
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel>
+                    <TextBlock Text="Qurilma nomi" Style="{StaticResource Label}" Margin="0,0,0,3"/>
+                    <TextBox Text="{Binding DeviceName, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Running, Converter={x:Static local:InverseBool.Instance}}"/>
+                    <StackPanel Visibility="{Binding AskBotUrl, Converter={x:Static local:BoolToVis.Instance}}">
+                        <TextBlock Text="Bot manzili (https://…)" Style="{StaticResource Label}"/>
+                        <TextBox Text="{Binding BotUrl, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Running, Converter={x:Static local:InverseBool.Instance}}"/>
+                    </StackPanel>
+                    <TextBlock Style="{StaticResource Muted}" Margin="0,10,0,0" Foreground="#B45309"
+                               Visibility="{Binding HasLegacy, Converter={x:Static local:BoolToVis.Instance}}"
+                               Text="Bu kompyuterda eski (bitta foydalanuvchili) ulanish bor: mavjud mavzular, promptlar va sozlamalar yangi hisobingizga o'tkaziladi."/>
+                    <CheckBox Content="Menda token bor (qayta o'rnatish yoki ikkinchi kompyuter)" IsChecked="{Binding UseExistingToken}" Margin="0,12,0,0"
+                              IsEnabled="{Binding Running, Converter={x:Static local:InverseBool.Instance}}"/>
+                    <TextBox Text="{Binding ExistingToken, UpdateSourceTrigger=PropertyChanged}" Margin="0,6,0,0" FontFamily="Consolas"
+                             Visibility="{Binding UseExistingToken, Converter={x:Static local:BoolToVis.Instance}}"/>
+                </StackPanel>
+            </Border>
+
+            <Button Command="{Binding RunCommand}" Style="{StaticResource Primary}" HorizontalAlignment="Stretch" Margin="0,0,0,12" Padding="16,12" FontSize="16" FontWeight="SemiBold"
+                    IsEnabled="{Binding Running, Converter={x:Static local:InverseBool.Instance}}" Content="Kerakli fayllarni yuklash va sozlash"/>
+
+            <StackPanel Visibility="{Binding Running, Converter={x:Static local:BoolToVis.Instance}}" Margin="0,0,0,12">
+                <ProgressBar Height="8" Minimum="0" Maximum="100" Value="{Binding Progress}" IsIndeterminate="{Binding Indeterminate}"/>
+                <TextBlock Text="{Binding ProgressText}" Style="{StaticResource Muted}" Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <Border Style="{StaticResource Card}">
+                <ItemsControl ItemsSource="{Binding Steps}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,4">
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding Icon}" Width="24" FontSize="14" FontWeight="SemiBold"/>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{Binding Detail}" Style="{StaticResource Muted}" FontSize="12"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Border>
+
+            <TextBlock Text="{Binding Message}" TextWrapping="Wrap" Margin="0,12,0,0" FontWeight="SemiBold">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="{StaticResource Accent}"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsError}" Value="True"><Setter Property="Foreground" Value="{StaticResource Danger}"/></DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
