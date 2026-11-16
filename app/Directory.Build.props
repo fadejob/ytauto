@@ -9,5 +9,7 @@
     <Product>YtAuto - YouTube video avtomatlashtirish</Product>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- Telegram bot (web app) manzili: ilova sozlashda hisobni shu bot orqali yaratadi. Boshqa bot uchun: -p:YtAutoBotUrl=... yoki YTAUTO_BOT_URL muhit o'zgaruvchisi. -->
+    <YtAutoBotUrl Condition="'$(YtAutoBotUrl)' == ''">https://ytauto-kappa.vercel.app</YtAutoBotUrl>
   </PropertyGroup>
 </Project>

@@ -47,11 +47,11 @@ Yoki `DB_AUTO_MIGRATE=1` — bot birinchi so'rovda o'zi migratsiya qiladi. Aks h
 ## Telegram botga ulash (dizayn tayyor bo'lgach)
 
 1. Deploy (masalan Vercel, Root Directory = `bot`). Environment Variables: `.env.example` dagilar;
-   `ALLOW_BROWSER_DEV=0`, `DEMO_MODE=0`. Bot manzilini GitHub repo o'zgaruvchisiga (`YTAUTO_BOT_URL`) yozing —
-   CI uni exe'ga joylaydi va ilova sozlashda shu bot orqali hisob yaratadi.
+   `ALLOW_BROWSER_DEV=0`, `DEMO_MODE=0`. Production manzil: **https://ytauto-kappa.vercel.app** — u exe'ga standart sifatida
+   joylangan (`app/Directory.Build.props`), ilova sozlashda hisobni shu bot orqali yaratadi va manzilni so'ramaydi.
 2. Botning pastki tugmasini ulash:
    ```bash
-   WEBAPP_URL=https://sizning-domen.vercel.app node --env-file=.env.local scripts/telegram-setup.mjs
+   WEBAPP_URL=https://ytauto-kappa.vercel.app node --env-file=.env.local scripts/telegram-setup.mjs
    ```
 3. Botni oching → pastdagi **YtAuto** tugmasi → birinchi kirishda YtAuto ilovasidagi tokenni kiriting.
 

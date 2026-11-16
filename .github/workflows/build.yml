@@ -41,7 +41,7 @@ jobs:
 
       - name: Bitta exe yig'ish (self-contained single-file win-x64)
         shell: pwsh
-        # Bot manzili exe'ga yoziladi (sozlashda so'ralmaydi): repo Settings → Variables → YTAUTO_BOT_URL (masalan https://bot.vercel.app).
+        # Bot manzili exe'ga yoziladi: standart https://ytauto-kappa.vercel.app (Directory.Build.props). Boshqa bot uchun repo Variables → YTAUTO_BOT_URL.
         env:
           YTAUTO_BOT_URL: ${{ vars.YTAUTO_BOT_URL }}
         run: ./publish.ps1 -Dotnet dotnet -Version $env:VERSION -BotUrl "$env:YTAUTO_BOT_URL"
