@@ -89,6 +89,8 @@ public sealed class IntegrationChecker
         else
         {
             Add(new("Claude Code", CheckLevel.Ok, $"{claude.Version} ({s.Claude.ExecutablePath})"));
+            var auth = await claude.AuthStatusAsync(ct);
+            Add(new("Claude'ga kirish", auth.LoggedIn switch { true => CheckLevel.Ok, false => CheckLevel.Failed, _ => CheckLevel.Warning }, auth.Message));
             if (deepClaude)
             {
                 var dir = Path.Combine(_svc.Paths.DataRoot, "checks", "claude");

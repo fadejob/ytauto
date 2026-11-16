@@ -21,6 +21,7 @@ public static class ToolStatus
             var voiceCache = string.IsNullOrWhiteSpace(s.VoiceStudio.HfCacheDir)
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OmniVoice", "hf_cache")
                 : s.VoiceStudio.HfCacheDir;
+            var auth = svc.Claude().AuthStatusAsync(CancellationToken.None).GetAwaiter().GetResult();
             var items = new[]
             {
                 new { key = "openfilm", name = "OpenFilm", ok = File.Exists(s.OpenFilm.ExePath), detail = s.OpenFilm.ExePath ?? "" },
@@ -28,6 +29,7 @@ public static class ToolStatus
                 new { key = "whisper", name = $"Subtitr modeli ({s.VoiceStudio.WhisperModel})", ok = HasModel(s.VoiceStudio.HfCacheDir, s.VoiceStudio.WhisperModel), detail = s.VoiceStudio.HfCacheDir ?? "" },
                 new { key = "tts", name = $"Ovoz modeli ({TtsModel})", ok = HasModel(voiceCache, TtsModel), detail = string.Join(", ", s.VoiceProfiles.Select(v => v.Name)) },
                 new { key = "claude", name = "Claude Code", ok = File.Exists(s.Claude.ExecutablePath), detail = s.Claude.ExecutablePath ?? "" },
+                new { key = "claude-login", name = "Claude Code'ga kirish", ok = auth.LoggedIn == true, detail = auth.Message },
                 new { key = "youtube", name = "YouTube kanali", ok = svc.Uploader.IsConnected, detail = s.YouTube.ChannelTitle ?? "" },
             };
             svc.Store.SetSetting("tools.status." + Environment.MachineName, JsonSerializer.Serialize(

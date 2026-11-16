@@ -162,14 +162,26 @@ public sealed partial class HomeViewModel : ObservableObject
         finally { Busy = false; InstallText = ""; }
     }
 
-    /// <summary>Claude Code'ga kirish: konsolda claude ochiladi, foydalanuvchi brauzer orqali tizimga kiradi.</summary>
+    /// <summary>
+    /// Claude Code'ga kirish: konsolda «claude auth login» ochiladi (brauzer orqali). Oyna yopilgach holat aniq qayta tekshiriladi.
+    /// </summary>
     [RelayCommand]
-    private void ClaudeLogin()
+    private async Task ClaudeLogin()
     {
         var exe = _svc.Settings.Load().Claude.ExecutablePath;
         if (!File.Exists(exe)) { Message = "Avval Claude Code o'rnatilsin («Yetishmaganlarini o'rnatish»)."; return; }
-        Process.Start(new ProcessStartInfo("cmd.exe", $"/k \"\"{exe}\"\"") { UseShellExecute = true });
-        Message = "Ochilgan oynada Claude Code'ga kiring (brauzer ochiladi), so'ng oynani yopib «Yangilash» ni bosing.";
+        var psi = new ProcessStartInfo("cmd.exe", $"/c \"\"{exe}\" auth login & echo. & pause\"") { UseShellExecute = true };
+        Message = "Ochilgan oynada Claude Code'ga kiring (brauzer ochiladi). Tugagach oynani yoping — holat o'zi tekshiriladi.";
+        try
+        {
+            using var p = Process.Start(psi);
+            if (p is not null) await p.WaitForExitAsync();
+        }
+        catch (Exception e) { Message = "Claude oynasi ochilmadi: " + e.Message; return; }
+        var auth = await Task.Run(() => _svc.Claude().AuthStatusAsync(CancellationToken.None));
+        Message = auth.LoggedIn == true ? "Claude Code'ga kirildi ✓" : "Claude Code: " + auth.Message;
+        _ = Task.Run(() => Infrastructure.Heartbeat.ToolStatus.Publish(_svc)); // bot ham yangi holatni ko'radi
+        await RefreshAsync();
     }
 
     [RelayCommand] private void OpenAdvanced() => _openAdvanced();

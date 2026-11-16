@@ -84,3 +84,15 @@ public class AccountFlowTests
         Assert.False(DeviceAccount.LooksLikeToken("yt_short"));
     }
 }
+
+public class ClaudeAuthStatusTests
+{
+    [Theory]
+    [InlineData("{\"loggedIn\": true, \"authMethod\": \"claude.ai\"}", 0, true)]
+    [InlineData("{\"loggedIn\": false, \"authMethod\": \"none\"}", 1, false)]
+    [InlineData("warning: x\n{\"loggedIn\": true, \"authMethod\": \"api_key\"}", 0, true)]
+    [InlineData("error: unknown command 'auth'", 1, null)]
+    [InlineData("", 0, null)]
+    public void ParsesAuthStatus(string stdout, int exit, bool? expected) =>
+        Assert.Equal(expected, YtAuto.Infrastructure.Claude.ClaudeEditorAgent.ParseAuthStatus(stdout, exit).LoggedIn);
+}

@@ -119,13 +119,6 @@ public static class AppInstaller
         return exe;
     }
 
-    /// <summary>Claude Code'ga kirilganmi (taxminiy: hisob ma'lumotlari fayli bor).</summary>
-    public static bool ClaudeLoggedIn()
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        return File.Exists(Path.Combine(home, ".claude", ".credentials.json"));
-    }
-
     /// <summary>
     /// HuggingFace modelini (faster-whisper, KittenTTS va h.k.) HuggingFace dan HF kesh tuzilmasida yuklaydi:
     /// models--ORG--NAME/snapshots/&lt;sha&gt;/..., refs/main. VoiceStudio worker'i HF_HUB_OFFLINE=1 bilan aynan shu keshdan o'qiydi.

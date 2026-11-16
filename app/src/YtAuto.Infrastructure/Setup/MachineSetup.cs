@@ -48,11 +48,12 @@ public static class MachineSetup
 
     private static bool HasProfile(AppSettings s, string name) => s.VoiceProfiles.Any(v => v.Name == name && v.Model == "kittentts");
 
-    /// <summary>Hozirgi holat (yuklamasdan).</summary>
+    /// <summary>Hozirgi holat (yuklamasdan). Claude'ga kirish aniq tekshiriladi (claude auth status) - UI oqimida chaqirmang.</summary>
     public static List<ToolItem> Status(AppServices svc)
     {
         var s = svc.Settings.Load();
         var claude = File.Exists(s.Claude.ExecutablePath);
+        var auth = svc.Claude().AuthStatusAsync(CancellationToken.None).GetAwaiter().GetResult();
         return new List<ToolItem>
         {
             new("openfilm", "OpenFilm", File.Exists(s.OpenFilm.ExePath), s.OpenFilm.ExePath ?? ""),
@@ -61,8 +62,7 @@ public static class MachineSetup
             new("tts", $"Ovoz modeli ({TtsModel})", HasModel(VoiceCacheDir(s), TtsModel) && HasProfile(s, FemaleName) && HasProfile(s, MaleName),
                 string.Join(", ", s.VoiceProfiles.Select(v => v.Name))),
             new("claude", "Claude Code", claude, claude ? s.Claude.ExecutablePath : ""),
-            new("claude-login", "Claude Code'ga kirish", claude && AppInstaller.ClaudeLoggedIn(),
-                AppInstaller.ClaudeLoggedIn() ? "kirilgan" : "«Claude'ga kirish» tugmasi bilan bir marta kiring"),
+            new("claude-login", "Claude Code'ga kirish", auth.LoggedIn == true, auth.Message),
         };
     }
 

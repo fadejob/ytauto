@@ -51,6 +51,52 @@ public sealed class ClaudeEditorAgent : IEditorAgent
         }
     }
 
+    /// <summary>
+    /// Claude Code'ga kirilganmi - aniq: <c>claude auth status --json</c> (Claude o'zi hisob ma'lumotini tekshiradi; so'rov/token sarflanmaydi).
+    /// Worker ishlatadigan muhitning o'zida (ota-ona Claude sessiyasi o'zgaruvchilari va sirlar olib tashlangan) ishga tushiriladi,
+    /// shuning uchun natija aynan worker'dagi holat. LoggedIn = null - aniqlab bo'lmadi (masalan, Claude Code juda eski).
+    /// </summary>
+    public async Task<ClaudeAuthStatus> AuthStatusAsync(CancellationToken ct)
+    {
+        var exe = _settings().ExecutablePath;
+        if (!File.Exists(exe)) return new(false, "", "Claude Code o'rnatilmagan.");
+        var tmp = Path.Combine(Path.GetTempPath(), "YtAuto", $"claude-auth-{Guid.NewGuid():N}.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(tmp)!);
+        try
+        {
+            var r = await ToolRunner.RunAsync(new LaunchSpec
+            {
+                Exe = exe, Args = new[] { "auth", "status", "--json" }, StdoutPath = tmp, Tool = "claude-auth", RemoveEnv = BuildRemoveList(),
+            }, TimeSpan.FromSeconds(45), null, ct);
+            var text = File.Exists(tmp) ? await File.ReadAllTextAsync(tmp, ct) : "";
+            return ParseAuthStatus(text, r.ExitCode);
+        }
+        catch (Exception e) when (e is not OperationCanceledException) { return new(null, "", "Claude holatini tekshirib bo'lmadi: " + e.Message); }
+        finally { try { File.Delete(tmp); } catch { } }
+    }
+
+    internal static ClaudeAuthStatus ParseAuthStatus(string stdout, int exitCode)
+    {
+        var start = stdout.IndexOf('{');
+        if (start >= 0)
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(stdout[start..]);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("loggedIn", out var li) && li.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
+                {
+                    var method = root.TryGetProperty("authMethod", out var m) ? m.GetString() ?? "" : "";
+                    return li.GetBoolean()
+                        ? new(true, method, $"Kirilgan ({method}).")
+                        : new(false, method, "Kirilmagan: «Claude'ga kirish» tugmasini bosib, brauzerda hisobingizga kiring.");
+                }
+            }
+            catch (System.Text.Json.JsonException) { }
+        }
+        return new(null, "", $"Claude Code holatni bermadi (kod {exitCode}) — versiyasi eski bo'lishi mumkin: «claude update» bilan yangilang.");
+    }
+
     internal static List<string> BuildRemoveList()
     {
         var remove = new List<string>();
@@ -114,3 +160,6 @@ public sealed class ClaudeEditorAgent : IEditorAgent
         return new EditorRunResult { Run = r, IsError = isError, ResultText = Redactor.Redact(result), SessionId = session, CostUsd = cost, PermissionDenials = denials };
     }
 }
+
+/// <summary>Claude Code'ga kirish holati. LoggedIn: true/false - aniq; null - aniqlab bo'lmadi.</summary>
+public sealed record ClaudeAuthStatus(bool? LoggedIn, string Method, string Message);
