@@ -204,6 +204,7 @@ internal sealed class Harness : IDisposable
     public readonly FakeUploader Uploader = new();
     public readonly NullLog Log = new();
     public readonly FakePaths Paths;
+    public IAudioImporter? AudioImporter;
 
     public Harness()
     {
@@ -224,7 +225,7 @@ internal sealed class Harness : IDisposable
 
     public JobRunner Runner(bool stopBeforeUpload = false) => new(new PipelineServices
     {
-        Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = Script, Tts = Tts, Aligner = Aligner, Editor = Editor,
+        Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = Script, Tts = Tts, AudioImporter = AudioImporter, Aligner = Aligner, Editor = Editor,
         Film = Film, Media = new FakeMedia(), Uploader = Uploader, Resources = new FakeResources(), Paths = Paths, Clock = Clock,
         JobLogFactory = _ => Log, RunLog = Log, PostUploadPoll = TimeSpan.Zero, StopBeforeUpload = stopBeforeUpload,
     });

@@ -11,6 +11,8 @@ public sealed class PipelineServices
     public required ISettingsStore Settings { get; init; }
     public required IScriptGenerator ScriptGenerator { get; init; }
     public required ITtsService Tts { get; init; }
+    /// <summary>Botdan yuklangan tayyor ovoz uchun (berilmasa bunday vazifalar "E'tibor kerak" bo'ladi).</summary>
+    public IAudioImporter? AudioImporter { get; init; }
     public required IAligner Aligner { get; init; }
     public required IEditorAgent Editor { get; init; }
     public required IFilmTool Film { get; init; }
@@ -326,8 +328,10 @@ public sealed partial class JobRunner
             Paths = s.Paths, Templates = s.Templates, VoiceProfiles = s.VoiceProfiles,
         };
         bool Pending(StageKind k) => _x.Store.GetStage(ctx.Job.Id, k).State != StageState.Done;
-        if (Pending(StageKind.Voice) && !File.Exists(s.VoiceStudio.ExePath) && string.IsNullOrWhiteSpace(s.VoiceStudio.BaseUrl))
+        if (Pending(StageKind.Voice) && !ctx.Job.HasManualAudio && !File.Exists(s.VoiceStudio.ExePath) && string.IsNullOrWhiteSpace(s.VoiceStudio.BaseUrl))
             problems.Add($"VoiceStudio topilmadi: {s.VoiceStudio.ExePath}");
+        if (Pending(StageKind.Voice) && ctx.Job.HasManualAudio && _x.AudioImporter is null)
+            problems.Add("Tayyor ovozni yuklab olish servisi ulanmagan (bu kompyuterdagi YtAuto versiyasini yangilang).");
         if (Pending(StageKind.Align) && !File.Exists(s.VoiceStudio.PythonPath))
             problems.Add($"Alignment uchun VoiceStudio Python muhiti topilmadi: {s.VoiceStudio.PythonPath}");
         if (Pending(StageKind.Edit) && !File.Exists(s.Claude.ExecutablePath))

@@ -39,6 +39,18 @@ public sealed class VideoJob
     /// <summary>Vazifa birinchi boshlanganda olingan sozlamalar/prompt/shablon snapshot'i (JSON).</summary>
     public string? SettingsSnapshotJson { get; set; }
 
+    /// <summary>
+    /// Botda foydalanuvchi kiritgan tayyor subtitr matni va title (ikkalasi birga). Berilgan bo'lsa Gemini chaqirilmaydi -
+    /// ssenariy shu matndan tuziladi. Faqat bot yozadi: Update() bu maydonlarga tegmaydi.
+    /// </summary>
+    public string? ManualScript { get; set; }
+    public string? ManualTitle { get; set; }
+    /// <summary>Botdan yuklangan tayyor ovoz (Supabase Storage imzolangan havolasi). Berilgan bo'lsa VoiceStudio TTS o'tkazib yuboriladi.</summary>
+    public string? ManualAudioUrl { get; set; }
+
+    public bool HasManualScript => !string.IsNullOrWhiteSpace(ManualScript) && !string.IsNullOrWhiteSpace(ManualTitle);
+    public bool HasManualAudio => !string.IsNullOrWhiteSpace(ManualAudioUrl);
+
     public string? Title { get; set; }
     public string? Description { get; set; }
     public string? ThumbnailPath { get; set; }

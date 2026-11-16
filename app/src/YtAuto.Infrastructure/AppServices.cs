@@ -104,12 +104,14 @@ public sealed class AppServices
     public PipelineServices Pipeline(bool stopBeforeUpload = false, IScriptGenerator? scriptOverride = null, TimeSpan? postUploadPoll = null)
     {
         var film = FilmTool();
+        var media = Media(film);
         return new PipelineServices
         {
             Store = Store, Settings = Settings, Secrets = Secrets,
             ScriptGenerator = scriptOverride ?? Gemini,
             Tts = new VoiceStudioTtsService(Store, RunId),
-            Aligner = Aligner(), Editor = Claude(), Film = film, Media = Media(film),
+            AudioImporter = new RemoteAudioImporter(Http, media),
+            Aligner = Aligner(), Editor = Claude(), Film = film, Media = media,
             Uploader = Uploader, Resources = Resources, Paths = Paths, Clock = new SystemClock(),
             JobLogFactory = id => new JobLog(id, Paths.RecordDirFor(id), Store, Log),
             RunLog = Log, AppVersion = typeof(AppServices).Assembly.GetName().Version?.ToString() ?? "1.0.0",

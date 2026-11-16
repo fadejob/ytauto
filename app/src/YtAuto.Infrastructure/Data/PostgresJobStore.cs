@@ -105,6 +105,12 @@ CREATE TABLE IF NOT EXISTS {T("template_uploads")} (
   machine TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', progress INT NOT NULL DEFAULT 0, message TEXT, download_url TEXT,
   cleaned BOOLEAN NOT NULL DEFAULT FALSE, created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- v10: botda qo'lda kiritilgan subtitr/title (Gemini o'tkazib yuboriladi) va tayyor ovoz (VoiceStudio TTS o'tkazib yuboriladi).
+-- manual_audio_path - Storage'dagi yo'l (bot tozalash uchun), manual_audio_url - kompyuter yuklab oladigan imzolangan havola.
+ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS manual_script TEXT;
+ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS manual_title TEXT;
+ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS manual_audio_path TEXT;
+ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS manual_audio_url TEXT;
 """);
         tx.Commit();
     }
@@ -130,7 +136,7 @@ CREATE TABLE IF NOT EXISTS {T("template_uploads")} (
     private static DateTimeOffset? D(NpgsqlDataReader r, string col) { var i = r.GetOrdinal(col); return r.IsDBNull(i) ? null : r.GetFieldValue<DateTimeOffset>(i); }
     private static string? S(NpgsqlDataReader r, string col) { var i = r.GetOrdinal(col); return r.IsDBNull(i) ? null : r.GetString(i); }
 
-    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now";
+    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url";
 
     private static VideoJob ReadJob(NpgsqlDataReader r) => new()
     {
@@ -150,6 +156,7 @@ CREATE TABLE IF NOT EXISTS {T("template_uploads")} (
         YouTubeProcessingStatus = S(r, "youtube_processing_status"), YouTubeCheckedAtUtc = D(r, "youtube_checked_at_utc"),
         PublishedAtUtc = D(r, "published_at_utc"), WorkDir = S(r, "work_dir"), WorkDirCleaned = r.GetBoolean(r.GetOrdinal("work_dir_cleaned")),
         PublishNow = r.GetBoolean(r.GetOrdinal("publish_now")),
+        ManualScript = S(r, "manual_script"), ManualTitle = S(r, "manual_title"), ManualAudioUrl = S(r, "manual_audio_url"),
     };
 
     private static void BindJob(NpgsqlCommand cmd, VideoJob j)
@@ -189,13 +196,16 @@ CREATE TABLE IF NOT EXISTS {T("template_uploads")} (
 INSERT INTO {T("jobs")}(topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc,
  run_attempts, next_attempt_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description,
  thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status,
- youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now)
+ youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url)
 VALUES(@topic,@notes,@language,@dur,@format,@tpl,@voice,@pub,@status,@created,@updated,@attempts,@next,@cancel,@qa,@errc,@errm,@attn,@snap,@title,@desc,
- @thumb,@va,@aa,@sa,@adur,@yid,@ypriv,@yup,@yproc,@ychk,@pubd,@wd,@wdc,@pn) RETURNING id
+ @thumb,@va,@aa,@sa,@adur,@yid,@ypriv,@yup,@yproc,@ychk,@pubd,@wd,@wdc,@pn,@ms,@mt,@ma) RETURNING id
 """, c);
         if (job.CreatedAtUtc == default) job.CreatedAtUtc = DateTimeOffset.UtcNow;
         BindJob(cmd, job);
         cmd.Parameters.AddWithValue("pn", job.PublishNow);
+        cmd.Parameters.AddWithValue("ms", NpgsqlDbType.Text, N(job.ManualScript));
+        cmd.Parameters.AddWithValue("mt", NpgsqlDbType.Text, N(job.ManualTitle));
+        cmd.Parameters.AddWithValue("ma", NpgsqlDbType.Text, N(job.ManualAudioUrl));
         job.Id = (long)cmd.ExecuteScalar()!;
         return job.Id;
     }

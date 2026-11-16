@@ -12,11 +12,16 @@ public sealed partial class JobRunner
 {
     // ---------------------------------------------------------------- input hashes
     // Format bu yerga kirmaydi: format (yoki shablon) o'zgarsa ssenariy va ovoz saqlanadi, faqat subtitr qatorlari va montaj qayta qilinadi.
-    private static string ScriptInputHash(JobContext c) => Hashing.Sha256Text("script-v2", c.Job.Topic, c.Job.Notes, c.Job.Language,
-        c.Job.TargetDurationSec.ToString(), c.S.Gemini.ScriptPrompt, c.S.Gemini.Model, c.S.Gemini.UseSearchGrounding.ToString());
+    // Qo'lda kiritilgan matn/ovoz uchun alohida hash: oddiy vazifalarning hash'i o'zgarmaydi (tayyor bosqichlar qayta bajarilmaydi).
+    private static string ScriptInputHash(JobContext c) => c.Job.HasManualScript
+        ? Hashing.Sha256Text("script-manual-v1", c.Job.ManualTitle, c.Job.ManualScript)
+        : Hashing.Sha256Text("script-v2", c.Job.Topic, c.Job.Notes, c.Job.Language,
+            c.Job.TargetDurationSec.ToString(), c.S.Gemini.ScriptPrompt, c.S.Gemini.Model, c.S.Gemini.UseSearchGrounding.ToString());
 
     private string VoiceInputHash(JobContext c, VideoScript s)
     {
+        // Imzolangan havolaning token qismi (query) hash'ga kirmaydi: havola yangilansa ham ovoz qayta yuklanmaydi.
+        if (c.Job.HasManualAudio) return Hashing.Sha256Text("voice-manual-v1", c.Job.ManualAudioUrl!.Split('?')[0]);
         var v = c.S.FindVoice(c.Job.VoiceProfileName);
         return Hashing.Sha256Text("voice-v2", s.SubtitleText, v?.Model, v?.Voice, v?.Speed.ToString(), c.S.VoiceStudio.ChunkChars.ToString(), c.S.VoiceStudio.PauseBetweenChunksSec.ToString());
     }
@@ -46,6 +51,7 @@ public sealed partial class JobRunner
     // ---------------------------------------------------------------- B: Gemini
     private async Task<StageOutputs> ScriptStageAsync(JobContext c)
     {
+        if (c.Job.HasManualScript) return ManualScriptStage(c);
         var req = new ScriptRequest
         {
             Topic = c.Job.Topic, Notes = c.Job.Notes, Language = c.Job.Language, TargetDurationSec = c.Job.TargetDurationSec,
@@ -96,6 +102,34 @@ public sealed partial class JobRunner
         return new StageOutputs { Files = { FileOps.Describe(c.ScriptJson, "script") }, Values = { ["title"] = script.YouTubeTitle, ["model"] = last.ModelUsed } };
     }
 
+    /// <summary>
+    /// Botda kiritilgan subtitr va title'dan ssenariy: Gemini chaqirilmaydi. Matn foydalanuvchiniki - faqat aniq xatolar
+    /// (bo'sh, title uzun yoki &lt;&gt; belgili) to'xtatadi; uslubiy kamchiliklar ogohlantirish sifatida yoziladi.
+    /// </summary>
+    private StageOutputs ManualScriptStage(JobContext c)
+    {
+        var script = new VideoScript
+        {
+            SubtitleText = c.Job.ManualScript!.Replace("\r\n", "\n").Trim(),
+            YouTubeTitle = c.Job.ManualTitle!.Trim(),
+        };
+        ScriptValidator.Canonicalize(script);
+        var problems = ScriptValidator.Validate(script, c.Job.Language, 0);
+        var fatal = problems.Where(p => p.StartsWith("subtitle_text bo'sh") || p.StartsWith("youtube_title")).ToList();
+        if (fatal.Count > 0)
+            throw PipelineException.Config("manual_script_invalid", "Botda kiritilgan subtitr/title yaroqsiz: " + string.Join(" | ", fatal) + " Mavzuni botda tahrirlang.");
+        foreach (var p in problems.Except(fatal)) c.Log.Warn("Qo'lda kiritilgan matn: " + p, "Script");
+
+        File.WriteAllText(c.ScriptJson, script.ToJson(), new UTF8Encoding(false));
+        File.Copy(c.ScriptJson, Path.Combine(c.RecordDir, "script.json"), true);
+        c.Job.Title = script.YouTubeTitle;
+        c.Job.Description = BuildDescription(script);
+        _x.Store.Update(c.Job);
+        c.StageMetrics["words"] = ScriptValidator.CountWords(script.SubtitleText);
+        c.Log.Info($"Ssenariy botda qo'lda kiritilgan: Gemini o'tkazib yuborildi. Title \"{script.YouTubeTitle}\", subtitr {c.StageMetrics["words"]} so'z.", "Script");
+        return new StageOutputs { Files = { FileOps.Describe(c.ScriptJson, "script") }, Values = { ["title"] = script.YouTubeTitle, ["model"] = "manual" } };
+    }
+
     private static ScriptRequest WithFactSheet(ScriptRequest r, VideoScript s) => new()
     {
         Topic = r.Topic, Notes = r.Notes + "\n\n[FACT SHEET FROM PREVIOUS STEP]\n" + s.FactSheet + "\n[SOURCES]\n" + string.Join("\n", s.GroundedSources.Select(g => $"{g.Title}: {g.Url}")),
@@ -119,7 +153,8 @@ public sealed partial class JobRunner
     // ---------------------------------------------------------------- C: VoiceStudio
     private async Task<StageOutputs> VoiceStageAsync(JobContext c, VideoScript script)
     {
-        var voice = c.S.FindVoice(c.Job.VoiceProfileName) ?? throw PipelineException.Config("voice_profile", $"Ovoz profili topilmadi: {c.Job.VoiceProfileName}");
+        if (c.Job.HasManualAudio) return await ManualVoiceStageAsync(c, script).ConfigureAwait(false);
+        var voice =c.S.FindVoice(c.Job.VoiceProfileName) ?? throw PipelineException.Config("voice_profile", $"Ovoz profili topilmadi: {c.Job.VoiceProfileName}");
         var ram = _x.Resources.AvailableRamGb();
         if (ram < c.S.Limits.MinFreeRamGbForTts)
             c.Log.Warn($"Bo'sh RAM kam ({ram:0.00} GB < {c.S.Limits.MinFreeRamGbForTts} GB). Boshqa og'ir dasturlarni yopish tavsiya etiladi; TTS ketma-ket, bo'laklab bajariladi.", "Voice");
@@ -175,6 +210,30 @@ public sealed partial class JobRunner
         return new StageOutputs { Files = { FileOps.Describe(c.VoiceWav, "voice") }, Values = { ["duration"] = a.Duration.ToString("R", System.Globalization.CultureInfo.InvariantCulture) } };
     }
 
+    /// <summary>
+    /// Botdan yuklangan tayyor ovoz: VoiceStudio umuman ochilmaydi. Fayl yuklab olinib WAV'ga o'tkaziladi va tekshiriladi.
+    /// Ovoz yaroqsiz bo'lsa qayta urinish foyda bermaydi - "E'tibor kerak" (foydalanuvchi boshqa fayl yuklaydi).
+    /// </summary>
+    private async Task<StageOutputs> ManualVoiceStageAsync(JobContext c, VideoScript script)
+    {
+        var importer = _x.AudioImporter ?? throw PipelineException.Config("audio_importer_missing", "Tayyor ovozni yuklab olish servisi ulanmagan.");
+        c.Log.Info("Ovoz botdan tayyor yuklangan: VoiceStudio TTS o'tkazib yuboriladi, fayl yuklab olinmoqda.", "Voice");
+        var tmp = c.VoiceWav + ".tmp.wav";
+        await Retry.TransientAsync(async _ => { await importer.ImportAsync(c.Job.ManualAudioUrl!, tmp, c.Log, c.Ct).ConfigureAwait(false); return true; },
+            c.S.Limits.MaxTransientRetries, (n, e) => c.Log.Warn($"Ovozni yuklab olish qayta urinish ({n}): {e.Message}", "Voice"), c.Ct, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        File.Move(tmp, c.VoiceWav, true);
+
+        var a = Wav.Analyze(c.VoiceWav, 1.0);
+        if (a.Problems.Count > 0) throw PipelineException.Quality("manual_audio_bad", "Yuklangan ovoz yaroqsiz: " + string.Join(" ", a.Problems) + " Botda boshqa audio fayl yuklang.");
+        c.Job.AudioDurationSec = Math.Round(a.Duration, 3);
+        _x.Store.Update(c.Job);
+        c.StageMetrics["audio_sec"] = a.Duration; c.StageMetrics["peak_db"] = a.PeakDb; c.StageMetrics["rms_db"] = a.RmsDb; c.StageMetrics["speech_ratio"] = a.SpeechRatio;
+        var expected = script.SubtitleText.Length / 15.0;
+        if (a.Duration < expected * 0.45) c.Log.Warn($"Yuklangan ovoz subtitr matniga nisbatan ancha qisqa ({a.Duration:0.0}s, ~{expected:0}s kutilgan) - alignment tekshiradi.", "Voice");
+        c.Log.Info($"Tayyor ovoz qabul qilindi: {a.Duration:0.00}s, peak {a.PeakDb:0.0} dB, RMS {a.RmsDb:0.0} dB.", "Voice");
+        return new StageOutputs { Files = { FileOps.Describe(c.VoiceWav, "voice") }, Values = { ["duration"] = a.Duration.ToString("R", System.Globalization.CultureInfo.InvariantCulture), ["source"] = "manual" } };
+    }
+
     private sealed class ChunkInfo { public int Index { get; set; } public string TextHash { get; set; } = ""; public int Chars { get; set; } }
 
     private static bool ChunkOk(string path, string text, out string why)
@@ -200,6 +259,9 @@ public sealed partial class JobRunner
         File.WriteAllText(c.AlignmentJson, JsonSerializer.Serialize(res, new JsonSerializerOptions { WriteIndented = true }));
         c.StageMetrics["similarity"] = Math.Round(res.Similarity, 3);
         c.StageMetrics["matched_ratio"] = Math.Round(res.MatchedRatio, 3);
+        if (res.Similarity < 0.55 && c.Job.HasManualAudio)
+            throw PipelineException.Quality("voice_text_mismatch",
+                $"Yuklangan ovoz botda kiritilgan subtitr matni bilan mos emas (o'xshashlik {res.Similarity:P0}). Subtitr aynan ovozda aytilgan matn bo'lishi kerak — botda matnni tuzating yoki boshqa audio yuklang. Farqlar: {string.Join("; ", res.Mismatches.Take(8))}");
         if (res.Similarity < 0.55)
             throw PipelineException.Quality("voice_text_mismatch",
                 $"Ovozdagi nutq ssenariy bilan mos emas (o'xshashlik {res.Similarity:P0}). TTS boshqa matn o'qigan yoki til/ASR modeli mos emas. Farqlar: {string.Join("; ", res.Mismatches.Take(8))}");

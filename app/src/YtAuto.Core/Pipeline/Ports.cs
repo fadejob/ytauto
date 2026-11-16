@@ -109,6 +109,12 @@ public interface ITtsSession : IAsyncDisposable
     Dictionary<string, double> Metrics { get; }
 }
 
+/// <summary>Botdan yuklangan tayyor ovozni (URL) yuklab olib, pipeline ishlatadigan WAV formatiga o'tkazadi.</summary>
+public interface IAudioImporter
+{
+    Task ImportAsync(string url, string outWav, IJobLog log, CancellationToken ct);
+}
+
 public interface IAligner
 {
     Task<IReadOnlyList<WordTiming>> TranscribeWordsAsync(string wavPath, string language, string outJson, IJobLog log, CancellationToken ct);

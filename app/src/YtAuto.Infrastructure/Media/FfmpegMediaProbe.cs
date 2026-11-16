@@ -127,6 +127,16 @@ public sealed class FfmpegMediaProbe : IMediaProbe
     public async Task<(double MaxVolumeDb, double? IntegratedLufs)> AudioLevelsAsync(string path, CancellationToken ct)
     { var a = await AnalyzeAsync(path, ct).ConfigureAwait(false); return (a.MaxVolumeDb, a.Lufs); }
 
+    /// <summary>Istalgan audio/video faylning ovozini 48 kHz, mono, 16-bit PCM WAV'ga o'tkazadi (pipeline va whisper shu formatni o'qiydi).</summary>
+    public async Task ConvertToWavAsync(string input, string outWav, CancellationToken ct)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(outWav)!);
+        var args = new[] { "-hide_banner", "-v", "error", "-i", input, "-vn", "-map", "0:a:0", "-ac", "1", "-ar", "48000", "-c:a", "pcm_s16le", "-y", outWav };
+        var (r, _, err) = await RunAsync(Ffmpeg, args, TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
+        if (r.ExitCode != 0 || !File.Exists(outWav))
+            throw PipelineException.Quality("audio_convert", $"Audio faylni o'qib bo'lmadi (ffmpeg): {err.Trim()}");
+    }
+
     public async Task ExtractFrameAsync(string video, double atSec, string outImage, int width, CancellationToken ct)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outImage)!);
