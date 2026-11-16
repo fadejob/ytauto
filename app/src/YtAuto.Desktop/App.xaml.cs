@@ -36,13 +36,18 @@ public partial class App : Application
     private void StartOnline()
     {
         if (_beat is not null) return;
-        // Jadval botda (online bazada) boshqariladi: shu kompyuterdagi Task Scheduler unga moslanadi.
-        Infrastructure.Scheduling.ScheduleSync.Apply(Services, Ui.Shell.FindWorkerExe());
-        try { Services.Settings.PublishCatalog(); } catch (Exception ex) { Services.Log.Warn("Bot katalogi yuborilmadi: " + ex.Message); }
-        Infrastructure.Heartbeat.ToolStatus.Publish(Services);
+        var svc = Services;
+        var workerExe = Ui.Shell.FindWorkerExe();
+        // Tarmoq va tashqi dasturlar (baza, Task Scheduler, claude auth status) - fon oqimida: oyna kutmasdan darhol ochiladi.
+        _ = Task.Run(() =>
+        {
+            // Jadval botda (online bazada) boshqariladi: shu kompyuterdagi Task Scheduler unga moslanadi.
+            Infrastructure.Scheduling.ScheduleSync.Apply(svc, workerExe);
+            try { svc.Settings.PublishCatalog(); } catch (Exception ex) { svc.Log.Warn("Bot katalogi yuborilmadi: " + ex.Message); }
+            Infrastructure.Heartbeat.ToolStatus.Publish(svc);
+        });
 
         // Heartbeat: ilova ochiqligi har 30 soniyada bazaga yoziladi; botdan tekshiruv so'rovi kelsa shu yerda ham bajariladi.
-        var workerExe = Ui.Shell.FindWorkerExe();
         _beat = new System.Threading.Timer(async _ =>
         {
             Infrastructure.Heartbeat.MachineBeat.Beat(Services, appOpen: true);

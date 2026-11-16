@@ -21,7 +21,7 @@ public static class ToolStatus
             var voiceCache = string.IsNullOrWhiteSpace(s.VoiceStudio.HfCacheDir)
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OmniVoice", "hf_cache")
                 : s.VoiceStudio.HfCacheDir;
-            var auth = svc.Claude().AuthStatusAsync(CancellationToken.None).GetAwaiter().GetResult();
+            var auth = svc.Claude().AuthStatus();
             var items = new[]
             {
                 new { key = "openfilm", name = "OpenFilm", ok = File.Exists(s.OpenFilm.ExePath), detail = s.OpenFilm.ExePath ?? "" },

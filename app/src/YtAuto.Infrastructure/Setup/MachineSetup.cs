@@ -53,7 +53,7 @@ public static class MachineSetup
     {
         var s = svc.Settings.Load();
         var claude = File.Exists(s.Claude.ExecutablePath);
-        var auth = svc.Claude().AuthStatusAsync(CancellationToken.None).GetAwaiter().GetResult();
+        var auth = svc.Claude().AuthStatus();
         return new List<ToolItem>
         {
             new("openfilm", "OpenFilm", File.Exists(s.OpenFilm.ExePath), s.OpenFilm.ExePath ?? ""),

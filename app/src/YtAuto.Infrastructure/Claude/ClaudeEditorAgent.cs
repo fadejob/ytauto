@@ -41,8 +41,9 @@ public sealed class ClaudeEditorAgent : IEditorAgent
             var tmp = Path.Combine(Path.GetTempPath(), "YtAuto", $"claude-version-{Guid.NewGuid():N}.txt");
             try
             {
-                var r = ToolRunner.RunAsync(new LaunchSpec { Exe = exe, Args = new[] { "--version" }, StdoutPath = tmp, Tool = "claude-version", RemoveEnv = BuildRemoveList() },
-                    TimeSpan.FromSeconds(30), null, CancellationToken.None).GetAwaiter().GetResult();
+                // Task.Run: UI oqimidan chaqirilsa ham qulf bo'lmasin.
+                var r = Task.Run(() => ToolRunner.RunAsync(new LaunchSpec { Exe = exe, Args = new[] { "--version" }, StdoutPath = tmp, Tool = "claude-version", RemoveEnv = BuildRemoveList() },
+                    TimeSpan.FromSeconds(30), null, CancellationToken.None)).GetAwaiter().GetResult();
                 _version = r.ExitCode == 0 ? File.ReadAllText(tmp).Trim() : $"exit {r.ExitCode}";
             }
             catch (Exception e) { _version = "error: " + e.Message; }
@@ -74,6 +75,12 @@ public sealed class ClaudeEditorAgent : IEditorAgent
         catch (Exception e) when (e is not OperationCanceledException) { return new(null, "", "Claude holatini tekshirib bo'lmadi: " + e.Message); }
         finally { try { File.Delete(tmp); } catch { } }
     }
+
+    /// <summary>
+    /// Sinxron variant: thread-pool'da bajariladi (UI oqimining SynchronizationContext'iga qaytmaydi), shuning uchun
+    /// qayerdan chaqirilmasin qulf (deadlock) bo'lmaydi.
+    /// </summary>
+    public ClaudeAuthStatus AuthStatus() => Task.Run(() => AuthStatusAsync(CancellationToken.None)).GetAwaiter().GetResult();
 
     internal static ClaudeAuthStatus ParseAuthStatus(string stdout, int exitCode)
     {
