@@ -27,8 +27,17 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
         _http = http ?? new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }) { Timeout = Timeout.InfiniteTimeSpan };
     }
 
-    private string Key() => _secrets.Get(SecretNames.GeminiApiKey) is { Length: > 0 } k ? k
-        : throw PipelineException.Config("gemini_key_missing", "Gemini API kaliti kiritilmagan (Sozlamalar → Gemini).");
+    /// <summary>Online bazadan (bot orqali kiritilgan) kalit. Bo'lsa lokal DPAPI kalitidan ustun turadi.</summary>
+    public Func<string?>? RemoteKey { get; set; }
+
+    private string Key()
+    {
+        string? remote = null;
+        try { remote = RemoteKey?.Invoke(); } catch { }
+        if (!string.IsNullOrWhiteSpace(remote)) return remote.Trim();
+        return _secrets.Get(SecretNames.GeminiApiKey) is { Length: > 0 } k ? k
+            : throw PipelineException.Config("gemini_key_missing", "Gemini API kaliti kiritilmagan (Telegram bot → Sozlamalar → Gemini).");
+    }
 
     public async Task<ScriptResult> GenerateAsync(ScriptRequest req, IJobLog log, CancellationToken ct)
     {

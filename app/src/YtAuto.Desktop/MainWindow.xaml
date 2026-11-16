@@ -3,34 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:YtAuto.Desktop.ViewModels"
         xmlns:v="clr-namespace:YtAuto.Desktop.Views"
-        Title="YtAuto — YouTube video avtomatlashtirish" Height="820" Width="1280" MinWidth="980" MinHeight="600"
+        Title="YtAuto — sozlamalar" Height="820" Width="1100" MinWidth="900" MinHeight="600"
         Background="{StaticResource Bg}" Foreground="{StaticResource Text}" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
     <Window.Resources>
-        <DataTemplate DataType="{x:Type vm:DashboardViewModel}"><v:DashboardView/></DataTemplate>
-        <DataTemplate DataType="{x:Type vm:NewTopicViewModel}"><v:NewTopicView/></DataTemplate>
         <DataTemplate DataType="{x:Type vm:SettingsViewModel}"><v:SettingsView/></DataTemplate>
-        <DataTemplate DataType="{x:Type vm:ScheduleViewModel}"><v:ScheduleView/></DataTemplate>
-        <DataTemplate DataType="{x:Type vm:JobDetailsViewModel}"><v:JobDetailsView/></DataTemplate>
     </Window.Resources>
-    <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="210"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
-        <Border Background="{StaticResource Nav}">
-            <StackPanel Margin="12,18">
-                <TextBlock Text="YtAuto" Foreground="White" FontSize="20" FontWeight="Bold" Margin="16,0,0,4"/>
-                <TextBlock Text="mavzu → video → YouTube" Foreground="#9CA3AF" Margin="16,0,0,20"/>
-                <RadioButton Style="{StaticResource NavButton}" Content="Videolar" IsChecked="True" GroupName="nav"
-                             Checked="Nav_Checked" Tag="dashboard"/>
-                <RadioButton Style="{StaticResource NavButton}" Content="+ Yangi mavzu" GroupName="nav"
-                             Checked="Nav_Checked" Tag="new"/>
-                <RadioButton Style="{StaticResource NavButton}" Content="Jadval va worker" GroupName="nav"
-                             Checked="Nav_Checked" Tag="schedule"/>
-                <RadioButton Style="{StaticResource NavButton}" Content="Sozlamalar" GroupName="nav"
-                             Checked="Nav_Checked" Tag="settings"/>
-            </StackPanel>
-        </Border>
-        <ContentControl Grid.Column="1" Content="{Binding Current}" Margin="24,20,24,16"/>
-    </Grid>
+    <ContentControl Content="{Binding Settings}" Margin="24,20,24,16"/>
 </Window>

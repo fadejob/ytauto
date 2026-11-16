@@ -64,6 +64,8 @@ public sealed class ScheduleSettings
     public bool Enabled { get; set; }
     /// <summary>"HH:mm" formatida, <see cref="TimeZoneId"/> bo'yicha.</summary>
     public string StartTime { get; set; } = "01:00";
+    /// <summary>Ish oynasi tugashi "HH:mm" (standart 04:00). Shundan keyin yangi video boshlanmaydi; boshlangan oxirgi ish tugaguncha to'xtatilmaydi.</summary>
+    public string EndTime { get; set; } = "04:00";
     public string TimeZoneId { get; set; } = "Asia/Tashkent";
     public bool WakeToRun { get; set; } = true;
     public int ExecutionLimitHours { get; set; } = 6;
@@ -77,6 +79,8 @@ public sealed class GeminiSettings
     public bool UseSearchGrounding { get; set; } = true;
     public int TimeoutSec { get; set; } = 180;
     public double Temperature { get; set; } = 0.7;
+    /// <summary>Bot orqali online bazaga kiritilgan kalit. Hech qachon saqlanmaydi/snapshotga tushmaydi (JsonIgnore).</summary>
+    [JsonIgnore] public string RemoteApiKey { get; set; } = "";
 }
 
 public sealed class ClaudeSettings
@@ -129,6 +133,12 @@ public sealed class PathSettings
 public sealed class YouTubeSettings
 {
     public string ClientId { get; set; } = "";
+    /// <summary>Bot orqali online bazaga kiritilgan OAuth client secret. Saqlanmaydi/snapshotga tushmaydi (JsonIgnore).</summary>
+    [JsonIgnore] public string RemoteClientSecret { get; set; } = "";
+    /// <summary>Har videoning (Gemini yozgan) tavsifi oxiriga qo'shiladigan standart matn: kanal havolalari, ogohlantirish va h.k.</summary>
+    public string DefaultDescription { get; set; } = "";
+    /// <summary>Bot orqali ulangan kanalning refresh token'i (online baza). Saqlanmaydi/snapshotga tushmaydi (JsonIgnore).</summary>
+    [JsonIgnore] public string RemoteRefreshToken { get; set; } = "";
     /// <summary>Standart public soati "HH:mm".</summary>
     public string PublishTime { get; set; } = "18:00";
     public string TimeZoneId { get; set; } = "Asia/Tashkent";

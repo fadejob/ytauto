@@ -36,6 +36,18 @@ export default function Prompts({ run, toast }: { run: Run; toast: Toast }) {
     if (r?.ok) { const next = { ...saved!, [key]: draft[key] }; setSaved(next); cache.set("prompts", next); }
   }
 
+  /** Ilova bilan keladigan standart promptni qaytaradi (hozirgi matn almashtiriladi, darhol saqlanadi). */
+  async function resetDefault() {
+    if (!(await confirmBox(`${LABEL[key].title} prompti standart holatga qaytarilsinmi? Hozirgi matn almashtiriladi.`))) return;
+    setSaving(true);
+    const [r] = await run([{ type: "update_prompt", key, reset: true }]);
+    setSaving(false);
+    if (r?.ok) {
+      const fresh = await api<PromptsT>("/api/prompts").catch(() => null);
+      if (fresh) { setSaved(fresh); setDraft(fresh); cache.set("prompts", fresh); }
+    }
+  }
+
   return (
     <>
       <header className="head">
@@ -63,6 +75,7 @@ export default function Prompts({ run, toast }: { run: Run; toast: Toast }) {
             <button className="btn block" disabled={!dirty || saving} onClick={() => saved && setDraft({ ...draft!, [key]: saved[key] })}>Qaytarish</button>
             <button className="btn primary block" disabled={!dirty || saving} onClick={save}>{saving ? "Saqlanmoqda…" : "Saqlash"}</button>
           </div>
+          <button className="btn block" disabled={saving || !draft} onClick={resetDefault}>Standart promptga qaytarish</button>
         </div>
       </div>
     </>

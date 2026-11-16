@@ -78,6 +78,33 @@ ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS publish_now BOOLEAN NOT NULL DE
 CREATE INDEX IF NOT EXISTS ix_jobs_publish_now ON {T("jobs")}(id) WHERE publish_now;
 -- v3: "Tayyor videoni YouTube'ga yuklash" so'rovi (Telegram bot). Video qayta tayyorlanmaydi - faqat arxivdagi fayl yuklanadi.
 ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS upload_requested BOOLEAN NOT NULL DEFAULT FALSE;
+-- v4: har worker ishga tushishidagi resurs/hajm statistikasi (JSON).
+ALTER TABLE {T("worker_runs")} ADD COLUMN IF NOT EXISTS stats_json TEXT;
+-- v5: kompyuterlar holati (heartbeat) va botdan "integratsiyalarni tekshirish" so'rovi.
+CREATE TABLE IF NOT EXISTS {T("machines")} (
+  machine TEXT PRIMARY KEY, last_seen_utc TIMESTAMPTZ NOT NULL, app_open BOOLEAN NOT NULL DEFAULT FALSE, app_seen_utc TIMESTAMPTZ,
+  worker_state TEXT, worker_job_id BIGINT, worker_detail TEXT, worker_seen_utc TIMESTAMPTZ, version TEXT,
+  check_requested BOOLEAN NOT NULL DEFAULT FALSE, check_requested_at_utc TIMESTAMPTZ, check_result_json TEXT, check_finished_at_utc TIMESTAMPTZ
+);
+-- v6: botdan "Hozir ishga tushirish" (jadvalni kutmasdan mavzular soniga qarab ishni boshlash) so'rovi.
+ALTER TABLE {T("machines")} ADD COLUMN IF NOT EXISTS run_requested BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE {T("machines")} ADD COLUMN IF NOT EXISTS run_requested_at_utc TIMESTAMPTZ;
+-- v9: botdan kompyuterga buyruqlar (shablonni o'chirish, upload sessiyasini tozalash).
+CREATE TABLE IF NOT EXISTS {T("machine_commands")} (
+  id BIGSERIAL PRIMARY KEY, machine TEXT NOT NULL, kind TEXT NOT NULL, arg TEXT NOT NULL DEFAULT '', done BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- v8: shablonlar ro'yxati (har kompyuter uchun): tayyor videolar avtomatik shablon bo'ladi, fayllar yuklanmaydi - faqat ma'lumot.
+CREATE TABLE IF NOT EXISTS {T("templates")} (
+  machine TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, size_bytes BIGINT NOT NULL DEFAULT 0, added_at_utc TIMESTAMPTZ,
+  source TEXT NOT NULL DEFAULT 'upload', notes TEXT, PRIMARY KEY (machine, name)
+);
+-- v7: botdan yuklangan shablonlar (Supabase Storage) - har kompyuter uchun alohida yozuv; ilova yuklab olib o'rnatadi.
+CREATE TABLE IF NOT EXISTS {T("template_uploads")} (
+  id BIGSERIAL PRIMARY KEY, group_id TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, storage_path TEXT NOT NULL, size_bytes BIGINT NOT NULL DEFAULT 0,
+  machine TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', progress INT NOT NULL DEFAULT 0, message TEXT, download_url TEXT,
+  cleaned BOOLEAN NOT NULL DEFAULT FALSE, created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """);
         tx.Commit();
     }
@@ -476,6 +503,111 @@ ON CONFLICT(job_id, stage) DO UPDATE SET state=excluded.state, started_at_utc=ex
         using var c = Open();
         Exec(c, null, $"UPDATE {T("worker_runs")} SET finished_at_utc=@f, outcome=@o, job_id=@j, message=@m WHERE run_id=@r",
             ("r", runId), ("f", DateTimeOffset.UtcNow), ("o", outcome), ("j", jobId), ("m", message));
+    }
+
+    public void Heartbeat(string machine, bool? appOpen, string? workerState, long? jobId, string? detail, string? version)
+    {
+        using var c = Open();
+        Exec(c, null, $"""
+INSERT INTO {T("machines")}(machine, last_seen_utc, app_open, app_seen_utc, worker_state, worker_job_id, worker_detail, worker_seen_utc, version)
+VALUES (@m, now(), COALESCE(@app::boolean, FALSE), CASE WHEN @app::boolean IS NOT NULL THEN now() END,
+        @ws::text, @job::bigint, @det::text, CASE WHEN @ws::text IS NOT NULL THEN now() END, @ver::text)
+ON CONFLICT (machine) DO UPDATE SET
+  last_seen_utc = now(),
+  app_open = COALESCE(@app::boolean, {T("machines")}.app_open),
+  app_seen_utc = CASE WHEN @app::boolean IS NOT NULL THEN now() ELSE {T("machines")}.app_seen_utc END,
+  worker_state = COALESCE(@ws::text, {T("machines")}.worker_state),
+  worker_job_id = CASE WHEN @ws::text IS NOT NULL THEN @job::bigint ELSE {T("machines")}.worker_job_id END,
+  worker_detail = CASE WHEN @ws::text IS NOT NULL THEN @det::text ELSE {T("machines")}.worker_detail END,
+  worker_seen_utc = CASE WHEN @ws::text IS NOT NULL THEN now() ELSE {T("machines")}.worker_seen_utc END,
+  version = COALESCE(@ver::text, {T("machines")}.version)
+""", ("m", machine), ("app", appOpen), ("ws", workerState), ("job", jobId), ("det", detail), ("ver", version));
+    }
+
+    public bool TakeCheckRequest(string machine)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"UPDATE {T("machines")} SET check_requested = FALSE WHERE machine = @m AND check_requested = TRUE", ("m", machine));
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    public (long Id, string Name, string Kind, string Url, long Size)? ClaimTemplateUpload(string machine)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+UPDATE {T("template_uploads")} SET status = 'downloading', progress = 0, updated_at_utc = now()
+WHERE id = (SELECT id FROM {T("template_uploads")} WHERE machine = @m AND status = 'pending' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
+RETURNING id, name, kind, download_url, size_bytes
+""", ("m", machine));
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? (r.GetInt64(0), r.GetString(1), r.GetString(2), r.IsDBNull(3) ? "" : r.GetString(3), r.GetInt64(4)) : null;
+    }
+
+    public void UpdateTemplateUpload(long id, string status, int progress, string? message)
+    {
+        using var c = Open();
+        Exec(c, null, $"UPDATE {T("template_uploads")} SET status=@s, progress=@p, message=@msg, updated_at_utc=now() WHERE id=@i",
+            ("i", id), ("s", status), ("p", progress), ("msg", message));
+    }
+
+    public void ReplaceTemplates(string machine, IReadOnlyList<(string Name, string Kind, long Size, DateTimeOffset? Added, string Source, string Notes)> items)
+    {
+        using var c = Open();
+        using var tx = c.BeginTransaction();
+        Exec(c, tx, $"DELETE FROM {T("templates")} WHERE machine = @m", ("m", machine));
+        foreach (var t in items.GroupBy(i => i.Name, StringComparer.OrdinalIgnoreCase).Select(g => g.First()))
+            Exec(c, tx, $"INSERT INTO {T("templates")}(machine, name, kind, size_bytes, added_at_utc, source, notes) VALUES(@m,@n,@k,@sz,@at::timestamptz,@src,@no) ON CONFLICT (machine, name) DO NOTHING",
+                ("m", machine), ("n", t.Name), ("k", t.Kind), ("sz", t.Size), ("at", t.Added?.ToUniversalTime()), ("src", t.Source), ("no", t.Notes));
+        tx.Commit();
+    }
+
+    public IReadOnlyList<(long Id, string Kind, string Arg)> TakeCommands(string machine)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"UPDATE {T("machine_commands")} SET done = TRUE WHERE machine = @m AND NOT done RETURNING id, kind, arg", ("m", machine));
+        using var r = cmd.ExecuteReader();
+        var list = new List<(long, string, string)>();
+        while (r.Read()) list.Add((r.GetInt64(0), r.GetString(1), r.GetString(2)));
+        return list.OrderBy(x => x.Item1).ToList();
+    }
+
+    public bool TakeRunRequest(string machine)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"UPDATE {T("machines")} SET run_requested = FALSE WHERE machine = @m AND run_requested = TRUE", ("m", machine));
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    public void SaveCheckResult(string machine, string json)
+    {
+        using var c = Open();
+        Exec(c, null, $"UPDATE {T("machines")} SET check_result_json = @j, check_finished_at_utc = now() WHERE machine = @m", ("m", machine), ("j", json));
+    }
+
+    public (long JobId, string Topic, int Status)? CurrentWork(string runId)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"SELECT id, topic, status FROM {T("jobs")} WHERE claimed_by = @r ORDER BY claimed_at_utc DESC LIMIT 1", ("r", runId));
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? (r.GetInt64(0), r.GetString(1), r.GetInt32(2)) : null;
+    }
+
+    public void SaveRunStats(string runId, string json)
+    {
+        using var c = Open();
+        Exec(c, null, $"UPDATE {T("worker_runs")} SET stats_json=@s WHERE run_id=@r", ("r", runId), ("s", json));
+    }
+
+    public IReadOnlyList<(string RunId, DateTimeOffset Started, DateTimeOffset? Finished, string? Outcome, string? Machine, string? StatsJson)> RunStats(int n = 30)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"SELECT run_id, started_at_utc, finished_at_utc, outcome, machine, stats_json FROM {T("worker_runs")} ORDER BY started_at_utc DESC LIMIT @n", ("n", n));
+        using var r = cmd.ExecuteReader();
+        var list = new List<(string, DateTimeOffset, DateTimeOffset?, string?, string?, string?)>();
+        while (r.Read())
+            list.Add((r.GetString(0), r.GetFieldValue<DateTimeOffset>(1), r.IsDBNull(2) ? null : r.GetFieldValue<DateTimeOffset>(2),
+                r.IsDBNull(3) ? null : r.GetString(3), r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5)));
+        return list;
     }
 
     public IReadOnlyList<(string RunId, DateTimeOffset Started, DateTimeOffset? Finished, string? Outcome, long? JobId, string? Message, string? Trigger)> RecentRuns(int n = 20)

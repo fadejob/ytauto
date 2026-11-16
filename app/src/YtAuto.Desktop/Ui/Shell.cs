@@ -23,7 +23,11 @@ public static class Shell
     {
         var here = Path.Combine(AppContext.BaseDirectory, "YtAuto.Worker.exe");
         if (File.Exists(here)) return here;
-        var dev = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "YtAuto.Worker", "bin", "Debug", "net10.0-windows10.0.17763.0", "YtAuto.Worker.exe"));
-        return File.Exists(dev) ? dev : null;
+        foreach (var cfg in new[] { "Release", "Debug" })
+        {
+            var dev = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "YtAuto.Worker", "bin", cfg, "net10.0-windows10.0.17763.0", "YtAuto.Worker.exe"));
+            if (File.Exists(dev)) return dev;
+        }
+        return null;
     }
 }

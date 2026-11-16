@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, api, cache, haptic, initTelegram } from "@/lib/client";
 import type { Action, ActionResult, State } from "@/lib/types";
-import { IconDoc, IconList, IconSpark } from "./icons";
+import { IconDoc, IconGear, IconHistory, IconList, IconSpark } from "./icons";
 import Topics from "./Topics";
 import Ai from "./Ai";
 import Prompts from "./Prompts";
+import History from "./History";
+import Settings from "./Settings";
 
-type Tab = "topics" | "ai" | "prompts";
+type Tab = "topics" | "ai" | "prompts" | "history" | "settings";
 export type Run = (actions: Action[]) => Promise<ActionResult[]>;
 export type Toast = (text: string, bad?: boolean) => void;
 
@@ -89,6 +91,8 @@ export default function App() {
       {tab === "topics" && <Topics state={state} loading={loading} refresh={refresh} run={run} />}
       {tab === "ai" && <Ai run={run} toast={show} />}
       {tab === "prompts" && <Prompts run={run} toast={show} />}
+      {tab === "history" && <History state={state} toast={show} />}
+      {tab === "settings" && <Settings catalog={state?.catalog ?? null} toast={show} />}
 
       {toast ? <div className={`toast${toast.bad ? " bad" : ""}`} role="status">{toast.text}</div> : null}
 
@@ -96,6 +100,8 @@ export default function App() {
         <button className={tab === "topics" ? "on" : ""} onClick={() => go("topics")}><IconList />Mavzular</button>
         <button className={tab === "ai" ? "on" : ""} onClick={() => go("ai")}><IconSpark />AI yordamchi</button>
         <button className={tab === "prompts" ? "on" : ""} onClick={() => go("prompts")}><IconDoc />Promptlar</button>
+        <button className={tab === "history" ? "on" : ""} onClick={() => go("history")}><IconHistory />Tarix</button>
+        <button className={tab === "settings" ? "on" : ""} onClick={() => go("settings")}><IconGear />Sozlamalar</button>
       </nav>
     </main>
   );

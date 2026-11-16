@@ -52,7 +52,7 @@ public sealed partial class JobRunner
             .Distinct(StringComparer.OrdinalIgnoreCase).Take(30).ToList();
         var req = new UploadRequest
         {
-            VideoPath = c.Job.VideoArchivePath!, Title = Trunc(c.Job.DisplayTitle, 100), Description = c.Job.Description ?? "",
+            VideoPath = c.Job.VideoArchivePath!, Title = Trunc(c.Job.DisplayTitle, 100), Description = Trunc(string.Join("\n\n", new[] { c.Job.Description?.Trim(), c.S.YouTube.DefaultDescription?.Trim() }.Where(s => !string.IsNullOrWhiteSpace(s))), 5000),
             Tags = tags, CategoryId = c.S.YouTube.CategoryId, Language = c.Job.Language, PublishAtUtc = c.Job.PublishAtUtc, PublishNow = c.PublishNow,
             MadeForKids = c.S.YouTube.MadeForKids, ContainsSyntheticMedia = c.S.YouTube.ContainsSyntheticMedia, ThumbnailPath = c.Job.ThumbnailPath,
             License = c.S.YouTube.License == "creativeCommon" ? "creativeCommon" : "youtube", Embeddable = c.S.YouTube.Embeddable,

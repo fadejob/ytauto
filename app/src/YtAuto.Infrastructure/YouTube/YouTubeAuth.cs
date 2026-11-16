@@ -44,9 +44,16 @@ public sealed class YouTubeAuth
 
     private OAuthTokens? Load()
     {
+        OAuthTokens? local = null;
         var json = _secrets.Get(SecretNames.YouTubeTokens);
-        if (string.IsNullOrEmpty(json)) return null;
-        try { return JsonSerializer.Deserialize<OAuthTokens>(json); } catch { return null; }
+        if (!string.IsNullOrEmpty(json))
+            try { local = JsonSerializer.Deserialize<OAuthTokens>(json); } catch { }
+        // Bot orqali ulangan kanal (online bazadagi refresh token) lokal tokendan ustun: qayta ulansa yangisi olinadi.
+        string remote = "";
+        try { remote = _settings().RemoteRefreshToken ?? ""; } catch { }
+        if (remote.Length > 0 && (local is null || local.RefreshToken != remote))
+            return new OAuthTokens { RefreshToken = remote.Trim() };
+        return local;
     }
 
     private void Save(OAuthTokens t) => _secrets.Set(SecretNames.YouTubeTokens, JsonSerializer.Serialize(t));
@@ -56,7 +63,7 @@ public sealed class YouTubeAuth
     private (string Id, string Secret) Client()
     {
         var id = _settings().ClientId?.Trim() ?? "";
-        var secret = _secrets.Get(SecretNames.YouTubeClientSecret) ?? "";
+        var secret = !string.IsNullOrWhiteSpace(_settings().RemoteClientSecret) ? _settings().RemoteClientSecret.Trim() : _secrets.Get(SecretNames.YouTubeClientSecret) ?? "";
         if (id.Length == 0 || secret.Length == 0)
             throw PipelineException.Config("youtube_client_missing", "YouTube OAuth Client ID/Secret kiritilmagan (Sozlamalar → YouTube).");
         return (id, secret);

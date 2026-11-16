@@ -76,6 +76,35 @@ public sealed class TemplateStore
         }
     }
 
+    /// <summary>
+    /// Arxivdagi tayyor videoni NUSXALAMASDAN shablon sifatida ro'yxatdan o'tkazadi (Path - arxivdagi fayl, Managed=false):
+    /// faqat kichik rasm shablonlar papkasiga yoziladi. Arxiv fayli hech qachon shablon orqali o'chirilmaydi.
+    /// </summary>
+    public async Task<TemplateDefinition> RegisterExistingVideoAsync(string templatesDir, string videoPath, string name, string notes, CancellationToken ct)
+    {
+        if (!File.Exists(videoPath)) throw new FileNotFoundException("Video topilmadi", videoPath);
+        var def = new TemplateDefinition
+        {
+            Name = name.Trim(), Notes = notes ?? "", Kind = TemplateKind.Mp4Reference, Path = videoPath, Managed = false,
+            SizeBytes = new FileInfo(videoPath).Length, AddedAtUtc = DateTimeOffset.UtcNow,
+        };
+        if (_media is not null && !string.IsNullOrWhiteSpace(templatesDir))
+        {
+            try
+            {
+                var dir = Path.Combine(templatesDir, $"{TextNormalizer.Slug(name, 30)}-{Guid.NewGuid().ToString("N")[..6]}");
+                Directory.CreateDirectory(dir);
+                var info = await _media.ProbeAsync(videoPath, ct).ConfigureAwait(false);
+                var thumb = Path.Combine(dir, "thumb.jpg");
+                await _media.ExtractFrameAsync(videoPath, Math.Min(info.Duration * 0.3, Math.Max(0, info.Duration - 0.2)), thumb, 480, ct).ConfigureAwait(false);
+                def.Thumbnail = thumb;
+                if (string.IsNullOrWhiteSpace(def.Notes)) def.Notes = $"{info.Width}x{info.Height}, {info.Duration:0.#}s";
+            }
+            catch { /* kichik rasm ixtiyoriy */ }
+        }
+        return def;
+    }
+
     /// <summary>Faqat ilova o'zi nusxalagan (Managed) shablon papkasini o'chiradi.</summary>
     public static void DeleteFiles(string templatesDir, TemplateDefinition t)
     {

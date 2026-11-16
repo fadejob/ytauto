@@ -106,7 +106,7 @@ public sealed class IntegrationChecker
         }
 
         // YouTube
-        if (!_svc.Uploader.IsConnected) Add(new("YouTube", CheckLevel.Warning, "Kanal ulanmagan (Sozlamalar → YouTube → Ulash)."));
+        if (!_svc.Uploader.IsConnected) Add(new("YouTube", CheckLevel.Warning, "Kanal ulanmagan (Telegram bot → Sozlamalar → YouTube → YouTube'ni ulash)."));
         else
         {
             try { Add(new("YouTube", CheckLevel.Ok, $"Ulangan kanal: {await _svc.YouTubeAuth.ChannelTitleAsync(ct)}")); }

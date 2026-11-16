@@ -12,6 +12,7 @@ type TgWebApp = {
   showConfirm(msg: string, cb: (ok: boolean) => void): void;
   HapticFeedback?: { impactOccurred(s: "light" | "medium"): void; notificationOccurred(t: "success" | "error" | "warning"): void };
   isVersionAtLeast?(v: string): boolean;
+  openLink?(url: string): void;
 };
 
 declare global {
@@ -38,6 +39,13 @@ export const haptic = {
   ok: () => tg()?.HapticFeedback?.notificationOccurred("success"),
   fail: () => tg()?.HapticFeedback?.notificationOccurred("error"),
 };
+
+/** Tashqi havolani ochadi: Telegram ichida tashqi brauzerda (Google kirishi Telegram ichki oynasida ishlamaydi), aks holda yangi tab. */
+export function openExternal(url: string) {
+  const t = tg();
+  if (t?.openLink) t.openLink(url);
+  else window.open(url, "_blank", "noopener");
+}
 
 export function confirmBox(message: string): Promise<boolean> {
   const t = tg();

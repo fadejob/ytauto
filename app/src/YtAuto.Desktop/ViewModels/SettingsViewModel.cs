@@ -18,6 +18,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _message = "";
     [ObservableProperty] private string _geminiKeyState = "";
     [ObservableProperty] private string _youTubeState = "";
+    [ObservableProperty] private bool _youTubeConnected;
     [ObservableProperty] private bool _busy;
     [ObservableProperty] private bool _deepClaudeCheck;
     public ObservableCollection<VoiceProfile> Voices { get; } = new();
@@ -28,8 +29,133 @@ public sealed partial class SettingsViewModel : ObservableObject
     public List<string> Languages { get; } = new() { "en", "uz", "ru", "tr", "kk" };
 
     /// <summary>PasswordBox'lardan (code-behind) keladi; bo'sh bo'lsa mavjud sir o'zgarmaydi.</summary>
-    public string GeminiKeyInput { get; set; } = "";
     public string ClientSecretInput { get; set; } = "";
+
+    // ---- Kerakli dasturlarni yuklab o'rnatish (OpenFilm, VoiceStudio)
+    [ObservableProperty] private bool _installing;
+    [ObservableProperty] private double _installFraction;
+    [ObservableProperty] private bool _installIndeterminate;
+    [ObservableProperty] private string _installText = "";
+    [ObservableProperty] private string _openFilmState = "";
+    [ObservableProperty] private string _voiceStudioState = "";
+    [ObservableProperty] private bool _openFilmMissing;
+    [ObservableProperty] private bool _voiceStudioMissing;
+
+    [ObservableProperty] private bool _claudeMissing;
+    [ObservableProperty] private bool _whisperMissing;
+    [ObservableProperty] private string _whisperState = "";
+
+    [RelayCommand]
+    private Task InstallWhisperModel() => RunInstall(async p =>
+    {
+        var model = S.VoiceStudio.WhisperModel;
+        var dir = S.VoiceStudio.HfCacheDir;
+        if (string.IsNullOrWhiteSpace(dir) || !Path.IsPathFullyQualified(dir))
+            dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "YtAuto", "hf_cache");
+        await AppInstaller.DownloadHfModelAsync(model, dir, p, CancellationToken.None);
+        var s = _svc.Settings.Load(); s.VoiceStudio.HfCacheDir = dir; _svc.Settings.Save(s);
+        return dir;
+    });
+
+    // Ovoz (TTS) modeli: VoiceStudio shu HuggingFace keshidan o'qiydi; model yo'q bo'lsa dvigatel "ishlatib bo'lmaydi" va ovozlar ro'yxati bo'sh.
+    public const string TtsModel = "KittenML/kitten-tts-mini-0.8";
+    [ObservableProperty] private bool _ttsMissing;
+    [ObservableProperty] private string _ttsState = "";
+
+    private string VoiceCacheDir()
+    {
+        var dir = S.VoiceStudio.HfCacheDir;
+        if (!string.IsNullOrWhiteSpace(dir) && Path.IsPathFullyQualified(dir)) return dir;
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OmniVoice", "hf_cache");
+    }
+
+    // Ayol/erkak ovozlari: bitta KittenTTS modelining ikki ovozi. Tanlangani profil sifatida qo'shiladi (bot mavzu yaratishda shulardan tanlaydi).
+    private const string FemaleName = "Kitten EN ayol", FemaleVoice = "expr-voice-2-f";
+    private const string MaleName = "Kitten EN erkak", MaleVoice = "expr-voice-2-m";
+    [ObservableProperty] private bool _ttsFemale = true;
+    [ObservableProperty] private bool _ttsMale = true;
+    [ObservableProperty] private bool _ttsNeedsAction;
+    private bool _ttsInit;
+
+    partial void OnTtsFemaleChanged(bool value) => RefreshTtsAction();
+    partial void OnTtsMaleChanged(bool value) => RefreshTtsAction();
+
+    private bool HasProfile(string name) => S.VoiceProfiles.Any(v => v.Name == name && v.Model == "kittentts");
+
+    private void RefreshTtsAction() =>
+        TtsNeedsAction = (TtsFemale || TtsMale) && (TtsMissing || TtsFemale != HasProfile(FemaleName) || TtsMale != HasProfile(MaleName));
+
+    private static void EnsureProfile(AppSettings s, string name, string voice, bool want)
+    {
+        var existing = s.VoiceProfiles.FirstOrDefault(v => v.Name == name && v.Model == "kittentts");
+        if (want && existing is null) s.VoiceProfiles.Add(new VoiceProfile { Name = name, Model = "kittentts", Voice = voice, Language = "en", Speed = 1.0 });
+        else if (!want && existing is not null) s.VoiceProfiles.Remove(existing);
+    }
+
+    [RelayCommand]
+    private async Task InstallTtsVoices()
+    {
+        if (!TtsFemale && !TtsMale) { Message = "Kamida bitta ovozni (ayol yoki erkak) tanlang."; return; }
+        if (TtsMissing)
+        {
+            await RunInstall(async p => await AppInstaller.DownloadHfModelAsync(TtsModel, VoiceCacheDir(), p, CancellationToken.None));
+            if (TtsMissing) return; // yuklanmadi (xato RunInstall'da ko'rsatilgan)
+        }
+        var s = _svc.Settings.Load();
+        EnsureProfile(s, FemaleName, FemaleVoice, TtsFemale);
+        EnsureProfile(s, MaleName, MaleVoice, TtsMale);
+        if (!s.VoiceProfiles.Any(v => v.Name == s.Defaults.VoiceProfile)) s.Defaults.VoiceProfile = s.VoiceProfiles.First().Name;
+        _svc.Settings.Save(s); // profillar bot katalogiga ham yoziladi
+        try { _svc.Settings.PushVoiceProfiles(s.VoiceProfiles); } catch { } // bot konfigidagi ro'yxat ham yangilanadi (asosiy manba)
+        Load();
+        Message = $"Ovozlar tayyor: {string.Join(", ", S.VoiceProfiles.Select(v => v.Name))}. Botda mavzu yaratishda tanlanadi.";
+        await RefreshCatalogCommand.ExecuteAsync(null); // VoiceStudio yangi modelni ko'rishi uchun ro'yxatni qayta o'qiymiz
+    }
+
+    private void RefreshToolState()
+    {
+        TtsMissing = !Directory.Exists(Path.Combine(VoiceCacheDir(), "models--" + TtsModel.Replace("/", "--")));
+        if (!_ttsInit)
+        {
+            _ttsInit = true;
+            var f = HasProfile(FemaleName); var m = HasProfile(MaleName);
+            if (f || m) { TtsFemale = f; TtsMale = m; }
+        }
+        TtsState = TtsMissing
+            ? $"Ovoz modeli ({TtsModel}, ~80 MB): kompyuterda yo'q — ovozlar ro'yxati bo'sh bo'ladi. Kerakli ovozlarni tanlab yuklang:"
+            : $"Ovoz modeli o'rnatilgan. Faol ovoz profillari: {(S.VoiceProfiles.Count == 0 ? "yo'q" : string.Join(", ", S.VoiceProfiles.Select(v => v.Name)))}";
+        RefreshTtsAction();
+        ClaudeMissing = !File.Exists(S.Claude.ExecutablePath);
+        var modelDir = "models--" + S.VoiceStudio.WhisperModel.Replace("/", "--");
+        WhisperMissing = string.IsNullOrWhiteSpace(S.VoiceStudio.HfCacheDir) || !Directory.Exists(Path.Combine(S.VoiceStudio.HfCacheDir, modelDir));
+        WhisperState = WhisperMissing ? $"Subtitr modeli ({S.VoiceStudio.WhisperModel}): kompyuterda topilmadi" : $"Subtitr modeli ({S.VoiceStudio.WhisperModel}): {S.VoiceStudio.HfCacheDir}";
+        OpenFilmMissing = !File.Exists(S.OpenFilm.ExePath);
+        VoiceStudioMissing = !File.Exists(S.VoiceStudio.ExePath);
+        OpenFilmState = OpenFilmMissing ? "OpenFilm: kompyuterda topilmadi" : $"OpenFilm: {S.OpenFilm.ExePath}";
+        VoiceStudioState = VoiceStudioMissing ? "VoiceStudio: kompyuterda topilmadi" : $"VoiceStudio: {S.VoiceStudio.ExePath}";
+    }
+
+    private async Task RunInstall(Func<IProgress<InstallProgress>, Task<string>> install)
+    {
+        Installing = true; Busy = true; InstallFraction = 0; InstallIndeterminate = true; InstallText = "Boshlanmoqda…";
+        try
+        {
+            var progress = new Progress<InstallProgress>(p =>
+            {
+                InstallText = p.Text;
+                InstallIndeterminate = p.Fraction < 0;
+                if (p.Fraction >= 0) InstallFraction = p.Fraction * 100;
+            });
+            var exe = await Task.Run(() => install(progress));
+            Load(); // yo'l avtomatik topilib, sozlamalarda saqlanadi
+            Message = $"O'rnatildi va yo'li saqlandi: {exe}";
+        }
+        catch (Exception e) { InstallText = "Xato: " + e.Message; Message = "O'rnatib bo'lmadi: " + e.Message; }
+        finally { Installing = false; Busy = false; InstallIndeterminate = false; }
+    }
+
+    [RelayCommand] private Task InstallOpenFilm() => RunInstall(p => AppInstaller.InstallOpenFilmAsync(p, CancellationToken.None));
+    [RelayCommand] private Task InstallVoiceStudio() => RunInstall(p => AppInstaller.InstallVoiceStudioAsync(p, CancellationToken.None));
 
     // ---- VoiceStudio katalogi (kompyuterdagi barcha TTS dvigatellari/modellari/ovozlari)
     private List<VoiceEngineInfo> _allEngines = new();
@@ -40,6 +166,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _newVoiceLanguage = "en";
     [ObservableProperty] private string _newVoiceName = "";
     [ObservableProperty] private bool _showAllEngines;
+    private bool _autoCatalogTried;
     [ObservableProperty] private string _catalogInfo = "";
 
     // ---- YouTube video sozlamalari
@@ -140,8 +267,16 @@ public sealed partial class SettingsViewModel : ObservableObject
         var cached = new Infrastructure.Voice.VoiceCatalogService(_svc.LocalDb).Cached();
         ApplyCatalog(cached);
         ApplyCategories();
-        GeminiKeyState = string.IsNullOrEmpty(_svc.Secrets.Get(SecretNames.GeminiApiKey)) ? "kiritilmagan" : "saqlangan (DPAPI)";
-        YouTubeState = _svc.Uploader.IsConnected ? $"ulangan: {S.YouTube.ChannelTitle}" : "ulanmagan";
+        RefreshToolState();
+        // Ovoz ro'yxati bo'sh bo'lmasligi uchun: VoiceStudio bor-u, modellar hali o'qilmagan bo'lsa, o'zi bir marta o'qiydi.
+        if ((cached is null || cached.Engines.Count == 0) && !_autoCatalogTried && File.Exists(S.VoiceStudio.ExePath))
+        {
+            _autoCatalogTried = true;
+            _ = RefreshCatalogCommand.ExecuteAsync(null);
+        }
+        YouTubeConnected = _svc.Uploader.IsConnected;
+        _ = Task.Run(() => Infrastructure.Heartbeat.ToolStatus.Publish(_svc)); // holat bazaga (bot ko'rsatadi)
+        YouTubeState = YouTubeConnected ? $"ulangan{(string.IsNullOrWhiteSpace(S.YouTube.ChannelTitle) ? "" : ": " + S.YouTube.ChannelTitle)}" : "ulanmagan";
         Message = "";
         return this;
     }
@@ -169,9 +304,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (s.VoiceProfiles.Count == 0) e.Add("Kamida bitta ovoz profili kerak.");
         if (s.VoiceProfiles.GroupBy(v => v.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1)) e.Add("Ovoz profillari nomlari takrorlanmasin.");
         if (s.Templates.GroupBy(v => v.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1)) e.Add("Shablon nomlari takrorlanmasin.");
-        if (!TimeOnly.TryParseExact(s.Schedule.StartTime, "HH:mm", out _)) e.Add("Worker vaqti HH:mm formatida bo'lsin.");
         if (!TimeOnly.TryParseExact(s.YouTube.PublishTime, "HH:mm", out _)) e.Add("Public soati HH:mm formatida bo'lsin.");
-        try { Core.Scheduling.TimeZones.Find(s.YouTube.TimeZoneId); Core.Scheduling.TimeZones.Find(s.Schedule.TimeZoneId); } catch { e.Add("Vaqt zonasi noto'g'ri (masalan, Asia/Tashkent)."); }
+        try { Core.Scheduling.TimeZones.Find(s.YouTube.TimeZoneId); } catch { e.Add("Vaqt zonasi noto'g'ri (masalan, Asia/Tashkent)."); }
         if (s.OpenFilm.RenderWorkers is < 1 or > 4) e.Add("Parallel renderer soni 1-4 bo'lsin.");
         return e;
     }
@@ -183,21 +317,9 @@ public sealed partial class SettingsViewModel : ObservableObject
         S.Templates = Templates.Where(t => !string.IsNullOrWhiteSpace(t.Name)).ToList();
         var errors = Validate(S);
         if (errors.Count > 0) { Message = "Saqlanmadi: " + string.Join(" ", errors); return; }
-        var before = _svc.Settings.Load();
         _svc.Settings.Save(S);
-        if (GeminiKeyInput.Length > 0) { _svc.Secrets.Set(SecretNames.GeminiApiKey, GeminiKeyInput.Trim()); GeminiKeyInput = ""; }
         if (ClientSecretInput.Length > 0) { _svc.Secrets.Set(SecretNames.YouTubeClientSecret, ClientSecretInput.Trim()); ClientSecretInput = ""; }
         var msg = "Saqlandi. Ishlayotgan/boshlangan vazifalar o'z snapshot'idagi sozlamalar bilan davom etadi.";
-        if (S.Schedule.Enabled && (before.Schedule.StartTime != S.Schedule.StartTime || before.Schedule.TimeZoneId != S.Schedule.TimeZoneId || before.Schedule.WakeToRun != S.Schedule.WakeToRun))
-        {
-            try
-            {
-                var exe = Shell.FindWorkerExe() ?? throw new FileNotFoundException("YtAuto.Worker.exe topilmadi");
-                new TaskSchedulerService().Register(S.Schedule, exe);
-                msg += " Windows jadvali yangilandi.";
-            }
-            catch (Exception e) { msg += " Jadvalni yangilab bo'lmadi: " + e.Message; }
-        }
         Load();
         Message = msg;
     }
@@ -247,6 +369,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             var vs = _svc.Settings.Load().VoiceStudio;
             var catalog = await Task.Run(() => new Infrastructure.Voice.VoiceCatalogService(_svc.LocalDb).FetchAsync(vs, _svc.Log, CancellationToken.None));
             ApplyCatalog(catalog);
+            try { _svc.Settings.PublishCatalog(); } catch { } // ovoz ma'lumotlari online bazaga (bot ko'rsatadi)
             Message = $"Topildi: {catalog.Engines.Count(e => e.Usable)} ta ishlatish mumkin bo'lgan dvigatel.";
         }
         catch (Exception e) { Message = "Modellarni o'qib bo'lmadi: " + e.Message; }
@@ -346,16 +469,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ResetPrompts()
-    {
-        S.Gemini.ScriptPrompt = DefaultPrompts.Script;
-        S.Claude.MontagePrompt = DefaultPrompts.Montage;
-        OnPropertyChanged(nameof(S));
-        var copy = S; S = new AppSettings(); S = copy;
-        Message = "Promptlar standart holatga qaytarildi (saqlash uchun 'Saqlash'ni bosing).";
-    }
-
-    [RelayCommand]
     private async Task ConnectYouTube()
     {
         Save();
@@ -375,10 +488,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void DisconnectYouTube()
     {
+        if (System.Windows.MessageBox.Show("YouTube kanali uziladimi? Barcha kompyuterlarda (va botda) yuklash to'xtaydi; qayta ulash botdan qilinadi.",
+                "YtAuto", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question) != System.Windows.MessageBoxResult.Yes) return;
         _svc.YouTubeAuth.Disconnect();
+        // Bot orqali ulangan (umumiy) token ham bazadan olib tashlanadi - aks holda ilova uni yana ishlatib qoladi.
+        if (_svc.IsOnline) try { _svc.Store.SetSetting("youtube.oauth", ""); } catch (Exception e) { _svc.Log.Warn("Umumiy YouTube tokenini o'chirib bo'lmadi: " + e.Message); }
         var s = _svc.Settings.Load(); s.YouTube.ChannelTitle = ""; _svc.Settings.Save(s);
         Load();
-        Message = "YouTube tokenlari o'chirildi.";
+        Message = "YouTube kanali uzildi.";
     }
 
     [RelayCommand]

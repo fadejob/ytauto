@@ -94,6 +94,14 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
             Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','3')", tx);
             tx.Commit();
         }
+        if (version < 4)
+        {
+            // v4: har worker ishga tushishidagi resurs/hajm statistikasi (JSON).
+            using var tx = c.BeginTransaction();
+            Exec(c, "ALTER TABLE worker_runs ADD COLUMN stats_json TEXT", tx);
+            Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','4')", tx);
+            tx.Commit();
+        }
     }
 
     // ------------------------------------------------------------------ helpers
@@ -481,6 +489,45 @@ ON CONFLICT(job_id, stage) DO UPDATE SET state=excluded.state, started_at_utc=ex
             ("$r", runId), ("$f", Ts(DateTimeOffset.UtcNow)), ("$o", outcome), ("$j", jobId), ("$m", message));
     }
 
+    // Heartbeat/tekshiruv so'rovi faqat online bazada ma'noli; lokal rejimda hech narsa qilmaydi.
+    public void Heartbeat(string machine, bool? appOpen, string? workerState, long? jobId, string? detail, string? version) { }
+    public bool TakeCheckRequest(string machine) => false;
+    public bool TakeRunRequest(string machine) => false;
+    public IReadOnlyList<(long Id, string Kind, string Arg)> TakeCommands(string machine) => Array.Empty<(long, string, string)>();
+    public void ReplaceTemplates(string machine, IReadOnlyList<(string Name, string Kind, long Size, DateTimeOffset? Added, string Source, string Notes)> items) { }
+    public (long Id, string Name, string Kind, string Url, long Size)? ClaimTemplateUpload(string machine) => null;
+    public void UpdateTemplateUpload(long id, string status, int progress, string? message) { }
+    public void SaveCheckResult(string machine, string json) { }
+    public (long JobId, string Topic, int Status)? CurrentWork(string runId)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT id, topic, status FROM jobs WHERE claimed_by = $r ORDER BY claimed_at_utc DESC LIMIT 1";
+        cmd.Parameters.AddWithValue("$r", runId);
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? (r.GetInt64(0), r.GetString(1), r.GetInt32(2)) : null;
+    }
+
+    public void SaveRunStats(string runId, string json)
+    {
+        using var c = Open();
+        Exec(c, "UPDATE worker_runs SET stats_json=$s WHERE run_id=$r", null, ("$r", runId), ("$s", json));
+    }
+
+    public IReadOnlyList<(string RunId, DateTimeOffset Started, DateTimeOffset? Finished, string? Outcome, string? Machine, string? StatsJson)> RunStats(int n = 30)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT run_id, started_at_utc, finished_at_utc, outcome, stats_json FROM worker_runs ORDER BY started_at_utc DESC LIMIT $n";
+        cmd.Parameters.AddWithValue("$n", n);
+        using var r = cmd.ExecuteReader();
+        var list = new List<(string, DateTimeOffset, DateTimeOffset?, string?, string?, string?)>();
+        while (r.Read())
+            list.Add((r.GetString(0), ParseTs(r.GetString(1))!.Value, ParseTs(r.IsDBNull(2) ? null : r.GetString(2)), r.IsDBNull(3) ? null : r.GetString(3),
+                Environment.MachineName, r.IsDBNull(4) ? null : r.GetString(4)));
+        return list;
+    }
+
     public IReadOnlyList<(string RunId, DateTimeOffset Started, DateTimeOffset? Finished, string? Outcome, long? JobId, string? Message, string? Trigger)> RecentRuns(int n = 20)
     {
         using var c = Open();
@@ -544,6 +591,8 @@ public sealed class SqliteSettingsStore : ISettingsStore
     private readonly IAppStore? _shared;
     public const string ScriptPromptKey = "prompt.script";
     public const string MontagePromptKey = "prompt.montage";
+    /// <summary>Jadval (yoqilgan/vaqt/zona/uyg'otish) bot orqali online bazada boshqariladi: JSON.</summary>
+    public const string ScheduleKey = "schedule";
     public SqliteSettingsStore(SqliteJobStore db, Func<AppSettings> defaults, IAppStore? shared = null) { _db = db; _defaults = defaults; _shared = shared; }
 
     public bool PromptsAreGlobal => _shared is not null;
@@ -558,8 +607,125 @@ public sealed class SqliteSettingsStore : ISettingsStore
             // Online bazada hali yo'q bo'lsa - lokaldagisi bir marta yuklanadi.
             if (sp is null) _shared.SetSetting(ScriptPromptKey, s.Gemini.ScriptPrompt); else s.Gemini.ScriptPrompt = MigratePrompt(sp, true);
             if (mp is null) _shared.SetSetting(MontagePromptKey, s.Claude.MontagePrompt); else s.Claude.MontagePrompt = MigratePrompt(mp, false);
+            ApplyBotConfig(s, _shared.GetSetting(ConfigKey));
+            try
+            {
+                var oauth = _shared.GetSetting("youtube.oauth");
+                if (!string.IsNullOrWhiteSpace(oauth) && System.Text.Json.Nodes.JsonNode.Parse(oauth)?["refreshToken"]?.GetValue<string>() is { Length: > 0 } rt)
+                {
+                    s.YouTube.RemoteRefreshToken = rt.Trim();
+                    if (System.Text.Json.Nodes.JsonNode.Parse(oauth)?["channelTitle"]?.GetValue<string>() is { Length: > 0 } ct) s.YouTube.ChannelTitle = ct; // bot ulagan kanal nomi
+                }
+            }
+            catch { }
+            var sch = _shared.GetSetting(ScheduleKey);
+            if (!string.IsNullOrWhiteSpace(sch))
+            {
+                try { s.Schedule = System.Text.Json.JsonSerializer.Deserialize<ScheduleSettings>(sch, AppSettings.Json) ?? s.Schedule; } catch { }
+            }
         }
         return s;
+    }
+
+    /// <summary>Bot boshqaradigan umumiy sozlamalar (JSON): gemini, limits, defaults. Bo'lmagan maydonlar o'zgarmaydi.</summary>
+    public const string ConfigKey = "config";
+
+    private static void ApplyBotConfig(AppSettings s, string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return;
+        try
+        {
+            var root = System.Text.Json.Nodes.JsonNode.Parse(json);
+            if (root?["gemini"] is { } g)
+            {
+                if (g["apiKey"]?.GetValue<string>() is { Length: > 0 } k) s.Gemini.RemoteApiKey = k.Trim();
+                if (g["model"]?.GetValue<string>() is { Length: > 0 } m) s.Gemini.Model = m.Trim();
+                if (g["temperature"] is { } t) s.Gemini.Temperature = t.GetValue<double>();
+                if (g["useSearchGrounding"] is { } sg) s.Gemini.UseSearchGrounding = sg.GetValue<bool>();
+            }
+            if (root?["youtube"] is { } y)
+            {
+                static string? Str(System.Text.Json.Nodes.JsonNode? n) => n?.GetValue<string>();
+                static bool? Bool(System.Text.Json.Nodes.JsonNode? n) => n?.GetValue<bool>();
+                if (Str(y["clientId"]) is { Length: > 0 } cid) s.YouTube.ClientId = cid.Trim();
+                if (Str(y["clientSecret"]) is { Length: > 0 } cs) s.YouTube.RemoteClientSecret = cs.Trim();
+                if (Str(y["publishTime"]) is { Length: > 0 } pt) s.YouTube.PublishTime = pt;
+                if (Str(y["timeZoneId"]) is { Length: > 0 } tz) s.YouTube.TimeZoneId = tz;
+                if (Str(y["categoryId"]) is { Length: > 0 } cat) s.YouTube.CategoryId = cat;
+                if (Str(y["regionCode"]) is { Length: > 0 } rc) s.YouTube.RegionCode = rc;
+                if (Bool(y["madeForKids"]) is { } mk) s.YouTube.MadeForKids = mk;
+                if (Bool(y["containsSyntheticMedia"]) is { } sm) s.YouTube.ContainsSyntheticMedia = sm;
+                if (Str(y["license"]) is { Length: > 0 } lic) s.YouTube.License = lic;
+                if (Bool(y["embeddable"]) is { } em) s.YouTube.Embeddable = em;
+                if (Bool(y["publicStatsViewable"]) is { } ps) s.YouTube.PublicStatsViewable = ps;
+                if (Bool(y["notifySubscribers"]) is { } ns) s.YouTube.NotifySubscribers = ns;
+                if (Bool(y["setRecordingDate"]) is { } rd) s.YouTube.SetRecordingDate = rd;
+                if (Str(y["locationDescription"]) is { } loc) s.YouTube.LocationDescription = loc;
+                if (Str(y["defaultTags"]) is { } tags) s.YouTube.DefaultTags = tags;
+                if (Str(y["defaultDescription"]) is { } dd) s.YouTube.DefaultDescription = dd;
+                if (y["minLeadMinutes"] is { } ml) s.YouTube.MinLeadMinutes = ml.GetValue<int>();
+            }
+            if (root?["gemini"]?["timeoutSec"] is { } gts) s.Gemini.TimeoutSec = Math.Clamp(gts.GetValue<int>(), 30, 1800);
+            if (root?["claude"] is { } cl)
+            {
+                if (cl["model"]?.GetValue<string>() is { } cm) s.Claude.Model = cm.Trim();
+                if (cl["timeoutMinutes"] is { } ctm) s.Claude.TimeoutMinutes = Math.Clamp(ctm.GetValue<int>(), 5, 600);
+                if (cl["maxBudgetUsd"] is { } cb) s.Claude.MaxBudgetUsd = Math.Max(0, cb.GetValue<double>());
+            }
+            if (root?["voice"] is { } vc)
+            {
+                // Ovoz profillari botda boshqariladi: ro'yxat bo'sh bo'lmasa lokal ro'yxat o'rniga qo'llanadi.
+                if (vc["profiles"] is System.Text.Json.Nodes.JsonArray arr && arr.Count > 0)
+                {
+                    var list = new List<VoiceProfile>();
+                    foreach (var p in arr)
+                    {
+                        var name = p?["name"]?.GetValue<string>()?.Trim();
+                        if (string.IsNullOrEmpty(name)) continue;
+                        list.Add(new VoiceProfile
+                        {
+                            Name = name, Model = p?["model"]?.GetValue<string>() ?? "kittentts", Voice = p?["voice"]?.GetValue<string>() ?? "",
+                            Language = p?["language"]?.GetValue<string>() ?? "en", Speed = Math.Clamp(p?["speed"]?.GetValue<double>() ?? 1.0, 0.5, 2.0),
+                        });
+                    }
+                    if (list.Count > 0) s.VoiceProfiles = list;
+                }
+                if (vc["settings"] is { } vs)
+                {
+                    if (vs["baseUrl"]?.GetValue<string>() is { Length: > 0 } bu) s.VoiceStudio.BaseUrl = bu.Trim();
+                    if (vs["startupTimeoutSec"] is { } a1) s.VoiceStudio.StartupTimeoutSec = Math.Clamp(a1.GetValue<int>(), 30, 1800);
+                    if (vs["requestTimeoutSec"] is { } a2) s.VoiceStudio.RequestTimeoutSec = Math.Clamp(a2.GetValue<int>(), 30, 3600);
+                    if (vs["chunkChars"] is { } a3) s.VoiceStudio.ChunkChars = Math.Clamp(a3.GetValue<int>(), 100, 2000);
+                    if (vs["pauseBetweenChunksSec"] is { } a4) s.VoiceStudio.PauseBetweenChunksSec = Math.Clamp(a4.GetValue<double>(), 0, 5);
+                    if (vs["whisperModel"]?.GetValue<string>() is { Length: > 0 } wm) s.VoiceStudio.WhisperModel = wm.Trim();
+                    if (vs["alignTimeoutSec"] is { } a5) s.VoiceStudio.AlignTimeoutSec = Math.Clamp(a5.GetValue<int>(), 60, 7200);
+                }
+            }
+            if (root?["openFilm"] is { } of)
+            {
+                if (of["renderWorkers"] is { } rw) s.OpenFilm.RenderWorkers = Math.Clamp(rw.GetValue<int>(), 1, 4);
+                if (of["fps"] is { } fps) s.OpenFilm.Fps = Math.Clamp(fps.GetValue<int>(), 1, 120);
+                if (of["loudnessLufs"] is { } lu) s.OpenFilm.LoudnessLufs = lu.GetValue<double>();
+                if (of["burnSubtitles"] is { } bs) s.OpenFilm.BurnSubtitles = bs.GetValue<bool>();
+                if (of["lookFullAfterRender"] is { } lf) s.OpenFilm.LookFullAfterRender = lf.GetValue<bool>();
+                if (of["renderTimeoutMinutes"] is { } rt) s.OpenFilm.RenderTimeoutMinutes = Math.Max(5, rt.GetValue<int>());
+            }
+            if (root?["limits"] is { } l)
+            {
+                if (l["maxRunAttempts"] is { } a) s.Limits.MaxRunAttempts = a.GetValue<int>();
+                if (l["maxQaFixCycles"] is { } q) s.Limits.MaxQaFixCycles = q.GetValue<int>();
+                if (l["minFreeDiskGb"] is { } d) s.Limits.MinFreeDiskGb = d.GetValue<double>();
+                if (l["minFreeRamGbForTts"] is { } r) s.Limits.MinFreeRamGbForTts = r.GetValue<double>();
+            }
+            if (root?["defaults"] is { } df)
+            {
+                if (df["language"]?.GetValue<string>() is { Length: > 0 } lang) s.Defaults.Language = lang;
+                if (df["format"] is { } f) s.Defaults.Format = (VideoFormat)f.GetValue<int>();
+                if (df["template"]?.GetValue<string>() is { } tpl) s.Defaults.Template = tpl;
+                if (df["voiceProfile"]?.GetValue<string>() is { Length: > 0 } vp) s.Defaults.VoiceProfile = vp;
+            }
+        }
+        catch { /* buzilgan JSON: lokal qiymatlar ishlatiladi */ }
     }
 
     private static string MigratePrompt(string p, bool script)
@@ -584,6 +750,18 @@ public sealed class SqliteSettingsStore : ISettingsStore
             var found = Claude.ClaudeLocator.Find();
             if (found is not null) s.Claude.ExecutablePath = found;
         }
+        // VoiceStudio, OpenFilm, Python va Whisper keshi: yo'l yo'q yoki noto'g'ri bo'lsa kompyuterdan o'zi topiladi va saqlanadi.
+        var pathsBefore = (s.VoiceStudio.ExePath, s.VoiceStudio.PythonPath, s.VoiceStudio.HfCacheDir, s.OpenFilm.ExePath, s.Claude.ExecutablePath);
+        if (string.IsNullOrWhiteSpace(s.VoiceStudio.ExePath) || !File.Exists(s.VoiceStudio.ExePath))
+            s.VoiceStudio.ExePath = ToolLocator.FindVoiceStudioExe() ?? s.VoiceStudio.ExePath;
+        if (string.IsNullOrWhiteSpace(s.VoiceStudio.PythonPath) || !File.Exists(s.VoiceStudio.PythonPath))
+            s.VoiceStudio.PythonPath = ToolLocator.FindVoicePython(s.VoiceStudio.ExePath) ?? s.VoiceStudio.PythonPath;
+        if (string.IsNullOrWhiteSpace(s.VoiceStudio.HfCacheDir) || !Directory.Exists(Path.Combine(s.VoiceStudio.HfCacheDir, "models--" + s.VoiceStudio.WhisperModel.Replace("/", "--"))))
+            s.VoiceStudio.HfCacheDir = ToolLocator.FindHfCache(s.VoiceStudio.WhisperModel) ?? s.VoiceStudio.HfCacheDir;
+        if (string.IsNullOrWhiteSpace(s.OpenFilm.ExePath) || !File.Exists(s.OpenFilm.ExePath))
+            s.OpenFilm.ExePath = ToolLocator.FindOpenFilmExe() ?? s.OpenFilm.ExePath;
+        if (pathsBefore != (s.VoiceStudio.ExePath, s.VoiceStudio.PythonPath, s.VoiceStudio.HfCacheDir, s.OpenFilm.ExePath, s.Claude.ExecutablePath))
+            _db.SetSetting("app_settings", s.ToJson());
         // Eski sozlamalar migratsiyasi: shablonlar papkasi va dinamik davomiylik.
         if (string.IsNullOrWhiteSpace(s.Paths.TemplatesDir)) s.Paths.TemplatesDir = _defaults().Paths.TemplatesDir;
         s.Defaults.TargetDurationSec = 0;
@@ -599,8 +777,7 @@ public sealed class SqliteSettingsStore : ISettingsStore
         _db.SetSetting("app_settings", settings.ToJson());
         if (_shared is not null)
         {
-            _shared.SetSetting(ScriptPromptKey, settings.Gemini.ScriptPrompt ?? "");
-            _shared.SetSetting(MontagePromptKey, settings.Claude.MontagePrompt ?? "");
+            // Promptlar va jadval botda tahrirlanadi: ilova ularni qayta yozmaydi.
             PublishCatalog(settings);
         }
     }
@@ -629,6 +806,73 @@ public sealed class SqliteSettingsStore : ISettingsStore
             machine = Environment.MachineName,
         };
         _shared.SetSetting(BotCatalogKey, System.Text.Json.JsonSerializer.Serialize(catalog));
+        PublishTemplates(s);
+        PublishVoice(s);
+        try
+        {
+            // Standart promptlar: botdagi "Standartga qaytarish" tugmasi shulardan foydalanadi.
+            _shared.SetSetting("prompt.default.script", DefaultPrompts.Script);
+            _shared.SetSetting("prompt.default.montage", DefaultPrompts.Montage);
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Ilovadagi "Ayol/Erkak ovozi" paneli profillarni o'zgartirganda ular bot konfigidagi (config.voice.profiles) ro'yxatga ham yoziladi:
+    /// bot ro'yxati asosiy manba, shuning uchun lokal o'zgarish uni bekor qilib qo'ymasligi uchun.
+    /// </summary>
+    public void PushVoiceProfiles(IReadOnlyList<VoiceProfile> profiles)
+    {
+        if (_shared is null) return;
+        var root = System.Text.Json.Nodes.JsonNode.Parse(_shared.GetSetting(ConfigKey) ?? "{}") as System.Text.Json.Nodes.JsonObject ?? new();
+        var voice = root["voice"] as System.Text.Json.Nodes.JsonObject ?? new();
+        var arr = new System.Text.Json.Nodes.JsonArray();
+        foreach (var p in profiles)
+            arr.Add(new System.Text.Json.Nodes.JsonObject { ["name"] = p.Name, ["model"] = p.Model, ["voice"] = p.Voice, ["language"] = p.Language, ["speed"] = p.Speed });
+        voice["profiles"] = arr;
+        root["voice"] = voice;
+        _shared.SetSetting(ConfigKey, root.ToJsonString());
+    }
+
+    /// <summary>Shablonlar ro'yxati (nom, tur, hajm, manba) shu kompyuter uchun online bazaga yoziladi: bot ko'rsatadi. Fayllar yuklanmaydi.</summary>
+    private void PublishTemplates(AppSettings s)
+    {
+        try
+        {
+            _shared!.ReplaceTemplates(Environment.MachineName, s.Templates.Select(t =>
+                (t.Name, t.Kind.ToString(), t.SizeBytes, t.AddedAtUtc, t.Managed ? "upload" : "video", t.Notes ?? "")).ToList());
+        }
+        catch { /* ro'yxat keyingi safar yoziladi */ }
+    }
+
+    /// <summary>
+    /// Ovoz ma'lumotlari: VoiceStudio dvigatellari, ularning ovozlari/modellari va ovoz profillari (kompyuter bo'yicha)
+    /// online bazaga yoziladi (shared_settings: voice.catalog.KOMPYUTER). Bot faqat ko'rsatadi.
+    /// </summary>
+    private void PublishVoice(AppSettings s)
+    {
+        try
+        {
+            VoiceCatalog? cat = null;
+            var json = _db.GetSetting("voice_catalog");
+            if (json is not null) try { cat = System.Text.Json.JsonSerializer.Deserialize<VoiceCatalog>(json); } catch { }
+            var obj = new
+            {
+                machine = Environment.MachineName,
+                fetchedAtUtc = cat?.FetchedAtUtc, voiceStudioVersion = cat?.VoiceStudioVersion ?? "",
+                updatedAtUtc = DateTimeOffset.UtcNow,
+                engines = (cat?.Engines ?? new()).Select(e => new
+                {
+                    id = e.Id, displayName = e.DisplayName, available = e.Available, usable = e.Usable, reason = e.Reason,
+                    voices = e.Voices, installedModels = e.InstalledModels, knownModels = e.KnownModels, supportsCloning = e.SupportsCloning,
+                }),
+                profiles = s.VoiceProfiles.Select(v => new { name = v.Name, model = v.Model, voice = v.Voice, language = v.Language, speed = v.Speed }),
+                defaultProfile = s.Defaults.VoiceProfile ?? "",
+            };
+            _shared!.SetSetting("voice.catalog." + Environment.MachineName, System.Text.Json.JsonSerializer.Serialize(obj,
+                new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
+        }
+        catch { /* keyingi safar yoziladi */ }
     }
 
     private static bool Same(string a, string b) =>

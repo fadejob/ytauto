@@ -26,9 +26,9 @@ public sealed class ScheduledTaskInfo
 public sealed class TaskSchedulerService
 {
     public const string TaskName = "YtAuto Daily Worker";
-    /// <summary>Masofaviy "Hozir chiqarish" buyrug'ini kutuvchi vazifa: har bir necha daqiqada yengil --poll (navbatga tegmaydi).</summary>
+    /// <summary>Masofaviy "Hozir chiqarish" buyrug'ini kutuvchi vazifa: har 10 daqiqada yengil --poll: holat yuboradi, so'rov bo'lsagina ishlaydi (navbatga tegmaydi).</summary>
     public const string PollTaskName = "YtAuto Remote Trigger";
-    public const int PollIntervalMinutes = 2;
+    public const int PollIntervalMinutes = 10;
     /// <summary>Bir ishga tushishda 3 tagacha video + tanaffuslar: ish vaqti limiti kamida shuncha soat.</summary>
     public const int MinBatchExecutionHours = 10;
     private const int TASK_CREATE_OR_UPDATE = 6;
@@ -190,6 +190,15 @@ public sealed class TaskSchedulerService
             catch (COMException e) when ((uint)e.HResult == 0x80070002) { }
             catch (FileNotFoundException) { }
         }
+    }
+
+    /// <summary>Faqat kunlik jadvalni o'chiradi; masofaviy buyruq (poll) vazifasi qoladi.</summary>
+    public void UnregisterDaily()
+    {
+        dynamic svc = Service();
+        try { svc.GetFolder("\\").DeleteTask(TaskName, 0); }
+        catch (COMException e) when ((uint)e.HResult == 0x80070002) { }
+        catch (FileNotFoundException) { }
     }
 
     /// <summary>Masofaviy buyruq vazifasi ro'yxatda bormi (UI holati uchun).</summary>

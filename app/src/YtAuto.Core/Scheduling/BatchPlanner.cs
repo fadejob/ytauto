@@ -10,6 +10,16 @@ public static class BatchPlanner
     public const int MaxVideosPerRun = 3;
     public static readonly TimeSpan PauseBetweenVideos = TimeSpan.FromMinutes(15);
 
+    /// <summary>Ish oynasi (StartTime-EndTime, kanal vaqt zonasida): ichidagina yangi video boshlanadi. Yarim tundan oshadigan oyna ham qo'llanadi.</summary>
+    public static bool InWorkWindow(YtAuto.Core.Domain.ScheduleSettings s, DateTimeOffset nowUtc)
+    {
+        var tz = TimeZones.Find(s.TimeZoneId);
+        var now = TimeOnly.FromDateTime(TimeZoneInfo.ConvertTime(nowUtc, tz).DateTime);
+        var start = TimeZones.ParseTime(s.StartTime, new TimeOnly(1, 0));
+        var end = TimeZones.ParseTime(s.EndTime, new TimeOnly(4, 0));
+        return start <= end ? now >= start && now < end : now >= start || now < end;
+    }
+
     public static int VideosFor(int pendingTopics) => pendingTopics switch
     {
         <= 0 => 0,

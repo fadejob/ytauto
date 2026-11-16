@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { confirmBox, haptic } from "@/lib/client";
-import { StatusText, type Action, type State, type Topic } from "@/lib/types";
+import { FormatText, StatusText, type Action, type Catalog, type State, type Topic } from "@/lib/types";
 import type { Run } from "./App";
 import { IconBolt, IconEdit, IconPlay, IconPlus, IconRefresh, IconTrash, IconUpload } from "./icons";
 
@@ -27,6 +27,7 @@ export default function Topics({ state, loading, refresh, run }: { state: State 
   const [sheet, setSheet] = useState<{ mode: "new" } | { mode: "edit"; topic: Topic } | null>(null);
   const [open, setOpen] = useState<number | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
+  const [resched, setResched] = useState<Topic | null>(null);
 
   const counts = useMemo(() => {
     const c = { queue: 0, work: 0, done: 0 };
@@ -36,7 +37,10 @@ export default function Topics({ state, loading, refresh, run }: { state: State 
   const items = (state?.topics ?? []).filter((t) => groupOf(t) === group);
   if (group === "done") items.sort((a, b) => b.publishAt.localeCompare(a.publishAt));
 
-  async function act(t: Topic, kind: "publish" | "unpublish" | "upload" | "unupload" | "delete") {
+  async function act(t: Topic, kind: "publish" | "unpublish" | "upload" | "unupload" | "delete" | "retry" | "retry_settings" | "cancel" | "force_upload") {
+    if (kind === "retry_settings" && !(await confirmBox("Vazifa joriy sozlamalar va promptlar bilan qayta snapshot qilinadi, o'zgargan bosqichlar qayta bajariladi. Davom etilsinmi?"))) return;
+    if (kind === "cancel" && !(await confirmBox(`"${t.topic}" bekor qilinsinmi? YouTube'ga yuklangan video o'chirilmaydi.`))) return;
+    if (kind === "force_upload" && !(await confirmBox("YouTube Studio'da bu video YO'QLIGINI tekshirdingizmi? Aks holda ikki marta yuklanadi.\n\nYangi upload boshlansinmi?"))) return;
     if (kind === "publish" && !(await confirmBox(t.youtubeUrl
       ? `"${t.topic}" YouTube'da hozir public qilinsinmi?`
       : `"${t.topic}" hozir tayyorlanib, YouTube'ga darhol chiqarilsinmi?`))) return;
@@ -49,6 +53,10 @@ export default function Topics({ state, loading, refresh, run }: { state: State 
       : kind === "unpublish" ? { type: "cancel_publish_now", id: t.id }
       : kind === "upload" ? { type: "upload_ready", id: t.id }
       : kind === "unupload" ? { type: "cancel_upload_ready", id: t.id }
+      : kind === "retry" ? { type: "retry", id: t.id }
+      : kind === "retry_settings" ? { type: "retry_settings", id: t.id }
+      : kind === "cancel" ? { type: "cancel", id: t.id }
+      : kind === "force_upload" ? { type: "force_new_upload", id: t.id }
       : { type: "delete_topic", id: t.id };
     await run([action]);
     setBusy(null);
@@ -95,6 +103,11 @@ export default function Topics({ state, loading, refresh, run }: { state: State 
               {t.canPublishNow ? <button className="btn primary" disabled={busy === t.id} onClick={() => act(t, "publish")}><IconBolt />Hozir chiqarish</button> : null}
               {t.publishNow ? <button className="btn ghost" disabled={busy === t.id} onClick={() => act(t, "unpublish")}>Bekor qilish</button> : null}
               {t.editable ? <button className="btn" onClick={() => { haptic.tap(); setSheet({ mode: "edit", topic: t }); }}><IconEdit />Tahrirlash</button> : null}
+              {t.canRetry ? <button className="btn primary" disabled={busy === t.id} onClick={() => act(t, "retry")}><IconRefresh />Qayta urinish</button> : null}
+              {t.canRetry ? <button className="btn" disabled={busy === t.id} onClick={() => act(t, "retry_settings")}>Joriy sozlamalar bilan qayta</button> : null}
+              {t.canForceUpload ? <button className="btn" disabled={busy === t.id} onClick={() => act(t, "force_upload")}><IconUpload />Yangi upload</button> : null}
+              {t.canReschedule ? <button className="btn" disabled={busy === t.id} onClick={() => { haptic.tap(); setResched(t); }}>Vaqtni o&apos;zgartirish</button> : null}
+              {t.canCancel && !t.deletable ? <button className="btn danger" disabled={busy === t.id} onClick={() => act(t, "cancel")}>Bekor qilish</button> : null}
               {t.deletable ? <button className="btn danger" disabled={busy === t.id} onClick={() => act(t, "delete")}><IconTrash /></button> : null}
               {t.youtubeUrl ? <a className="btn" href={t.youtubeUrl} target="_blank" rel="noreferrer"><IconPlay />YouTube</a> : null}
             </div>
@@ -105,15 +118,50 @@ export default function Topics({ state, loading, refresh, run }: { state: State 
       {group !== "done" && (
         <button className="fab" onClick={() => { haptic.tap(); setSheet({ mode: "new" }); }}><IconPlus />Mavzu</button>
       )}
-      {sheet && <TopicSheet sheet={sheet} close={() => setSheet(null)} run={run} />}
+      {sheet && state && <TopicSheet sheet={sheet} catalog={state.catalog} close={() => setSheet(null)} run={run} />}
+      {resched && <RescheduleSheet topic={resched} close={() => setResched(null)} run={run} />}
+    </>
+  );
+}
+
+/** Tayyor (yoki tayyorlanayotgan) vazifaning chiqish vaqtini o'zgartirish. */
+function RescheduleSheet({ topic, close, run }: { topic: Topic; close: () => void; run: Run }) {
+  const [date, setDate] = useState(topic.publishLocal.date);
+  const [time, setTime] = useState(topic.publishLocal.time);
+  const [saving, setSaving] = useState(false);
+  async function save() {
+    setSaving(true);
+    const [r] = await run([{ type: "reschedule", id: topic.id, publishAt: `${date} ${time || "18:00"}` }]);
+    setSaving(false);
+    if (r?.ok) close();
+  }
+  return (
+    <>
+      <div className="backdrop" onClick={close} />
+      <section className="sheet" role="dialog" aria-label="Chiqish vaqtini o'zgartirish">
+        <div className="grab" />
+        <h2>#{topic.id} — chiqish vaqti</h2>
+        <div className="card formcard">
+          <div className="grid2">
+            <div className="field"><label>Sana</label><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+            <div className="field"><label>Soat</label><input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} /></div>
+          </div>
+          <div className="hint">Kamida 30 daqiqa kelajakda bo&apos;lsin. Video qayta yaratilmaydi.</div>
+        </div>
+        <button className="btn primary block" style={{ marginTop: 12 }} disabled={saving || !date} onClick={save}>{saving ? "Saqlanmoqda…" : "Saqlash"}</button>
+      </section>
     </>
   );
 }
 
 type Row = { topic: string; notes: string; date: string; time: string };
 
-function TopicSheet({ sheet, close, run }: { sheet: { mode: "new" } | { mode: "edit"; topic: Topic }; close: () => void; run: Run }) {
+function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | { mode: "edit"; topic: Topic }; catalog: Catalog; close: () => void; run: Run }) {
   const edit = sheet.mode === "edit" ? sheet.topic : null;
+  // Shablon va format: yangi mavzuda standartdan boshlanadi, tahrirda mavzuning hozirgi qiymatidan.
+  const [template, setTemplate] = useState(edit ? edit.template : catalog.defaults.template);
+  const [format, setFormat] = useState(edit ? edit.format : catalog.defaults.format);
+  const [voice, setVoice] = useState(edit ? edit.voice : catalog.defaults.voiceProfile || catalog.voiceProfiles[0] || "");
   const [rows, setRows] = useState<Row[]>(
     edit ? [{ topic: edit.topic, notes: edit.notes, date: edit.publishLocal.date, time: edit.publishLocal.time }] : [{ topic: "", notes: "", date: "", time: "" }],
   );
@@ -126,8 +174,8 @@ function TopicSheet({ sheet, close, run }: { sheet: { mode: "new" } | { mode: "e
     if (!filled.length) return;
     setSaving(true);
     const results = await run(edit
-      ? [{ type: "update_topic", id: edit.id, topic: filled[0].topic, notes: filled[0].notes, publishAt: at(filled[0]) }]
-      : [{ type: "create_topics", topics: filled.map((r) => ({ topic: r.topic, notes: r.notes, publishAt: at(r) })) }]);
+      ? [{ type: "update_topic", id: edit.id, topic: filled[0].topic, notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice }]
+      : [{ type: "create_topics", topics: filled.map((r) => ({ topic: r.topic, notes: r.notes, publishAt: at(r), template, format, voice })) }]);
     setSaving(false);
     if (results.every((r) => r.ok)) close();
   }
@@ -156,6 +204,33 @@ function TopicSheet({ sheet, close, run }: { sheet: { mode: "new" } | { mode: "e
               {!edit && !r.date ? <div className="hint">Sana bo'sh bo'lsa avtomatik: oxirgi rejadan +2 kun.</div> : null}
             </div>
           ))}
+        </div>
+        <div className="card formcard" style={{ marginTop: 10 }}>
+          <div className="grid2">
+            <div className="field">
+              <label>Shablon</label>
+              <select className="input" value={template} onChange={(e) => setTemplate(e.target.value)}>
+                <option value="">Shablonsiz</option>
+                {catalog.templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+                {template && !catalog.templates.some((t) => t.name === template) ? <option value={template}>{template}</option> : null}
+              </select>
+            </div>
+            <div className="field">
+              <label>Format</label>
+              <select className="input" value={format} onChange={(e) => setFormat(Number(e.target.value))}>
+                {[0, 1, 2].map((f) => <option key={f} value={f}>{FormatText[f]}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="field">
+            <label>Ovoz</label>
+            <select className="input" value={voice} onChange={(e) => setVoice(e.target.value)}>
+              {catalog.voiceProfiles.length === 0 ? <option value="">Kompyuterdagi standart</option> : null}
+              {catalog.voiceProfiles.map((v) => <option key={v} value={v}>{v}</option>)}
+              {voice && !catalog.voiceProfiles.includes(voice) ? <option value={voice}>{voice}</option> : null}
+            </select>
+          </div>
+          {!catalog.known ? <div className="hint">Shablonlar ro&apos;yxati desktop ilova katalog yuborgach chiqadi.</div> : null}
         </div>
         <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
           {!edit && rows.length < 5 ? <button className="btn block" onClick={() => setRows((r) => [...r, { topic: "", notes: "", date: "", time: "" }])}><IconPlus />Yana mavzu ({rows.length}/5)</button> : null}
