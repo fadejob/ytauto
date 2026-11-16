@@ -193,7 +193,9 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
   const set = (i: number, patch: Partial<Row>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const at = (r: Row) => (r.date ? `${r.date} ${r.time || "18:00"}` : undefined);
   const hasAudio = !!edit?.hasAudio;
-  const filled = rows.filter((r) => r.topic.trim() || (r.source !== "gemini" && (r.title.trim() || r.script.trim() || r.file)));
+  // Qo'lda/audio rejimda alohida mavzu yo'q: mavzu nomi title bo'ladi.
+  const filled = rows.filter((r) => (r.source === "gemini" ? r.topic.trim() : r.title.trim() || r.script.trim() || r.file));
+  const topicOf = (r: Row) => (r.source === "gemini" ? r.topic : r.title);
   const problems = filled.map((r) => rowProblem(r, hasAudio));
   const canSave = filled.length > 0 && problems.every((p) => p === null);
   const allAudio = rows.every((r) => r.source === "audio");
@@ -215,11 +217,11 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
       setSaving("Saqlanmoqda…");
       const manual = (r: Row) => (r.source === "gemini" ? { script: "", title: "" } : { script: r.script, title: r.title });
       const results = await run(edit
-        ? [{ type: "update_topic", id: edit.id, topic: filled[0].topic || filled[0].title, notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice, ...manual(filled[0]) }]
+        ? [{ type: "update_topic", id: edit.id, topic: topicOf(filled[0]), notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice, ...manual(filled[0]) }]
         : [{
             type: "create_topics",
             topics: filled.map((r, i) => ({
-              topic: r.topic, notes: r.source === "gemini" ? r.notes : "", publishAt: at(r), template, format, voice,
+              topic: topicOf(r), notes: r.source === "gemini" ? r.notes : "", publishAt: at(r), template, format, voice,
               ...(r.source === "gemini" ? {} : { script: r.script, title: r.title }), audioPath: audioPaths[i],
             })),
           }]);
@@ -249,15 +251,17 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
                       onClick={() => { haptic.tap(); set(i, { source: s }); }}>{label}</button>
                   ))}
                 </div>
-                <div className="field">
-                  <label>{rows.length > 1 ? `Mavzu ${i + 1}` : "Mavzu"}{manual ? " (ixtiyoriy)" : ""}</label>
-                  <input className="input" value={r.topic} maxLength={500} placeholder={manual ? "Bo'sh bo'lsa title ishlatiladi" : "Masalan: How black holes form"}
-                    onChange={(e) => set(i, { topic: e.target.value })} autoFocus={i === rows.length - 1} />
-                </div>
+                {manual ? null : (
+                  <div className="field">
+                    <label>{rows.length > 1 ? `Mavzu ${i + 1}` : "Mavzu"}</label>
+                    <input className="input" value={r.topic} maxLength={500} placeholder="Masalan: How black holes form"
+                      onChange={(e) => set(i, { topic: e.target.value })} autoFocus={i === rows.length - 1} />
+                  </div>
+                )}
                 {manual ? (
                   <>
                     <div className="field">
-                      <label>Title (YouTube) · {r.title.trim().length}/100</label>
+                      <label>{rows.length > 1 ? `Title ${i + 1}` : "Title"} (YouTube) · {r.title.trim().length}/100</label>
                       <input className="input" value={r.title} maxLength={120} placeholder="Masalan: How Black Holes Are Born" onChange={(e) => set(i, { title: e.target.value })} />
                     </div>
                     <div className="field">
