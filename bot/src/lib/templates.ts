@@ -2,6 +2,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { sql } from "./db";
 import { isDemo } from "./demo";
+import { BUCKET, storageCfg } from "./storage";
 import type { PreparedUpload, TemplateUpload } from "./types";
 
 /**
@@ -9,17 +10,11 @@ import type { PreparedUpload, TemplateUpload } from "./types";
  * (Vercel'ning ~4.5 MB so'rov chegarasini chetlab o'tish uchun). So'ng har tanlangan kompyuter uchun bazada "pending" yozuv qo'shiladi;
  * ilova ochiq bo'lganda uni yuklab, o'rnatadi va holatni (progress, tayyor/xato) yozadi. Hamma yozuv tugagach fayl Storage'dan o'chiriladi.
  */
-const BUCKET = "templates";
 const MAX_BYTES = 600 * 1024 * 1024;
 const VIDEO_EXT = [".mp4", ".mov", ".webm", ".mkv", ".m4v"];
 const KINDS = ["Mp4Reference", "OpenFilmProject"] as const;
 
-function cfg() {
-  const url = process.env.SUPABASE_URL?.replace(/\/+$/, "") ?? "";
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-  if (!url || !key) throw new Error("SUPABASE_URL va SUPABASE_SERVICE_ROLE_KEY sozlanmagan (bot/.env.local).");
-  return { url, key, headers: { apikey: key, "Content-Type": "application/json" } };
-}
+const cfg = storageCfg;
 
 let tableReady = false;
 async function ensureTable() {

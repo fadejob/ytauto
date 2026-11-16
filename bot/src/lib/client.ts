@@ -74,3 +74,18 @@ export const cache = {
   get<T>(k: string): T | null { try { const v = localStorage.getItem("ytauto:" + k); return v ? (JSON.parse(v) as T) : null; } catch { return null; } },
   set(k: string, v: unknown) { try { localStorage.setItem("ytauto:" + k, JSON.stringify(v)); } catch {} },
 };
+
+/** Faylni Supabase Storage'ga imzolangan havola bilan yuboradi (XHR: yuklash foizi uchun). */
+export function putFile(url: string, file: File, onProgress: (p: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Yuklash xatosi (HTTP ${xhr.status}): ${xhr.responseText.slice(0, 160)}`)));
+    xhr.onerror = () => reject(new Error("Tarmoq xatosi yuklash vaqtida."));
+    const fd = new FormData();
+    fd.append("cacheControl", "3600");
+    fd.append("", file);
+    xhr.send(fd);
+  });
+}

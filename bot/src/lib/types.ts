@@ -39,7 +39,15 @@ export type Topic = {
   voice: string;
   /** 0 = 16:9, 1 = Shorts 9:16, 2 = Kvadrat 1:1 */
   format: number;
+  /** Qo'lda kiritilgan subtitr matni va title (Gemini ishlatilmaydi); null - Gemini yozadi. */
+  manualScript: string | null;
+  manualTitle: string | null;
+  /** Tayyor ovoz yuklangan (VoiceStudio ishlatilmaydi). */
+  hasAudio: boolean;
 };
+
+/** Mavzu matni qayerdan keladi: Gemini yozadi / subtitr+title qo'lda / qo'lda + tayyor audio. */
+export type ScriptSource = "gemini" | "manual" | "audio";
 
 export const FormatText: Record<number, string> = { 0: "Gorizontal 16:9", 1: "Shorts 9:16", 2: "Kvadrat 1:1" };
 
@@ -92,12 +100,18 @@ export type State = { topics: Topic[]; catalog: Catalog; viewer: { name: string;
 export type PromptKey = "script" | "montage";
 export type Prompts = Record<PromptKey, string>;
 
-export type NewTopic = { topic: string; notes?: string; publishAt?: string /* "YYYY-MM-DD HH:mm" kanal zonasi bo'yicha */; template?: string; format?: number; voice?: string };
+export type NewTopic = {
+  topic: string; notes?: string; publishAt?: string /* "YYYY-MM-DD HH:mm" kanal zonasi bo'yicha */; template?: string; format?: number; voice?: string;
+  /** Subtitr (ovozda aytiladigan aniq matn) va title birga beriladi: Gemini chaqirilmaydi. */
+  script?: string; title?: string;
+  /** /api/audio orqali Storage'ga yuklangan tayyor ovoz yo'li: VoiceStudio chaqirilmaydi (script va title majburiy). */
+  audioPath?: string;
+};
 
 /** UI va AI bir xil amallardan foydalanadi; AI taklifi foydalanuvchi ruxsat bermaguncha bajarilmaydi. */
 export type Action =
   | { type: "create_topics"; topics: NewTopic[] }
-  | { type: "update_topic"; id: number; topic?: string; notes?: string; publishAt?: string; template?: string; format?: number; voice?: string }
+  | { type: "update_topic"; id: number; topic?: string; notes?: string; publishAt?: string; template?: string; format?: number; voice?: string; script?: string; title?: string }
   | { type: "delete_topic"; id: number }
   | { type: "publish_now"; id: number }
   | { type: "cancel_publish_now"; id: number }
@@ -148,6 +162,7 @@ export type TemplateUpload = {
   status: "pending" | "downloading" | "importing" | "done" | "error"; progress: number; message: string | null; createdAt: string; size: number;
 };
 export type PreparedUpload = { groupId: string; path: string; uploadUrl: string };
+export type PreparedAudio = { path: string; uploadUrl: string };
 
 /** Shablon (ytauto.templates): "video" - tayyor video avtomatik shablon bo'lgan (fayl yuklanmagan), "upload" - bot orqali yuklangan. */
 export type TemplateItem = { machine: string; name: string; kind: string; size: number; addedAt: string | null; source: "video" | "upload"; notes: string };

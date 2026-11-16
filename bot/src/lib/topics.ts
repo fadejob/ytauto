@@ -3,6 +3,8 @@ import { sql } from "./db";
 import { queueForAll } from "./commands";
 import { getConfig } from "./config";
 import { templateCatalog } from "./library";
+import { attachAudio } from "./audio";
+import { removeObjects } from "./storage";
 import { demoApply, demoCatalog, demoPrompts, demoTopics, isDemo } from "./demo";
 import { addDays, parseLocal, utcToZoned, zonedToUtc } from "./time";
 import { Status, type Action, type ActionResult, type Catalog, type NewTopic, type PromptKey, type Prompts, type Topic } from "./types";
@@ -35,9 +37,44 @@ type Row = {
   youtube_video_id: string | null; video_archive_path: string | null; publish_now: boolean; upload_requested: boolean; claimed_by: string | null;
   cancel_requested: boolean; last_error_message: string | null; attention_reason: string | null;
   template_name: string; format: number; voice_profile: string;
+  manual_script: string | null; manual_title: string | null; manual_audio_path: string | null; manual_audio_url: string | null;
 };
 
-const cols = () => sql()`id::int AS id, topic, notes, title, status, publish_at_utc, youtube_video_id, video_archive_path, publish_now, upload_requested, claimed_by, cancel_requested, last_error_message, attention_reason, template_name, format, voice_profile`;
+const cols = () => sql()`id::int AS id, topic, notes, title, status, publish_at_utc, youtube_video_id, video_archive_path, publish_now, upload_requested, claimed_by, cancel_requested, last_error_message, attention_reason, template_name, format, voice_profile, manual_script, manual_title, manual_audio_path, manual_audio_url`;
+
+/** Qo'lda matn/ovoz ustunlari (kompyuterdagi ilova ham qo'shadi; bot undan oldin yangilangan bo'lsa shu yerda qo'shiladi). */
+let manualColumnsReady = false;
+async function ensureManualColumns() {
+  if (manualColumnsReady) return;
+  const [r] = await sql()`SELECT count(*)::int AS n FROM information_schema.columns
+                          WHERE table_schema = 'ytauto' AND table_name = 'jobs' AND column_name IN ('manual_script', 'manual_title', 'manual_audio_path', 'manual_audio_url')`;
+  if ((r?.n as number) < 4)
+    await sql()`ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS manual_script TEXT, ADD COLUMN IF NOT EXISTS manual_title TEXT,
+                ADD COLUMN IF NOT EXISTS manual_audio_path TEXT, ADD COLUMN IF NOT EXISTS manual_audio_url TEXT`;
+  manualColumnsReady = true;
+}
+
+const TITLE_MAX = 100;
+const SCRIPT_MAX = 30000;
+
+/** Subtitr va title faqat birga; tayyor audio bo'lsa ikkalasi majburiy (worker ham shu qoidani kutadi). */
+function checkManual(script: string, title: string, hasAudio: boolean): string | null {
+  if (!script && !title) return hasAudio ? "Tayyor audio bilan subtitr matni va title majburiy." : null;
+  if (!script || !title) return "Subtitr matni va title birga kiritilishi kerak (yoki ikkalasi ham bo'sh — Gemini yozadi).";
+  if (title.length > TITLE_MAX) return `Title juda uzun (${title.length} > ${TITLE_MAX} belgi).`;
+  if (/[<>]/.test(title)) return "Title ichida < yoki > bo'lmasligi kerak (YouTube rad etadi).";
+  if (script.length > SCRIPT_MAX) return `Subtitr matni juda uzun (${SCRIPT_MAX} belgigacha).`;
+  return null;
+}
+
+/** YouTube'ga yuklangan, chiqqan yoki bekor qilingan vazifalarning tayyor ovozi Storage'dan o'chiriladi (bepul tarif joyi). */
+async function cleanupAudio() {
+  const rows = await sql()`SELECT id::int AS id, manual_audio_path AS path FROM ytauto.jobs WHERE manual_audio_path IS NOT NULL
+                           AND (youtube_video_id IS NOT NULL OR status IN ${sql()([Status.Published, Status.Cancelled])}) LIMIT 50`;
+  if (!rows.length) return;
+  if (await removeObjects(rows.map((r) => r.path as string)))
+    await sql()`UPDATE ytauto.jobs SET manual_audio_path = NULL WHERE id IN ${sql()(rows.map((r) => r.id as number))}`;
+}
 
 /** Tayyor (arxivlangan), YouTube'ga hali yuklanmagan video: kompyuter uni qayta tayyorlamasdan yuklaydi. */
 function readyNotUploaded(r: Pick<Row, "claimed_by" | "youtube_video_id" | "video_archive_path" | "cancel_requested" | "status">) {
@@ -62,6 +99,7 @@ function toTopic(r: Row, tz: string): Topic {
     canUploadReady: !r.upload_requested && !r.publish_now && readyNotUploaded(r),
     uploadRequested: r.upload_requested && !r.youtube_video_id,
     template: r.template_name, format: r.format, voice: r.voice_profile,
+    manualScript: r.manual_script, manualTitle: r.manual_title, hasAudio: !!r.manual_audio_url,
     canRetry: !r.claimed_by && (r.status === Status.Failed || r.status === Status.NeedsAttention),
     canCancel: !(FINAL as readonly number[]).includes(r.status),
     canReschedule: made && !r.claimed_by && !r.cancel_requested && !(FINAL as readonly number[]).includes(r.status),
@@ -92,6 +130,8 @@ export async function getCatalog(): Promise<Catalog> {
 
 export async function listTopics(tz: string): Promise<Topic[]> {
   if (isDemo()) return demoTopics();
+  await ensureManualColumns();
+  try { await cleanupAudio(); } catch (e) { console.warn("[audio] tozalash:", e instanceof Error ? e.message : e); }
   // Chiqmaganlar hammasi + oxirgi 30 ta chiqqan.
   const rows = await sql()<Row[]>`
     (SELECT ${cols()} FROM ytauto.jobs WHERE status <> ${Status.Published} ORDER BY publish_at_utc, id LIMIT 300)
@@ -137,11 +177,16 @@ export async function applyAction(a: Action): Promise<ActionResult> {
     if (a.type === "update_prompt") { const p = await previewPrompt(a); if ("error" in p) return { ok: false, message: p.error }; }
     return demoApply(a);
   }
+  await ensureManualColumns();
   const cat = await getCatalog();
   const tz = cat.youtube.timeZone;
   switch (a.type) {
     case "create_topics": {
-      const items = (a.topics ?? []).map((t) => ({ ...t, topic: clean(t.topic), notes: clean(t.notes) })).filter((t) => t.topic);
+      // Qo'lda matn berilib mavzu bo'sh qolsa, title mavzu nomi bo'ladi.
+      const items = (a.topics ?? []).map((t) => {
+        const script = clean(t.script), title = clean(t.title).replace(/\s+/g, " ");
+        return { ...t, script, title, topic: clean(t.topic) || title, notes: clean(t.notes), audioPath: t.audioPath?.trim() || undefined };
+      }).filter((t) => t.topic);
       if (items.length === 0) return { ok: false, message: "Mavzu kiritilmagan." };
       if (items.length > MAX_TOPICS_PER_REQUEST) return { ok: false, message: `Bir vaqtda eng ko'pi ${MAX_TOPICS_PER_REQUEST} ta mavzu qo'shiladi.` };
       const auto = await suggestDates(items.length, cat);
@@ -154,16 +199,24 @@ export async function applyAction(a: Action): Promise<ActionResult> {
         if (at.getTime() <= Date.now() + MIN_LEAD_MS) return { ok: false, message: `"${t.topic}": chiqish vaqti kamida 30 daqiqa kelajakda bo'lsin.` };
         const tf = await pickTemplateFormat(cat, t.template, t.format, t.voice);
         if ("error" in tf) return { ok: false, message: tf.error };
+        const manualErr = checkManual(items[i].script, items[i].title, !!items[i].audioPath);
+        if (manualErr) return { ok: false, message: `"${t.topic}": ${manualErr}` };
         const now = new Date();
         rows.push({
           topic: t.topic.slice(0, 500), notes: (t.notes ?? "").slice(0, 4000),
           language: "en", // video, subtitr va title har doim ingliz tilida
           target_duration_sec: 0, format: tf.format, template_name: tf.template, voice_profile: tf.voice,
           publish_at_utc: at, status: Status.Queued, created_at_utc: now, updated_at_utc: now,
+          manual_script: items[i].script || null, manual_title: items[i].title || null,
+          manual_audio_path: items[i].audioPath ?? null, manual_audio_url: null as string | null,
         });
       }
+      // Hamma tekshiruv o'tgach: yuklangan audio joyida ekani tekshiriladi va kompyuter uchun havola yoziladi.
+      for (const r of rows) if (r.manual_audio_path) r.manual_audio_url = await attachAudio(r.manual_audio_path);
       const ids = await sql()`INSERT INTO ytauto.jobs ${sql()(rows)} RETURNING id::int AS id`;
-      return { ok: true, message: `${ids.length} ta mavzu qo'shildi (#${ids.map((r) => r.id).join(", #")}).` };
+      const manual = rows.filter((r) => r.manual_script).length, audio = rows.filter((r) => r.manual_audio_url).length;
+      const note = manual ? ` ${manual} tasida matn qo'lda — Gemini ishlatilmaydi${audio ? `, ${audio} tasida tayyor audio — VoiceStudio ishlatilmaydi` : ""}.` : "";
+      return { ok: true, message: `${ids.length} ta mavzu qo'shildi (#${ids.map((r) => r.id).join(", #")}).${note}` };
     }
     case "update_topic": {
       const r = await getRow(a.id);
@@ -173,16 +226,22 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       const topic = a.topic !== undefined ? clean(a.topic) : r.topic;
       const notes = a.notes !== undefined ? clean(a.notes) : r.notes;
       if (!topic) return { ok: false, message: "Mavzu bo'sh bo'lmasligi kerak." };
+      const script = a.script !== undefined ? clean(a.script) : r.manual_script ?? "";
+      const title = a.title !== undefined ? clean(a.title).replace(/\s+/g, " ") : r.manual_title ?? "";
+      const manualErr = checkManual(script, title, !!r.manual_audio_url);
+      if (manualErr) return { ok: false, message: `#${a.id}: ${manualErr}` };
       const given = parsePublishAt(a.publishAt, tz);
       if (given === "invalid") return { ok: false, message: `Sana formati noto'g'ri: ${a.publishAt}.` };
       const at = given ?? r.publish_at_utc;
       if (given && at.getTime() <= Date.now() + MIN_LEAD_MS) return { ok: false, message: "Chiqish vaqti kamida 30 daqiqa kelajakda bo'lsin." };
       const tf = await pickTemplateFormat(cat, a.template ?? r.template_name, a.format ?? r.format, a.voice ?? r.voice_profile);
       if ("error" in tf) return { ok: false, message: tf.error };
-      const contentChanged = topic !== r.topic || notes !== r.notes || tf.template !== r.template_name || tf.format !== r.format || tf.voice !== r.voice_profile;
+      const contentChanged = topic !== r.topic || notes !== r.notes || tf.template !== r.template_name || tf.format !== r.format || tf.voice !== r.voice_profile
+        || script !== (r.manual_script ?? "") || title !== (r.manual_title ?? "");
       // Mazmun o'zgarsa: desktop ilovadagi kabi snapshot va title tozalanadi, vazifa navbatga qaytadi.
       const n = await sql()`
         UPDATE ytauto.jobs SET topic = ${topic}, notes = ${notes}, language = 'en', template_name = ${tf.template}, format = ${tf.format}, voice_profile = ${tf.voice}, publish_at_utc = ${at}, updated_at_utc = now(),
+          manual_script = ${script || null}, manual_title = ${title || null},
           settings_snapshot = CASE WHEN ${contentChanged} THEN NULL ELSE settings_snapshot END,
           title = CASE WHEN ${contentChanged} THEN NULL ELSE title END,
           status = CASE WHEN ${contentChanged} OR status = ${Status.NeedsAttention} THEN ${Status.Queued} ELSE status END,
@@ -198,6 +257,7 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       if (!notMade(r) || !(DELETABLE as readonly number[]).includes(r.status))
         return { ok: false, message: `#${a.id}: video allaqachon tayyorlangan yoki tayyorlanmoqda — o'chirib bo'lmaydi.` };
       const n = await sql()`DELETE FROM ytauto.jobs WHERE id = ${a.id} AND claimed_by IS NULL AND youtube_video_id IS NULL AND video_archive_path IS NULL`;
+      if (n.count && r.manual_audio_path) await removeObjects([r.manual_audio_path]).catch(() => false);
       return n.count ? { ok: true, message: `#${a.id} o'chirildi.` } : { ok: false, message: `#${a.id}: o'chirib bo'lmadi (worker band qilgan).` };
     }
     case "publish_now": {

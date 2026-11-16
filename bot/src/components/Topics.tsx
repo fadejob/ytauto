@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { confirmBox, haptic } from "@/lib/client";
-import { FormatText, StatusText, type Action, type Catalog, type State, type Topic } from "@/lib/types";
+import { api, confirmBox, haptic, putFile } from "@/lib/client";
+import { FormatText, StatusText, type Action, type Catalog, type PreparedAudio, type ScriptSource, type State, type Topic } from "@/lib/types";
 import type { Run } from "./App";
 import { IconBolt, IconEdit, IconPlay, IconPlus, IconRefresh, IconTrash, IconUpload } from "./icons";
 
@@ -94,6 +94,7 @@ export default function Topics({ state, loading, refresh, run }: { state: State 
               <span className={chipClass(t.status)}>{t.claimed && t.status < 9 ? "⏳ " : ""}{StatusText[t.status]}</span>
               {t.publishNow ? <span className="chip warn">⚡ hozir chiqarish kutilmoqda</span> : null}
               {t.uploadRequested ? <span className="chip warn">⬆ YouTube'ga yuklash kutilmoqda</span> : null}
+              {t.hasAudio ? <span className="chip mute">🎙 tayyor audio</span> : t.manualScript ? <span className="chip mute">✍ o&apos;z matni</span> : null}
               <span>📅 {fmt(t.publishLocal)}</span>
             </div>
             {t.error ? <div className="err">{t.error}</div> : null}
@@ -154,7 +155,25 @@ function RescheduleSheet({ topic, close, run }: { topic: Topic; close: () => voi
   );
 }
 
-type Row = { topic: string; notes: string; date: string; time: string };
+type Row = { topic: string; notes: string; date: string; time: string; source: ScriptSource; title: string; script: string; file: File | null };
+
+const emptyRow = (): Row => ({ topic: "", notes: "", date: "", time: "", source: "gemini", title: "", script: "", file: null });
+const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.webm,audio/*";
+const AUDIO_MAX_MB = 200;
+const MB = 1048576;
+
+const SOURCES: [ScriptSource, string][] = [["gemini", "Gemini yozadi"], ["manual", "O'z matnim"], ["audio", "Tayyor audio"]];
+
+/** Qatorni saqlashdan oldin tekshiradi: qo'lda rejimda subtitr va title, audio rejimda fayl ham kerak. */
+function rowProblem(r: Row, hasAudio: boolean): string | null {
+  if (r.source === "gemini") return r.topic.trim() ? null : "";
+  if (!r.title.trim() || !r.script.trim()) return "Subtitr matni va title majburiy.";
+  if (r.title.trim().length > 100) return "Title 100 belgidan oshmasin.";
+  if (/[<>]/.test(r.title)) return "Title ichida < yoki > bo'lmasin.";
+  if (r.source === "audio" && !hasAudio && !r.file) return "Audio faylni tanlang.";
+  if (r.file && r.file.size > AUDIO_MAX_MB * MB) return `Audio ${AUDIO_MAX_MB} MB dan katta.`;
+  return null;
+}
 
 function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | { mode: "edit"; topic: Topic }; catalog: Catalog; close: () => void; run: Run }) {
   const edit = sheet.mode === "edit" ? sheet.topic : null;
@@ -163,21 +182,53 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
   const [format, setFormat] = useState(edit ? edit.format : catalog.defaults.format);
   const [voice, setVoice] = useState(edit ? edit.voice : catalog.defaults.voiceProfile || catalog.voiceProfiles[0] || "");
   const [rows, setRows] = useState<Row[]>(
-    edit ? [{ topic: edit.topic, notes: edit.notes, date: edit.publishLocal.date, time: edit.publishLocal.time }] : [{ topic: "", notes: "", date: "", time: "" }],
+    edit
+      ? [{
+          topic: edit.topic, notes: edit.notes, date: edit.publishLocal.date, time: edit.publishLocal.time,
+          source: edit.hasAudio ? "audio" : edit.manualScript ? "manual" : "gemini", title: edit.manualTitle ?? "", script: edit.manualScript ?? "", file: null,
+        }]
+      : [emptyRow()],
   );
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
   const set = (i: number, patch: Partial<Row>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const at = (r: Row) => (r.date ? `${r.date} ${r.time || "18:00"}` : undefined);
+  const hasAudio = !!edit?.hasAudio;
+  const filled = rows.filter((r) => r.topic.trim() || (r.source !== "gemini" && (r.title.trim() || r.script.trim() || r.file)));
+  const problems = filled.map((r) => rowProblem(r, hasAudio));
+  const canSave = filled.length > 0 && problems.every((p) => p === null);
+  const allAudio = rows.every((r) => r.source === "audio");
 
   async function save() {
-    const filled = rows.filter((r) => r.topic.trim());
-    if (!filled.length) return;
-    setSaving(true);
-    const results = await run(edit
-      ? [{ type: "update_topic", id: edit.id, topic: filled[0].topic, notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice }]
-      : [{ type: "create_topics", topics: filled.map((r) => ({ topic: r.topic, notes: r.notes, publishAt: at(r), template, format, voice })) }]);
-    setSaving(false);
-    if (results.every((r) => r.ok)) close();
+    if (!canSave) return;
+    try {
+      // Tayyor audio avval Storage'ga yuboriladi (Vercel so'rov chegarasini chetlab), mavzu esa faqat fayl yo'li bilan yaratiladi.
+      const audioPaths: (string | undefined)[] = [];
+      for (let i = 0; i < filled.length; i++) {
+        const r = filled[i];
+        if (r.source !== "audio" || !r.file) { audioPaths.push(undefined); continue; }
+        const label = filled.length > 1 ? `Audio ${i + 1}/${filled.length}` : "Audio";
+        setSaving(`${label} yuklanmoqda… 0%`);
+        const prep = await api<PreparedAudio>("/api/audio", { filename: r.file.name, size: r.file.size });
+        if (prep.uploadUrl) await putFile(prep.uploadUrl, r.file, (p) => setSaving(`${label} yuklanmoqda… ${p}%`));
+        audioPaths.push(prep.path);
+      }
+      setSaving("Saqlanmoqda…");
+      const manual = (r: Row) => (r.source === "gemini" ? { script: "", title: "" } : { script: r.script, title: r.title });
+      const results = await run(edit
+        ? [{ type: "update_topic", id: edit.id, topic: filled[0].topic || filled[0].title, notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice, ...manual(filled[0]) }]
+        : [{
+            type: "create_topics",
+            topics: filled.map((r, i) => ({
+              topic: r.topic, notes: r.source === "gemini" ? r.notes : "", publishAt: at(r), template, format, voice,
+              ...(r.source === "gemini" ? {} : { script: r.script, title: r.title }), audioPath: audioPaths[i],
+            })),
+          }]);
+      if (results.every((r) => r.ok)) close();
+    } catch (e) {
+      haptic.fail();
+      alert(e instanceof Error ? e.message : String(e));
+    }
+    setSaving(null);
   }
 
   return (
@@ -187,23 +238,63 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
         <div className="grab" />
         <h2>{edit ? `#${edit.id} — tahrirlash` : "Yangi mavzular"}</h2>
         <div className="list" style={{ padding: 0 }}>
-          {rows.map((r, i) => (
-            <div key={i} className="card formcard">
-              <div className="field">
-                <label>{rows.length > 1 ? `Mavzu ${i + 1}` : "Mavzu"}</label>
-                <input className="input" value={r.topic} maxLength={500} placeholder="Masalan: How black holes form" onChange={(e) => set(i, { topic: e.target.value })} autoFocus={i === rows.length - 1} />
+          {rows.map((r, i) => {
+            const manual = r.source !== "gemini";
+            const problem = filled.includes(r) ? problems[filled.indexOf(r)] : null;
+            return (
+              <div key={i} className="card formcard">
+                <div className="seg" role="tablist" aria-label="Matn manbai" style={{ margin: 0 }}>
+                  {SOURCES.map(([s, label]) => (
+                    <button key={s} className={r.source === s ? "on" : ""} disabled={hasAudio && s !== "audio"}
+                      onClick={() => { haptic.tap(); set(i, { source: s }); }}>{label}</button>
+                  ))}
+                </div>
+                <div className="field">
+                  <label>{rows.length > 1 ? `Mavzu ${i + 1}` : "Mavzu"}{manual ? " (ixtiyoriy)" : ""}</label>
+                  <input className="input" value={r.topic} maxLength={500} placeholder={manual ? "Bo'sh bo'lsa title ishlatiladi" : "Masalan: How black holes form"}
+                    onChange={(e) => set(i, { topic: e.target.value })} autoFocus={i === rows.length - 1} />
+                </div>
+                {manual ? (
+                  <>
+                    <div className="field">
+                      <label>Title (YouTube) · {r.title.trim().length}/100</label>
+                      <input className="input" value={r.title} maxLength={120} placeholder="Masalan: How Black Holes Are Born" onChange={(e) => set(i, { title: e.target.value })} />
+                    </div>
+                    <div className="field">
+                      <label>Subtitr matni</label>
+                      <textarea className="textarea" style={{ minHeight: 160 }} value={r.script} maxLength={30000}
+                        placeholder={r.source === "audio" ? "Audioda aytilgan matn — so'zma-so'z." : "Ovozga o'qiladigan va subtitr bo'ladigan aniq matn."}
+                        onChange={(e) => set(i, { script: e.target.value })} />
+                    </div>
+                    {r.source === "audio" ? (
+                      <div className="field">
+                        <label>Audio fayl{r.file ? ` · ${(r.file.size / MB).toFixed(1)} MB` : ""}</label>
+                        {hasAudio
+                          ? <div className="hint">Audio yuklangan ✓ (almashtirish uchun mavzuni o&apos;chirib, qaytadan qo&apos;shing).</div>
+                          : <input className="input" type="file" accept={AUDIO_ACCEPT} onChange={(e) => set(i, { file: e.target.files?.[0] ?? null })} />}
+                      </div>
+                    ) : null}
+                    <div className="hint">
+                      {r.source === "audio"
+                        ? "Gemini va VoiceStudio ishlatilmaydi: audio kompyuterga tushadi, subtitr vaqtlari shu audiodan olinadi. Matn audio bilan mos bo'lishi shart."
+                        : "Gemini ishlatilmaydi: ovoz shu matndan yaratiladi va aynan shu matn subtitr bo'ladi."}
+                    </div>
+                  </>
+                ) : (
+                  <div className="field">
+                    <label>Tushuntirish</label>
+                    <textarea className="textarea" value={r.notes} maxLength={4000} placeholder="Nimalarni yoritish kerak, auditoriya, ohang…" onChange={(e) => set(i, { notes: e.target.value })} />
+                  </div>
+                )}
+                <div className="grid2">
+                  <div className="field"><label>Sana</label><input className="input" type="date" value={r.date} onChange={(e) => set(i, { date: e.target.value })} /></div>
+                  <div className="field"><label>Soat</label><input className="input" type="time" value={r.time} onChange={(e) => set(i, { time: e.target.value })} /></div>
+                </div>
+                {!edit && !r.date ? <div className="hint">Sana bo'sh bo'lsa avtomatik: oxirgi rejadan +2 kun.</div> : null}
+                {problem ? <div className="hint" style={{ color: "var(--danger)" }}>{problem}</div> : null}
               </div>
-              <div className="field">
-                <label>Tushuntirish</label>
-                <textarea className="textarea" value={r.notes} maxLength={4000} placeholder="Nimalarni yoritish kerak, auditoriya, ohang…" onChange={(e) => set(i, { notes: e.target.value })} />
-              </div>
-              <div className="grid2">
-                <div className="field"><label>Sana</label><input className="input" type="date" value={r.date} onChange={(e) => set(i, { date: e.target.value })} /></div>
-                <div className="field"><label>Soat</label><input className="input" type="time" value={r.time} onChange={(e) => set(i, { time: e.target.value })} /></div>
-              </div>
-              {!edit && !r.date ? <div className="hint">Sana bo'sh bo'lsa avtomatik: oxirgi rejadan +2 kun.</div> : null}
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div className="card formcard" style={{ marginTop: 10 }}>
           <div className="grid2">
@@ -222,20 +313,22 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
               </select>
             </div>
           </div>
-          <div className="field">
-            <label>Ovoz</label>
-            <select className="input" value={voice} onChange={(e) => setVoice(e.target.value)}>
-              {catalog.voiceProfiles.length === 0 ? <option value="">Kompyuterdagi standart</option> : null}
-              {catalog.voiceProfiles.map((v) => <option key={v} value={v}>{v}</option>)}
-              {voice && !catalog.voiceProfiles.includes(voice) ? <option value={voice}>{voice}</option> : null}
-            </select>
-          </div>
+          {allAudio ? null : (
+            <div className="field">
+              <label>Ovoz</label>
+              <select className="input" value={voice} onChange={(e) => setVoice(e.target.value)}>
+                {catalog.voiceProfiles.length === 0 ? <option value="">Kompyuterdagi standart</option> : null}
+                {catalog.voiceProfiles.map((v) => <option key={v} value={v}>{v}</option>)}
+                {voice && !catalog.voiceProfiles.includes(voice) ? <option value={voice}>{voice}</option> : null}
+              </select>
+            </div>
+          )}
           {!catalog.known ? <div className="hint">Shablonlar ro&apos;yxati desktop ilova katalog yuborgach chiqadi.</div> : null}
         </div>
         <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-          {!edit && rows.length < 5 ? <button className="btn block" onClick={() => setRows((r) => [...r, { topic: "", notes: "", date: "", time: "" }])}><IconPlus />Yana mavzu ({rows.length}/5)</button> : null}
+          {!edit && rows.length < 5 ? <button className="btn block" onClick={() => setRows((r) => [...r, emptyRow()])}><IconPlus />Yana mavzu ({rows.length}/5)</button> : null}
           <div className="hint" style={{ textAlign: "center" }}>Video, subtitr va title har doim ingliz tilida tayyorlanadi.</div>
-          <button className="btn primary block" disabled={saving || !rows.some((r) => r.topic.trim())} onClick={save}>{saving ? "Saqlanmoqda…" : edit ? "Saqlash" : "Qo'shish"}</button>
+          <button className="btn primary block" disabled={saving !== null || !canSave} onClick={save}>{saving ?? (edit ? "Saqlash" : "Qo'shish")}</button>
         </div>
       </section>
     </>

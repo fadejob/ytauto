@@ -14,7 +14,7 @@ export const demoCatalog: Catalog = {
   youtube: { publishTime: "18:00", timeZone: TZ }, known: true,
 };
 
-type Row = { id: number; topic: string; notes: string; title: string | null; status: number; at: Date; yt: string | null; made: boolean; publishNow: boolean; claimed: boolean; error: string | null; archived?: boolean; uploadRequested?: boolean; template?: string; format?: number; voice?: string };
+type Row = { id: number; topic: string; notes: string; title: string | null; status: number; at: Date; yt: string | null; made: boolean; publishNow: boolean; claimed: boolean; error: string | null; archived?: boolean; uploadRequested?: boolean; template?: string; format?: number; voice?: string; script?: string; mtitle?: string; audio?: boolean };
 
 function seed(): { rows: Row[]; prompts: Prompts; nextId: number } {
   const today = utcToZoned(new Date(), TZ).date;
@@ -50,6 +50,7 @@ export function demoTopics(): Topic[] {
     canUploadReady: !!r.archived && !r.yt && !r.claimed && !r.uploadRequested && !r.publishNow && ![11, 14].includes(r.status),
     uploadRequested: !!r.uploadRequested && !r.yt,
     template: r.template ?? "", format: r.format ?? 0, voice: r.voice ?? "Kitten EN ayol",
+    manualScript: r.script || null, manualTitle: r.mtitle || null, hasAudio: !!r.audio,
     canRetry: !r.claimed && [12, 13].includes(r.status), canCancel: ![11, 14].includes(r.status),
     canReschedule: (r.made || r.claimed) && !r.claimed && ![11, 14].includes(r.status), canForceUpload: r.status === 13 && !r.yt && !!r.archived && !r.claimed,
   }));
@@ -119,13 +120,15 @@ export function demoApply(a: Action): ActionResult {
   const when = (s?: string) => { const p = s ? parseLocal(s) : null; return p ? zonedToUtc(p.date, p.time, TZ) : null; };
   switch (a.type) {
     case "create_topics": {
-      const items = a.topics.filter((t) => t.topic?.trim()).slice(0, 5);
+      const items = a.topics.map((t) => ({ ...t, topic: t.topic?.trim() || t.title?.trim() || "" })).filter((t) => t.topic).slice(0, 5);
+      if (items.some((t) => !!t.script?.trim() !== !!t.title?.trim() || (t.audioPath && !t.script?.trim())))
+        return { ok: false, message: "Subtitr matni va title birga kiritilishi kerak (tayyor audio bilan majburiy). [demo]" };
       if (!items.length) return { ok: false, message: "Mavzu kiritilmagan." };
       let last = d.rows.reduce((m, r) => (r.at > m ? r.at : m), new Date());
       const ids = items.map((t) => {
         last = when(t.publishAt) ?? new Date(last.getTime() + 2 * 86400000);
         const id = d.nextId++;
-        d.rows.push({ id, topic: t.topic.trim(), notes: t.notes?.trim() ?? "", title: null, status: Status.Queued, at: last, yt: null, made: false, publishNow: false, claimed: false, error: null, template: t.template ?? "", format: t.format ?? 0, voice: t.voice ?? "" });
+        d.rows.push({ id, topic: t.topic.trim(), notes: t.notes?.trim() ?? "", title: null, status: Status.Queued, at: last, yt: null, made: false, publishNow: false, claimed: false, error: null, template: t.template ?? "", format: t.format ?? 0, voice: t.voice ?? "", script: t.script?.trim(), mtitle: t.title?.trim(), audio: !!t.audioPath });
         return id;
       });
       return { ok: true, message: `${ids.length} ta mavzu qo'shildi (#${ids.join(", #")}). [demo]` };
@@ -138,6 +141,8 @@ export function demoApply(a: Action): ActionResult {
       if (a.template !== undefined) r.template = a.template;
       if (a.format !== undefined) r.format = a.format;
       if (a.voice !== undefined) r.voice = a.voice;
+      if (a.script !== undefined) r.script = a.script.trim();
+      if (a.title !== undefined) r.mtitle = a.title.trim();
       r.at = when(a.publishAt) ?? r.at; r.status = Status.Queued; r.error = null;
       return { ok: true, message: `#${a.id} yangilandi. [demo]` };
     }

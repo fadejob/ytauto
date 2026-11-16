@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, haptic } from "@/lib/client";
+import { api, haptic, putFile } from "@/lib/client";
 import type { Machine, PreparedUpload, TemplateUpload as Upload } from "@/lib/types";
 import type { Toast } from "./App";
 
@@ -14,21 +14,6 @@ const STATUS: Record<Upload["status"], { text: string; cls: string }> = {
 };
 
 const MB = 1048576;
-
-/** Faylni Supabase'ga imzolangan havola bilan yuboradi (XHR: yuklash foizi uchun). */
-function putFile(url: string, file: File, onProgress: (p: number) => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", url);
-    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
-    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Yuklash xatosi (HTTP ${xhr.status}): ${xhr.responseText.slice(0, 160)}`)));
-    xhr.onerror = () => reject(new Error("Tarmoq xatosi yuklash vaqtida."));
-    const fd = new FormData();
-    fd.append("cacheControl", "3600");
-    fd.append("", file);
-    xhr.send(fd);
-  });
-}
 
 /** Shablonni botdan kompyuter(lar)ga yuklash: fayl → Supabase Storage → ilova yuklab oladi va o'rnatadi. */
 export default function TemplateUpload({ toast }: { toast: Toast }) {
