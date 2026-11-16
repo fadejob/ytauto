@@ -38,6 +38,11 @@ public sealed partial class SetupViewModel : ObservableObject
     [ObservableProperty] private string _botUrl = DeviceAccount.DefaultBotUrl;
     [ObservableProperty] private bool _useExistingToken;
     [ObservableProperty] private string _existingToken = "";
+    // Ish vaqti: worker har kuni shu oraliqda video tayyorlaydi (Task Scheduler shu vaqtga sozlanadi). Keyin bosh sahifada yoki botda o'zgartiriladi.
+    [ObservableProperty] private bool _scheduleEnabled = true;
+    [ObservableProperty] private string _startTime = "01:00";
+    [ObservableProperty] private string _endTime = "04:00";
+    [ObservableProperty] private string _timeZoneId = "Asia/Tashkent";
     [ObservableProperty] private bool _running;
     [ObservableProperty] private string _message = "";
     [ObservableProperty] private bool _isError;
@@ -54,6 +59,15 @@ public sealed partial class SetupViewModel : ObservableObject
     {
         _svc = svc; _done = done;
         HasLegacy = !string.IsNullOrWhiteSpace(svc.Secrets.Get(SecretNames.PostgresConnection));
+        try
+        {
+            // Avval saqlangan jadval bo'lsa (masalan eski o'rnatma) - o'sha qiymatlar taklif qilinadi.
+            var sch = svc.Settings.Load().Schedule;
+            if (TimeOnly.TryParseExact(sch.StartTime, "HH:mm", out _)) StartTime = sch.StartTime;
+            if (TimeOnly.TryParseExact(sch.EndTime, "HH:mm", out _)) EndTime = sch.EndTime;
+            if (!string.IsNullOrWhiteSpace(sch.TimeZoneId)) TimeZoneId = sch.TimeZoneId;
+        }
+        catch { }
         foreach (var (k, n) in MachineSetup.ToolSteps) Steps.Add(new SetupStepVm(k, n));
         Steps.Add(new SetupStepVm("account", HasLegacy ? "Online hisob (eski ma'lumotlar shu hisobga o'tadi)" : "Online hisob va token"));
         Steps.Add(new SetupStepVm("publish", "Sozlamalar va katalog serverga"));
@@ -77,6 +91,14 @@ public sealed partial class SetupViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(DeviceName) || DeviceName.Trim().Length > 80) { Fail("Qurilma nomini kiriting (1–80 belgi)."); return; }
         var useToken = UseExistingToken && !string.IsNullOrWhiteSpace(ExistingToken);
         if (UseExistingToken && !DeviceAccount.LooksLikeToken(ExistingToken)) { Fail("Token noto'g'ri ko'rinishda (yt_ bilan boshlanadi)."); return; }
+        if (!TimeOnly.TryParseExact(StartTime.Trim(), "HH:mm", out var st) || !TimeOnly.TryParseExact(EndTime.Trim(), "HH:mm", out var en))
+        { Fail("Ish vaqti HH:mm formatida bo'lsin (masalan 01:00 va 04:00)."); return; }
+        if (st == en) { Fail("Ish vaqtining boshlanishi va tugashi bir xil bo'lmasin."); return; }
+        try { Core.Scheduling.TimeZones.Find(TimeZoneId.Trim()); } catch { Fail("Vaqt zonasi noto'g'ri (masalan Asia/Tashkent)."); return; }
+        var schedule = new Core.Domain.ScheduleSettings
+        {
+            Enabled = ScheduleEnabled, StartTime = StartTime.Trim(), EndTime = EndTime.Trim(), TimeZoneId = TimeZoneId.Trim(),
+        };
         var needBot = !HasLegacy || useToken;
         if (needBot || !string.IsNullOrWhiteSpace(BotUrl))
         {
@@ -120,7 +142,7 @@ public sealed partial class SetupViewModel : ObservableObject
             {
                 online = await Task.Run(() => new AppServices("desktop"));
                 var exe = Shell.FindWorkerExe();
-                await Task.Run(() => MachineSetup.FinishOnline(online, exe, progress));
+                await Task.Run(() => MachineSetup.FinishOnline(online, exe, progress, schedule));
             }
             catch (Exception e)
             {

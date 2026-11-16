@@ -26,6 +26,25 @@
                 </StackPanel>
             </Border>
 
+            <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+                <StackPanel IsEnabled="{Binding Running, Converter={x:Static local:InverseBool.Instance}}">
+                    <TextBlock Text="Kompyuter qachon video tayyorlasin?" FontWeight="SemiBold"/>
+                    <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,8"
+                               Text="Har kuni shu oraliqda navbatdagi mavzulardan 1–3 ta video tayyorlanadi (boshlangan video oxirigacha tugatiladi). Kompyuter shu vaqtda yoqiq bo'lsin. Keyin ilovada yoki botda o'zgartirish mumkin."/>
+                    <CheckBox Content="Har kuni avtomatik ishlash" IsChecked="{Binding ScheduleEnabled}"/>
+                    <WrapPanel Margin="0,8,0,0" IsEnabled="{Binding ScheduleEnabled}">
+                        <TextBlock Text="Boshlanish" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox Text="{Binding StartTime, UpdateSourceTrigger=PropertyChanged}" Width="70" Margin="0,0,16,0"/>
+                        <TextBlock Text="Tugash" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox Text="{Binding EndTime, UpdateSourceTrigger=PropertyChanged}" Width="70" Margin="0,0,16,0"/>
+                        <TextBlock Text="Vaqt zonasi" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBox Text="{Binding TimeZoneId, UpdateSourceTrigger=PropertyChanged}" Width="150"/>
+                    </WrapPanel>
+                    <TextBlock Style="{StaticResource Muted}" FontSize="11" Margin="0,6,0,0"
+                               Text="Vaqt HH:mm ko'rinishida (masalan 01:00 – 04:00). Tun bo'yi oraliq ham mumkin: 22:00 – 06:00. O'chirilsa ham botdagi «Hozir ishga tushirish» ishlaydi."/>
+                </StackPanel>
+            </Border>
+
             <Button Command="{Binding RunCommand}" Style="{StaticResource Primary}" HorizontalAlignment="Stretch" Margin="0,0,0,12" Padding="16,12" FontSize="16" FontWeight="SemiBold"
                     IsEnabled="{Binding Running, Converter={x:Static local:InverseBool.Instance}}" Content="Kerakli fayllarni yuklash va sozlash"/>
 

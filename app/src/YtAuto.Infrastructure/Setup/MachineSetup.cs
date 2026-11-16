@@ -134,10 +134,11 @@ public static class MachineSetup
     }
 
     /// <summary>
-    /// Hisob ulangandan keyin: lokal sozlamalar va katalog (ovoz profillari, shablonlar) serverga, ish jadvali (bo'lmasa standart:
-    /// har kuni 01:00-04:00) serverga va Task Scheduler'ga (kunlik ish + har 10 daqiqada yengil --poll), kompyuter holati.
+    /// Hisob ulangandan keyin: lokal sozlamalar va katalog (ovoz profillari, shablonlar) serverga, ish jadvali serverga va
+    /// Task Scheduler'ga (kunlik ish + har 10 daqiqada yengil --poll), kompyuter holati.
+    /// chosen - sozlash oynasida foydalanuvchi tanlagan ish vaqti; null bo'lsa hisobdagi jadval yoki standart (har kuni 01:00-04:00).
     /// </summary>
-    public static void FinishOnline(AppServices online, string? workerExe, IProgress<SetupEvent> p)
+    public static void FinishOnline(AppServices online, string? workerExe, IProgress<SetupEvent> p, ScheduleSettings? chosen = null)
     {
         if (!online.IsOnline) throw new InvalidOperationException("Online baza ulanmagan.");
         p.Report(new("publish", StepState.Running, "Sozlamalar serverga yuborilmoqda…"));
@@ -155,7 +156,13 @@ public static class MachineSetup
         p.Report(new("publish", StepState.Done, "Ovoz profillari, shablonlar va kompyuter holati serverda."));
 
         p.Report(new("schedule", StepState.Running, "Ish jadvali va Task Scheduler…"));
-        if (string.IsNullOrWhiteSpace(online.Store.GetSetting(SqliteSettingsStore.ScheduleKey)))
+        if (chosen is not null)
+        {
+            var sch = online.Settings.Load().Schedule;
+            sch.Enabled = chosen.Enabled; sch.StartTime = chosen.StartTime; sch.EndTime = chosen.EndTime; sch.TimeZoneId = chosen.TimeZoneId;
+            online.Settings.SaveSchedule(sch);
+        }
+        else if (string.IsNullOrWhiteSpace(online.Store.GetSetting(SqliteSettingsStore.ScheduleKey)))
         {
             var sch = online.Settings.Load().Schedule;
             sch.Enabled = true;
