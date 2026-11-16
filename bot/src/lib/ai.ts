@@ -1,8 +1,7 @@
 import "server-only";
 import { getCatalog, getPrompts, listTopics, previewPrompt } from "./topics";
+import { geminiGenerate, type GeminiContent } from "./gemini";
 import { StatusText, type Action, type ChatMessage, type Proposal } from "./types";
-
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const topicProps = {
   topic: { type: "string", description: "Video mavzusi — DOIM INGLIZ TILIDA (foydalanuvchi boshqa tilda yozsa ham tarjima qiling). Qisqa va aniq." },
@@ -162,47 +161,52 @@ async function describe(a: Action): Promise<Pick<Proposal, "summary" | "preview"
   }
 }
 
+/** Gemini function calling: OpenAI uslubidagi tool ta'riflaridan functionDeclarations. */
+const DECLARATIONS = TOOLS.map((t) => t.function);
+
 export async function chat(history: ChatMessage[]): Promise<{ reply: string; proposals: Proposal[] }> {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) throw new Error("GROQ_API_KEY sozlanmagan.");
-  const messages: Record<string, unknown>[] = [
-    { role: "system", content: await systemPrompt() },
-    ...history.slice(-12).map((m) => ({ role: m.role, content: clip(m.content, 6000) })),
-  ];
-  const model = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+  const contents: GeminiContent[] = history.slice(-12).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: clip(m.content, 6000) }] }));
+  const base = {
+    systemInstruction: { parts: [{ text: await systemPrompt() }] },
+    tools: [{ functionDeclarations: DECLARATIONS }],
+    toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+    generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
+  };
   const proposals: Proposal[] = [];
   let reply = "";
   // Agent sikli: model har aylanishda bitta-ikkita tool chaqirishi mumkin. Har taklif "ko'rsatildi" deb qaytariladi va model
   // so'rovdagi qolgan amallarni davom ettiradi. Hech narsa bajarilmaydi — faqat takliflar yig'iladi.
+  // Kalit limiti (429) tugasa geminiGenerate keyingi kalit bilan davom etadi.
   for (let round = 0; round < 4; round++) {
-    const res = await fetch(GROQ_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model, messages, tools: TOOLS, tool_choice: "auto", temperature: 0.3, max_tokens: 8192,
-        ...(model.startsWith("openai/gpt-oss") ? { reasoning_effort: "low" } : {}), // tezroq javob
-      }),
-      signal: AbortSignal.timeout(60_000),
-    });
-    if (!res.ok) throw new Error(`Groq xatosi (HTTP ${res.status}): ${clip(await res.text(), 300)}`);
-    const data = await res.json();
-    const msg = data.choices?.[0]?.message ?? {};
-    if (typeof msg.content === "string" && msg.content.trim()) reply = msg.content.replace(/\*\*|__|`/g, "").trim(); // chat oddiy matn
-    const calls: { id: string; function?: { name?: string; arguments?: string } }[] = msg.tool_calls ?? [];
+    const { data } = await geminiGenerate({ ...base, contents });
+    if (data.promptFeedback?.blockReason) throw new Error(`Gemini so'rovni blokladi: ${data.promptFeedback.blockReason}`);
+    const content = data.candidates?.[0]?.content;
+    const parts = content?.parts ?? [];
+    const text = parts.filter((p) => typeof p.text === "string" && !p.thought).map((p) => p.text).join("").trim();
+    if (text) reply = text.replace(/\*\*|__|`/g, "").trim(); // chat oddiy matn
+    const calls = parts.filter((p) => p.functionCall?.name).map((p) => p.functionCall!);
     if (!calls.length) break;
-    messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: calls });
+    // Model javobi o'zgarishsiz qaytariladi (thought signature'lar saqlanishi kerak).
+    contents.push({ role: "model", parts });
+    const responses: GeminiContent = { role: "user", parts: [] };
     for (const call of calls) {
       let note = "Taklif foydalanuvchiga ruxsat uchun ko'rsatildi (hali bajarilmagan).";
       try {
-        const action = toAction(call.function?.name ?? "", JSON.parse(call.function?.arguments || "{}") as ToolArgs);
+        const action = toAction(call.name ?? "", (call.args ?? {}) as ToolArgs);
         if (action) {
           const d = await describe(action);
           proposals.push({ id: call.id || crypto.randomUUID(), action, ...d });
           if (d.error) note = `Bu taklifda xato: ${d.error}`;
         } else note = "Noma'lum tool.";
-      } catch { note = "Argumentlar noto'g'ri JSON."; }
-      messages.push({ role: "tool", tool_call_id: call.id, content: note + " So'rovda boshqa amallar qolgan bo'lsa ularni ham chaqiring, aks holda qisqa yakuniy javob yozing." });
+      } catch { note = "Argumentlar noto'g'ri."; }
+      responses.parts.push({
+        functionResponse: {
+          ...(call.id ? { id: call.id } : {}), name: call.name,
+          response: { result: note + " So'rovda boshqa amallar qolgan bo'lsa ularni ham chaqiring, aks holda qisqa yakuniy javob yozing." },
+        },
+      });
     }
+    contents.push(responses);
   }
   if (!reply) reply = proposals.length ? "Quyidagilarni taklif qilaman — ruxsat bersangiz bazaga yoziladi:" : "Tushunmadim, aniqroq yozing.";
   return { reply, proposals };

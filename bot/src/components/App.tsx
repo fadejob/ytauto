@@ -82,7 +82,7 @@ export default function App() {
 
   return (
     <main className="shell">
-      {state?.demo ? <div className="banner">Demo rejim: namunaviy ma'lumotlar (baza ulanmagan). AI yordamchi haqiqiy Groq bilan ishlaydi.</div>
+      {state?.demo ? <div className="banner">Demo rejim: namunaviy ma'lumotlar (baza ulanmagan). AI yordamchi haqiqiy Gemini bilan ishlaydi (Sozlamalardagi kalitlar).</div>
         : state?.viewer.dev ? <div className="banner">Brauzer (dev) rejimi — Telegram'siz. Productionda ALLOW_BROWSER_DEV=0 qiling.</div> : null}
       {state && !state.catalog.known ? (
         <div className="banner">Desktop ilova hali katalog yubormagan — mavzular standart ovoz/shablon bilan qo'shiladi. YtAuto'ni bir marta oching.</div>

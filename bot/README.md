@@ -11,8 +11,11 @@ desktop ilova ochiq bo'lishi shart emas.
 - **⚡ Hozir chiqarish**: `publish_now` bayrog'i. Internetga ulangan, jadvali yoqilgan kompyuterdagi worker uni ~2 daqiqada oladi
   (Task Scheduler → "YtAuto Remote Trigger"), videoni tayyorlaydi yoki tayyorini oladi va YouTube'ga darhol chiqaradi.
 - **Promptlar**: Gemini ssenariy va Claude montaj promptlarini tahrirlash (barcha kompyuterlar uchun umumiy).
-- **AI yordamchi (Groq)**: "kosmos haqida 3 ta mavzu qo'sh", "promptda shu joyni bunday qil", "shu videoni hozir chiqar".
+- **AI yordamchi (Gemini)**: "kosmos haqida 3 ta mavzu qo'sh", "promptda shu joyni bunday qil", "shu videoni hozir chiqar".
   AI faqat **taklif** qiladi — har biri "Ruxsat berish" tugmasi bilan; bazaga faqat ruxsatdan keyin yoziladi.
+- **Gemini kalitlari**: Sozlamalar → Gemini'da bir nechta kalit qo'shiladi. Ssenariy (worker) ham, AI yordamchi ham ularni
+  tartib bilan ishlatadi: kalit limiti tugasa (HTTP 429) keyingisi bilan davom etadi; hammasi limitda bo'lsa ish to'xtaydi
+  (vazifa "E'tibor kerak" holatiga o'tadi).
 - **Til**: qaysi tilda yozsangiz ham mavzu `language = en` bilan saqlanadi — video, subtitr va YouTube title doim inglizcha
   (AI mavzu va tushuntirishni o'zi inglizchaga o'giradi).
 - Tezlik: statik qobiq (bir zumda ochiladi), oxirgi ro'yxat keshdan darhol ko'rinadi, tashqi kutubxona va shriftlarsiz.
@@ -27,7 +30,7 @@ npm run dev                  # http://localhost:3000
 ```
 
 - `ALLOW_BROWSER_DEV=1` — Telegram'siz brauzerda ochish (faqat lokal).
-- `DEMO_MODE=1` — bazasiz namunaviy ma'lumotlar (faqat dizaynni ko'rish; AI haqiqiy Groq bilan ishlaydi).
+- `DEMO_MODE=1` — bazasiz namunaviy ma'lumotlar (faqat dizaynni ko'rish; AI haqiqiy Gemini bilan ishlaydi — `GEMINI_API_KEY` kerak).
 - Haqiqiy baza: `DATABASE_URL` ga YtAuto Sozlamalar → Online baza'dagi ulanish satrini qo'ying va `DEMO_MODE=0`.
 
 ## Telegram botga ulash (dizayn tayyor bo'lgach)
@@ -43,4 +46,4 @@ npm run dev                  # http://localhost:3000
 ## Xavfsizlik
 
 - Har API so'rovi Telegram `initData` imzosi (HMAC, bot tokeni bilan) va `ALLOWED_TELEGRAM_IDS` bo'yicha tekshiriladi.
-- Bot tokeni, Groq kaliti va baza paroli faqat server muhitida (`.env.local` / Vercel); git'ga tushmaydi.
+- Bot tokeni, Gemini kalitlari va baza paroli faqat server muhitida (`.env.local` / Vercel); git'ga tushmaydi.

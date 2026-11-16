@@ -78,7 +78,7 @@ export default function Ai({ run, toast }: { run: Run; toast: Toast }) {
       <header className="head">
         <div>
           <h1>AI yordamchi</h1>
-          <div className="sub">Groq · har o'zgarish sizning ruxsatingiz bilan</div>
+          <div className="sub">Gemini · har o'zgarish sizning ruxsatingiz bilan</div>
         </div>
         {items.length ? <button className="btn ghost" onClick={() => setItems([])}>Tozalash</button> : null}
       </header>
