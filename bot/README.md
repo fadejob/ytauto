@@ -1,7 +1,8 @@
 # YtAuto bot — Telegram web app
 
 Mobil uchun Next.js web app. YtAuto online bazasi (Supabase PostgreSQL, `ytauto` sxemasi) bilan to'g'ridan-to'g'ri ishlaydi —
-desktop ilova ochiq bo'lishi shart emas.
+desktop ilova ochiq bo'lishi shart emas. **Ko'p foydalanuvchili**: har foydalanuvchi o'z kompyuteridagi YtAuto ilovasi bergan
+token bilan kiradi va faqat o'z hisobini (mavzular, sozlamalar, promptlar, Gemini kalitlari, YouTube) ko'radi.
 
 ## Imkoniyatlar
 
@@ -33,17 +34,32 @@ npm run dev                  # http://localhost:3000
 - `DEMO_MODE=1` — bazasiz namunaviy ma'lumotlar (faqat dizaynni ko'rish; AI haqiqiy Gemini bilan ishlaydi — `GEMINI_API_KEY` kerak).
 - Haqiqiy baza: `DATABASE_URL` ga YtAuto Sozlamalar → Online baza'dagi ulanish satrini qo'ying va `DEMO_MODE=0`.
 
+## Baza sxemasi
+
+Sxema — [`db/schema.sql`](db/schema.sql) (desktop ilova ham shu faylni ishlatadi). Versiya o'zgarganda:
+
+```bash
+npm run db:migrate
+```
+
+Yoki `DB_AUTO_MIGRATE=1` — bot birinchi so'rovda o'zi migratsiya qiladi. Aks holda eski sxemada API tushunarli xato qaytaradi.
+
 ## Telegram botga ulash (dizayn tayyor bo'lgach)
 
 1. Deploy (masalan Vercel, Root Directory = `bot`). Environment Variables: `.env.example` dagilar;
-   `ALLOW_BROWSER_DEV=0`, `DEMO_MODE=0`, `ALLOWED_TELEGRAM_IDS` — o'zingizning Telegram ID'ingiz.
+   `ALLOW_BROWSER_DEV=0`, `DEMO_MODE=0`. Bot manzilini GitHub repo o'zgaruvchisiga (`YTAUTO_BOT_URL`) yozing —
+   CI uni exe'ga joylaydi va ilova sozlashda shu bot orqali hisob yaratadi.
 2. Botning pastki tugmasini ulash:
    ```bash
    WEBAPP_URL=https://sizning-domen.vercel.app node --env-file=.env.local scripts/telegram-setup.mjs
    ```
-3. Botni oching → pastdagi **YtAuto** tugmasi. Telegram ID'ingiz ruxsat ro'yxatida bo'lmasa, ilova uni ko'rsatadi.
+3. Botni oching → pastdagi **YtAuto** tugmasi → birinchi kirishda YtAuto ilovasidagi tokenni kiriting.
 
 ## Xavfsizlik
 
-- Har API so'rovi Telegram `initData` imzosi (HMAC, bot tokeni bilan) va `ALLOWED_TELEGRAM_IDS` bo'yicha tekshiriladi.
+- Har API so'rovi Telegram `initData` imzosi (HMAC, bot tokeni bilan) tekshiriladi; so'ng Telegram ID token bilan bog'langan hisob
+  topiladi va so'rov shu hisob kontekstida (`SET LOCAL ROLE ytauto_bot` + RLS, bitta tranzaksiya) bajariladi.
+- `/api/device/register|login` — desktop sozlashi (ochiq, IP bo'yicha cheklangan). Ilova token va parolni o'zi yaratadi,
+  botga faqat token xeshi va parol yuboriladi; bot hisob va shu kompyuter uchun alohida Postgres rolini yaratadi.
+- Token terish cheklangan (Telegram ID bo'yicha 15 daqiqada 10 urinish). Storage fayllari `acc/<hisob>/` papkalarida.
 - Bot tokeni, Gemini kalitlari va baza paroli faqat server muhitida (`.env.local` / Vercel); git'ga tushmaydi.

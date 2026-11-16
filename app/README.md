@@ -61,7 +61,11 @@ bilan self-contained `YtAuto-win-x64.zip` yig'adi va uni `v1.0.<build raqami>` n
 
 ## Birinchi sozlash
 
-**Sozlamalar** sahifasida:
+Ilova birinchi ochilganda bitta tugma: **«Kerakli fayllarni yuklash va sozlash»** — yetishmagan dasturlar va modellar yuklanadi
+(OpenFilm, VoiceStudio, faster-whisper, KittenTTS va ayol/erkak ovoz profillari, Claude Code; bori qayta yuklanmaydi), online hisob
+va token yaratiladi, sozlamalar serverga yoziladi va Task Scheduler sozlanadi. So'ng bosh sahifada token (nusxalash, ko'rsatish,
+yangilash), ish vaqti (jadval), Gemini va dasturlar holati. Claude Code'ga kirish — «Claude'ga kirish» tugmasi (bir marta).
+Gemini kaliti, YouTube, promptlar va mavzular — Telegram botda. Quyidagilar **Kengaytirilgan sozlamalar** oynasida:
 
 1. **Umumiy** — video va ovoz arxiv papkalari (doimiy), vaqtinchalik ish papkasi (`jobs`). Arxiv ish papkasi ichida bo'lmasligi kerak.
    Tizim diskida 20 GB dan kam joy bo'lsa, standart papkalar eng ko'p bo'sh joyli diskka qo'yiladi (sinovdagi kompyuterda `D:\YtAuto\...`).
@@ -95,7 +99,10 @@ Task Scheduler'da ikkita vazifa yaratiladi (vaqt o'zgarsa yangilanadi, dublikat 
 
 ### Online baza (Supabase PostgreSQL)
 
-Sozlamalar → **Online baza**: ulanish satri (Windows DPAPI bilan shifrlanadi). Ulangandan keyin mavzular (yaratish, tahrirlash,
+Ko'p foydalanuvchili: ilova bazaga **o'z qurilma roli** bilan ulanadi (sozlashda avtomatik yaratiladi, ulanish satri DPAPI'da) va
+Row Level Security tufayli faqat o'z hisobi ma'lumotlarini ko'radi. Sxema — `bot/db/schema.sql` (exe ichida). Eski (v1) o'rnatmada
+saqlangan bazaning egasi ulanish satri faqat bir marta — eski ma'lumotlarni shu kompyuter hisobiga o'tkazish uchun ishlatiladi va
+keyin o'chiriladi. Hisob sozlanmagan bo'lsa worker hech narsa qilmaydi. Quyidagi tavsif umumiy ishlash haqida: Ulangandan keyin mavzular (yaratish, tahrirlash,
 o'chirish), holatlar, bosqichlar, loglar, worker ishga tushishlari va **Gemini/Claude promptlari** online bazada (`ytauto` sxemasi)
 saqlanadi — kompyuter almashsa ham yo'qolmaydi. Kompyuterga xos sozlamalar va sirlar lokal qoladi. Birinchi ulanishda lokal mavzular
 avtomatik ko'chiriladi. Supabase'ning `db.*.supabase.co` manzili faqat IPv6 — IPv4 tarmoqda pooler ishlatiladi
