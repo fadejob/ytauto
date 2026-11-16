@@ -11,7 +11,7 @@ type Sch = { enabled: boolean; startTime: string; endTime: string; timeZoneId: s
 type Draft = BotConfigInput;
 
 const toDraft = (c: BotConfig): Draft => ({
-  gemini: { ...c.gemini, apiKey: "" },
+  gemini: { ...c.gemini, apiKeys: c.gemini.apiKeys.map((k) => ({ ...k })) },
   limits: { ...c.limits },
   defaults: { ...c.defaults },
   youtube: { ...c.youtube, clientSecret: "" },
@@ -31,6 +31,8 @@ export default function Settings({ catalog, toast }: { catalog: Catalog | null; 
   const [schSaved, setSchSaved] = useState<Sch | null>(null);
   const [cfg, setCfg] = useState<Draft | null>(null);
   const [cfgSaved, setCfgSaved] = useState<BotConfig | null>(null);
+  /** Yangi Gemini kalitlari: har qatorga bittasi (saqlanganda qo'shiladi). */
+  const [newKeys, setNewKeys] = useState("");
   const [voiceInfo, setVoiceInfo] = useState<VoiceInfo[]>([]);
   const [saving, setSaving] = useState(false);
   const [yt, setYt] = useState<{ connected: boolean; channelTitle: string; connectedAt: string | null; clientConfigured: boolean; redirectUri: string } | null>(null);
@@ -73,8 +75,8 @@ export default function Settings({ catalog, toast }: { catalog: Catalog | null; 
   }, [toast]);
 
   const schDirty = !!sch && !!schSaved && JSON.stringify(sch) !== JSON.stringify(schSaved);
-  const cfgDirty = !!cfg && !!cfgSaved && (JSON.stringify({ ...cfg, gemini: { ...cfg.gemini, apiKey: "" }, youtube: { ...cfg.youtube, clientSecret: "" } }) !== JSON.stringify(toDraft(cfgSaved))
-    || !!cfg.gemini.apiKey || !!cfg.youtube.clientSecret);
+  const cfgDirty = !!cfg && !!cfgSaved && (JSON.stringify({ ...cfg, youtube: { ...cfg.youtube, clientSecret: "" } }) !== JSON.stringify(toDraft(cfgSaved))
+    || !!newKeys.trim() || !!cfg.youtube.clientSecret);
   const dirty = schDirty || cfgDirty;
 
   async function save() {
@@ -83,7 +85,11 @@ export default function Settings({ catalog, toast }: { catalog: Catalog | null; 
     setSaving(true);
     try {
       if (schDirty && sch) { const s = await api<Sch>("/api/schedule", sch); setSch(s); setSchSaved(s); cache.set("schedule", s); }
-      if (cfgDirty && cfg) { const c = await api<BotConfig>("/api/config", cfg); setCfgSaved(c); setCfg(toDraft(c)); }
+      if (cfgDirty && cfg) {
+        const newApiKeys = newKeys.split(/[\s,;]+/).map((k) => k.trim()).filter(Boolean);
+        const c = await api<BotConfig>("/api/config", { ...cfg, gemini: { ...cfg.gemini, newApiKeys } });
+        setCfgSaved(c); setCfg(toDraft(c)); setNewKeys("");
+      }
       toast("Sozlamalar saqlandi.");
     } catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
     setSaving(false);
@@ -122,8 +128,17 @@ export default function Settings({ catalog, toast }: { catalog: Catalog | null; 
 
             <div className="sect">Gemini (ssenariy)</div>
             <div className="card formcard">
-              <div className="field"><label>API kaliti {cfg.gemini.apiKeySet ? "· saqlangan ✓" : "· kiritilmagan"}</label>
-                <input className="input" type="password" autoComplete="off" value={cfg.gemini.apiKey ?? ""} placeholder={cfg.gemini.apiKeySet ? "O'zgartirish uchun yangisini kiriting" : "AIza…"} onChange={(e) => G({ apiKey: e.target.value })} /></div>
+              <div className="field"><label>API kalitlari {cfg.gemini.apiKeys.length ? `· ${cfg.gemini.apiKeys.length} ta saqlangan` : "· kiritilmagan"}</label>
+                {cfg.gemini.apiKeys.map((k, i) => (
+                  <div key={k.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <span className="chip mute">{i + 1}</span>
+                    <code style={{ flex: 1 }}>{k.hint}</code>
+                    <button className="btn danger" type="button" onClick={() => G({ apiKeys: cfg.gemini.apiKeys.filter((x) => x.id !== k.id) })}>O&apos;chirish</button>
+                  </div>
+                ))}
+                <textarea className="textarea" rows={2} autoComplete="off" spellCheck={false} value={newKeys} placeholder={"Yangi kalit(lar): AIza…\nhar qatorga bittadan"} onChange={(e) => setNewKeys(e.target.value)} />
+              </div>
+              <div className="hint">Kalitlar tartib bilan ishlatiladi: biri limitga (429) tushsa keyingisi bilan davom etiladi, hammasi tugasa ish to&apos;xtaydi. AI yordamchi ham shu kalitlardan foydalanadi.</div>
               <div className="grid2">
                 <div className="field"><label>Model</label><input className="input" value={cfg.gemini.model} onChange={(e) => G({ model: e.target.value })} /></div>
                 <div className="field"><label>Temperature</label><input className="input" inputMode="decimal" value={cfg.gemini.temperature} onChange={(e) => G({ temperature: num(e.target.value) })} /></div>

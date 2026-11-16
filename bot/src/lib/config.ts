@@ -1,17 +1,19 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { sql } from "./db";
 import { isDemo } from "./demo";
-import type { BotConfig, BotConfigInput } from "./types";
+import type { BotConfig, BotConfigInput, GeminiKeyInfo } from "./types";
 
 const KEY = "config";
 
 /**
  * Bot boshqaradigan sozlamalar online bazada bitta JSON sifatida (shared_settings.config) turadi.
- * Desktop ilova va worker uni o'qib, lokal sozlamalar ustiga qo'yadi. Sirlar (Gemini kaliti, OAuth client secret)
+ * Desktop ilova va worker uni o'qib, lokal sozlamalar ustiga qo'yadi. Sirlar (Gemini kalitlari, OAuth client secret)
  * shu JSON ichida saqlanadi, lekin API orqali brauzerga hech qachon qaytarilmaydi.
  */
 type Stored = {
-  gemini?: Partial<BotConfig["gemini"]> & { apiKey?: string };
+  /** apiKeys - kalitlar tartib bilan; apiKey - eski (bitta kalit) format, o'qiladi va eski desktoplar uchun birinchi kalit yoziladi. */
+  gemini?: Partial<Omit<BotConfig["gemini"], "apiKeys">> & { apiKey?: string; apiKeys?: string[] };
   limits?: Partial<BotConfig["limits"]>;
   defaults?: Partial<BotConfig["defaults"]>;
   youtube?: Partial<BotConfig["youtube"]> & { clientSecret?: string };
@@ -21,7 +23,7 @@ type Stored = {
 };
 
 const DEF: BotConfig = {
-  gemini: { model: "gemini-2.5-flash", temperature: 0.7, useSearchGrounding: true, timeoutSec: 180, apiKeySet: false },
+  gemini: { model: "gemini-2.5-flash", temperature: 0.7, useSearchGrounding: true, timeoutSec: 180, apiKeys: [] },
   claude: { model: "", timeoutMinutes: 45, maxBudgetUsd: 0 },
   voice: {
     profiles: [],
@@ -45,11 +47,28 @@ async function readStored(): Promise<Stored> {
   try { return row ? (JSON.parse(row.value as string) as Stored) : {}; } catch { return {}; }
 }
 
+/** Saqlangan Gemini kalitlari tartib bilan (takrorlarsiz). */
+function storedKeys(s: Stored): string[] {
+  const all = [...(s.gemini?.apiKeys ?? []), s.gemini?.apiKey ?? ""].map((k) => k.trim()).filter(Boolean);
+  return [...new Set(all)];
+}
+const keyId = (k: string) => createHash("sha256").update(k).digest("hex").slice(0, 12);
+const keyInfo = (k: string): GeminiKeyInfo => ({ id: keyId(k), hint: k.length > 12 ? `${k.slice(0, 4)}…${k.slice(-4)}` : "…" });
+
+/** Faqat server ichida: Gemini kalitlari (AI yordamchi uchun). Brauzerga qaytarilmaydi. */
+export async function getGeminiKeys(): Promise<{ keys: string[]; model: string }> {
+  const s = await readStored();
+  const keys = storedKeys(s);
+  const env = process.env.GEMINI_API_KEY?.trim();
+  return { keys: keys.length ? keys : env ? [env] : [], model: s.gemini?.model?.trim() || DEF.gemini.model };
+}
+
 function view(s: Stored): BotConfig {
-  const { apiKey, ...g } = s.gemini ?? {};
+  const g = { ...(s.gemini ?? {}) };
+  delete g.apiKey; delete g.apiKeys; // sirlar brauzerga qaytarilmaydi
   const { clientSecret, ...y } = s.youtube ?? {};
   return {
-    gemini: { ...DEF.gemini, ...g, apiKeySet: !!apiKey },
+    gemini: { ...DEF.gemini, ...g, apiKeys: storedKeys(s).map(keyInfo) },
     limits: { ...DEF.limits, ...(s.limits ?? {}) },
     defaults: { ...DEF.defaults, ...(s.defaults ?? {}) },
     youtube: { ...DEF.youtube, ...y, clientSecretSet: !!clientSecret },
@@ -83,10 +102,21 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
   if (!g.model.trim()) throw new Error("Gemini modeli bo'sh bo'lmasin.");
   try { new Intl.DateTimeFormat("en", { timeZone: y.timeZoneId }); } catch { throw new Error("YouTube vaqt zonasi noto'g'ri (masalan Asia/Tashkent)."); }
   if (![0, 1, 2].includes(Number(d.format))) throw new Error("Format noto'g'ri.");
+  // Kalitlar: qoldirilganlari (id bo'yicha, kelgan tartibda) + yangilari. Hech biri brauzerdan to'liq kelmaydi.
+  const byId = new Map(storedKeys(cur).map((k) => [keyId(k), k]));
+  const keys: string[] = [];
+  for (const k of g.apiKeys ?? []) { const v = byId.get(String(k?.id ?? "")); if (v && !keys.includes(v)) keys.push(v); }
+  for (const raw of g.newApiKeys ?? []) {
+    const k = String(raw ?? "").trim();
+    if (!k) continue;
+    if (k.length < 20 || /\s/.test(k)) throw new Error("Gemini kaliti noto'g'ri ko'rinishda (AIza… bilan boshlanadigan uzun satr bo'lishi kerak).");
+    if (!keys.includes(k)) keys.push(k);
+  }
+  if (keys.length > 50) throw new Error("Gemini kalitlari 50 tadan oshmasin.");
   const next: Stored = {
     gemini: {
       model: g.model.trim(), temperature: num(g.temperature, 0, 2, "Temperature"), useSearchGrounding: !!g.useSearchGrounding,
-      apiKey: g.apiKey?.trim() ? g.apiKey.trim() : cur.gemini?.apiKey,
+      apiKeys: keys, apiKey: keys[0], // apiKey - faqat eski desktop versiyalari uchun
       timeoutSec: Math.round(num(g.timeoutSec ?? 180, 30, 1800, "Gemini timeout")),
     },
     claude: {
