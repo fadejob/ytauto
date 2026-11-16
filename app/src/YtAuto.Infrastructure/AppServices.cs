@@ -21,6 +21,8 @@ public sealed class AppServices
     public SqliteJobStore LocalDb { get; }
     public SqliteSettingsStore Settings { get; }
     public bool IsOnline => Store is PostgresJobStore;
+    /// <summary>Hisob sozlangan (ro'yxatdan o'tilgan) va online baza ulangan.</summary>
+    public bool IsAccountReady => IsOnline && Accounts.DeviceAccount.Load(LocalDb) is not null;
     public DpapiSecretStore Secrets { get; }
     public HttpClient Http { get; }
     public YouTubeAuth YouTubeAuth { get; }
@@ -38,8 +40,10 @@ public sealed class AppServices
         Log = new RunLog(new RollingFileLog(Path.Combine(Paths.LogsDir, $"{component}.log")), console);
         Secrets = new DpapiSecretStore(Paths.SecretsDir);
         LocalDb = new SqliteJobStore(Paths.DatabasePath);
-        // Online baza: self-test (alohida dataRoot) uni ishlatmaydi.
-        var pg = dataRoot is null ? Secrets.Get(SecretNames.PostgresConnection) : null;
+        // Online baza: shu kompyuterning o'z hisobi (qurilma roli) - baza unga faqat o'z ma'lumotlarini ko'rsatadi.
+        // Sozlash (hisob yaratish) hali qilinmagan bo'lsa - lokal SQLite; ilova sozlash oynasini, worker esa hech narsa qilmaydi.
+        // Self-test (alohida dataRoot) online bazani ishlatmaydi.
+        var pg = dataRoot is null ? Secrets.Get(SecretNames.DeviceConnection) : null;
         if (!string.IsNullOrWhiteSpace(pg))
         {
             try
@@ -63,6 +67,14 @@ public sealed class AppServices
         Gemini = new GeminiScriptGenerator(Secrets) { RemoteKeys = () => Settings.Load().Gemini.RemoteApiKeys };
         // Ma'lum sirlarni log redaktoriga oldindan ro'yxatga olamiz.
         Secrets.Get(SecretNames.GeminiApiKey); Secrets.Get(SecretNames.YouTubeClientSecret); Secrets.Get(SecretNames.YouTubeTokens);
+        Secrets.Get(SecretNames.AccountToken); Secrets.Get(SecretNames.DeviceConnection);
+    }
+
+    /// <summary>Gemini kaliti bormi (botda kiritilgan yoki lokal). Yo'q bo'lsa mavzular muzlatiladi: worker video tayyorlamaydi.</summary>
+    public bool HasGeminiKey()
+    {
+        try { return Settings.Load().Gemini.RemoteApiKeys.Count > 0 || !string.IsNullOrWhiteSpace(Secrets.Get(SecretNames.GeminiApiKey)); }
+        catch { return false; }
     }
 
     public static AppSettings DefaultSettings()

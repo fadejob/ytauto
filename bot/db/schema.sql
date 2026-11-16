@@ -194,7 +194,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
 DECLARE r TEXT := 'ytd_' || replace(gen_random_uuid()::TEXT, '-', '');
 BEGIN
   IF length(coalesce(p_password, '')) < 24 THEN RAISE EXCEPTION 'parol juda qisqa'; END IF;
-  EXECUTE format('CREATE ROLE %I LOGIN CONNECTION LIMIT 10 PASSWORD %L IN ROLE ytauto_device', r, p_password);
+  EXECUTE format('CREATE ROLE %I LOGIN CONNECTION LIMIT 20 PASSWORD %L IN ROLE ytauto_device', r, p_password);
   INSERT INTO ytauto.account_roles(role_name, account_id, device_name, machine) VALUES (r, p_account, left(coalesce(p_device, ''), 80), left(coalesce(p_machine, ''), 80));
   RETURN r;
 END $$;

@@ -801,6 +801,18 @@ public sealed class SqliteSettingsStore : ISettingsStore
         }
     }
 
+    /// <summary>Ish jadvali (vaqt oynasi) online bazaga yoziladi - bot ham shu qiymatni ko'radi va o'zgartira oladi.</summary>
+    public void SaveSchedule(ScheduleSettings schedule)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            enabled = schedule.Enabled, startTime = schedule.StartTime, endTime = schedule.EndTime, timeZoneId = schedule.TimeZoneId,
+            wakeToRun = schedule.WakeToRun, executionLimitHours = schedule.ExecutionLimitHours,
+        });
+        if (_shared is not null) _shared.SetSetting(ScheduleKey, json);
+        var local = LoadLocal(); local.Schedule = schedule; _db.SetSetting("app_settings", local.ToJson());
+    }
+
     public const string BotCatalogKey = "bot.catalog";
 
     /// <summary>

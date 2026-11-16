@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <RootNamespace>YtAuto.Infrastructure</RootNamespace>
@@ -17,6 +17,12 @@
     <None Include="Resources\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="Resources" />
     <!-- Bitta exe (single-file) uchun: skript exe ichida ham bor; yonida fayl bo'lmasa diskka chiqariladi. -->
     <EmbeddedResource Include="Resources\align_words.py" LogicalName="YtAuto.align_words.py" />
+    <!-- Online baza sxemasi: yagona manba bot/db/schema.sql (bot ham shu faylni ishlatadi). -->
+    <EmbeddedResource Include="..\..\..\bot\db\schema.sql" LogicalName="YtAuto.schema.sql" Link="Data\schema.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Bot (Telegram web app) manzili: CI'da -p:YtAutoBotUrl=https://... bilan beriladi; bo'sh bo'lsa sozlashda so'raladi. -->
+    <AssemblyMetadata Include="YtAutoBotUrl" Value="$(YtAutoBotUrl)" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="YtAuto.Tests" />

@@ -5,8 +5,9 @@ using YtAuto.Infrastructure.Data;
 namespace YtAuto.Tests;
 
 /// <summary>
-/// Online ombor shartnomasi (haqiqiy PostgreSQL). YTAUTO_PG_TEST muhit o'zgaruvchisida ulanish satri bo'lsa ishlaydi;
-/// vaqtinchalik sxemada ishlaydi va oxirida uni o'chiradi (asosiy "ytauto" sxemasiga tegmaydi).
+/// Online ombor shartnomasi (haqiqiy PostgreSQL). YTAUTO_PG_TEST muhit o'zgaruvchisida jadval egasi ulanish satri bo'lsa ishlaydi;
+/// vaqtinchalik sxemada ishlaydi va oxirida uni (va yaratilgan qurilma rollarini) o'chiradi (asosiy "ytauto" sxemasiga tegmaydi).
+/// Ombor haqiqiy rejimdagidek qurilma roli bilan ishlatiladi: ikkinchi hisob birinchisining ma'lumotini ko'rmasligi ham tekshiriladi.
 /// </summary>
 public class PostgresStoreTests
 {
@@ -24,7 +25,10 @@ public class PostgresStoreTests
         var schema = "ytauto_test_" + Guid.NewGuid().ToString("N")[..8];
         try
         {
-            var s = new PostgresJobStore(Cs, schema);
+            _ = new PostgresJobStore(Cs, schema); // egasi: sxema yaratiladi (bot/db/schema.sql)
+            var csA = Device(schema, "A"); var csB = Device(schema, "B");
+            var s = new PostgresJobStore(csA, schema);
+            Assert.True(s.IsDeviceRole);
             var now = DateTimeOffset.UtcNow;
             var a = J("A", now.AddMinutes(-30)); s.Insert(a);
             var b = J("B", now.AddMinutes(-20)); s.Insert(b);
@@ -39,7 +43,7 @@ public class PostgresStoreTests
             var claimed = new System.Collections.Concurrent.ConcurrentBag<long>();
             await Task.WhenAll(Enumerable.Range(0, 4).Select(i => Task.Run(() =>
             {
-                var store = new PostgresJobStore(Cs, schema);
+                var store = new PostgresJobStore(csA, schema);
                 while (store.ClaimNext($"worker-PC{i}-20260101000000-{i}", DateTimeOffset.UtcNow) is { } j) claimed.Add(j.Id);
             })));
             Assert.Equal(new[] { a.Id, b.Id }.OrderBy(x => x), claimed.OrderBy(x => x));
@@ -69,14 +73,58 @@ public class PostgresStoreTests
             Assert.Empty(s.GetEvents(a.Id));
             Assert.Equal(2, s.Page(false, 0, 10, out var total).Count);
             Assert.Equal(2, total);
+
+            // Izolyatsiya: B hisobi A ning mavzularini, sozlamalarini va kompyuterlarini ko'rmaydi, o'zgartira olmaydi.
+            s.Heartbeat("PC1", true, null, null, null, "1");
+            var bStore = new PostgresJobStore(csB, schema);
+            Assert.Equal(0, bStore.CountJobs());
+            Assert.Null(bStore.Get(b.Id));
+            Assert.False(bStore.Delete(b.Id));
+            Assert.Null(bStore.GetSetting("prompt.script"));
+            bStore.SetSetting("prompt.script", "B");                 // bir xil kalit - har hisobda alohida
+            bStore.Heartbeat("PC1", true, null, null, null, "1");     // bir xil kompyuter nomi - to'qnashmaydi
+            Assert.Equal("P2", s.GetSetting("prompt.script"));
+            Assert.Equal("B", bStore.GetSetting("prompt.script"));
+            var bJob = J("B-only", now); bStore.Insert(bJob);
+            Assert.Null(s.Get(bJob.Id));
+            Assert.Equal(1, bStore.CountJobs());
+            Assert.Equal(2, s.CountJobs());
         }
         finally
         {
             await using var conn = new NpgsqlConnection(Cs);
             await conn.OpenAsync();
+            var roles = new List<string>();
+            try
+            {
+                await using (var sel = new NpgsqlCommand($"SELECT role_name FROM \"{schema}\".account_roles", conn))
+                await using (var r = await sel.ExecuteReaderAsync()) while (await r.ReadAsync()) roles.Add(r.GetString(0));
+            }
+            catch { }
             await using var drop = new NpgsqlCommand($"DROP SCHEMA IF EXISTS \"{schema}\" CASCADE", conn);
             await drop.ExecuteNonQueryAsync();
+            NpgsqlConnection.ClearAllPools();
+            foreach (var role in roles)
+            {
+                await using var dr = new NpgsqlCommand($"DROP ROLE IF EXISTS \"{role}\"", conn);
+                await dr.ExecuteNonQueryAsync();
+            }
         }
+    }
+
+    /// <summary>Hisob va qurilma rolini yaratadi; shu rol bilan ulanish satrini qaytaradi.</summary>
+    private static string Device(string schema, string name)
+    {
+        var pw = "test-" + Guid.NewGuid().ToString("N");
+        using var c = new NpgsqlConnection(Cs);
+        c.Open();
+        using var cmd = new NpgsqlCommand($"SELECT role_name FROM \"{schema}\".register_account(@d, @m, @h, @p)", c);
+        cmd.Parameters.AddWithValue("d", name); cmd.Parameters.AddWithValue("m", name);
+        cmd.Parameters.AddWithValue("h", YtAuto.Infrastructure.Accounts.DeviceAccount.Hash(Guid.NewGuid().ToString()));
+        cmd.Parameters.AddWithValue("p", pw);
+        var role = (string)cmd.ExecuteScalar()!;
+        var b = new NpgsqlConnectionStringBuilder(Cs) { Username = role, Password = pw };
+        return b.ConnectionString;
     }
 
     [Fact]

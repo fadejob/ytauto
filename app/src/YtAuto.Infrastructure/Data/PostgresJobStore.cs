@@ -24,7 +24,7 @@ public sealed class PostgresJobStore : IAppStore
         {
             Pooling = true, MaxPoolSize = 5, Timeout = 15, CommandTimeout = 30, KeepAlive = 30,
         };
-        if (b.SslMode is SslMode.Disable or SslMode.Allow or SslMode.Prefer) b.SslMode = SslMode.Require;
+        if (b.SslMode is SslMode.Disable or SslMode.Allow or SslMode.Prefer && !Accounts.DeviceAccount.IsLocalHost(b.Host)) b.SslMode = SslMode.Require;
         _ds = NpgsqlDataSource.Create(b.ConnectionString);
         _schema = schema;
         Kind = $"Online (PostgreSQL: {b.Host})";
@@ -35,84 +35,34 @@ public sealed class PostgresJobStore : IAppStore
 
     private NpgsqlConnection Open() => _ds.OpenConnection();
 
+    /// <summary>
+    /// Sxema: yagona manba bot/db/schema.sql. Jadval egasi bilan ulanganda (bot yoki eski ulanish satri) kerak bo'lsa migratsiya qiladi;
+    /// qurilma roli (ytd_*) bilan - yo'q (u sxemani o'zgartira olmaydi, faqat o'z hisobi qatorlarini ko'radi).
+    /// </summary>
     private void Migrate()
     {
         using var c = Open();
-        using var tx = c.BeginTransaction();
-        Exec(c, tx, $"""
-CREATE SCHEMA IF NOT EXISTS "{_schema}";
-CREATE TABLE IF NOT EXISTS {T("jobs")} (
-  id BIGSERIAL PRIMARY KEY,
-  topic TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', language TEXT NOT NULL, target_duration_sec INT NOT NULL DEFAULT 0,
-  format INT NOT NULL, template_name TEXT NOT NULL DEFAULT '', voice_profile TEXT NOT NULL DEFAULT '',
-  publish_at_utc TIMESTAMPTZ NOT NULL, status INT NOT NULL, created_at_utc TIMESTAMPTZ NOT NULL, updated_at_utc TIMESTAMPTZ NOT NULL,
-  run_attempts INT NOT NULL DEFAULT 0, next_attempt_at_utc TIMESTAMPTZ, claimed_by TEXT, claimed_at_utc TIMESTAMPTZ,
-  cancel_requested BOOLEAN NOT NULL DEFAULT FALSE, qa_fix_cycles INT NOT NULL DEFAULT 0,
-  last_error_code TEXT, last_error_message TEXT, attention_reason TEXT, settings_snapshot TEXT,
-  title TEXT, description TEXT, thumbnail_path TEXT, video_archive_path TEXT, audio_archive_path TEXT, subtitle_archive_path TEXT,
-  audio_duration_sec DOUBLE PRECISION, youtube_video_id TEXT, youtube_privacy TEXT, youtube_upload_status TEXT, youtube_processing_status TEXT,
-  youtube_checked_at_utc TIMESTAMPTZ, published_at_utc TIMESTAMPTZ, work_dir TEXT, work_dir_cleaned BOOLEAN NOT NULL DEFAULT FALSE
-);
-CREATE INDEX IF NOT EXISTS ix_jobs_queue ON {T("jobs")}(status, created_at_utc, id);
-CREATE TABLE IF NOT EXISTS {T("job_stages")} (
-  job_id BIGINT NOT NULL REFERENCES {T("jobs")}(id) ON DELETE CASCADE, stage INT NOT NULL, state INT NOT NULL,
-  started_at_utc TIMESTAMPTZ, finished_at_utc TIMESTAMPTZ, attempts INT NOT NULL DEFAULT 0, input_hash TEXT, outputs_json TEXT,
-  error_code TEXT, error_message TEXT, duration_ms BIGINT, metrics_json TEXT, PRIMARY KEY(job_id, stage)
-);
-CREATE TABLE IF NOT EXISTS {T("job_events")} (
-  id BIGSERIAL PRIMARY KEY, job_id BIGINT NOT NULL REFERENCES {T("jobs")}(id) ON DELETE CASCADE,
-  at_utc TIMESTAMPTZ NOT NULL, level TEXT NOT NULL, stage TEXT, message TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_events_job ON {T("job_events")}(job_id, id);
-CREATE TABLE IF NOT EXISTS {T("owned_processes")} (
-  id BIGSERIAL PRIMARY KEY, job_id BIGINT, run_id TEXT NOT NULL, stage TEXT, tool TEXT, pid INT NOT NULL,
-  process_start_utc TIMESTAMPTZ NOT NULL, exe_path TEXT, ended_at_utc TIMESTAMPTZ, end_reason TEXT, peak_memory_bytes BIGINT
-);
-CREATE TABLE IF NOT EXISTS {T("worker_runs")} (
-  run_id TEXT PRIMARY KEY, pid INT NOT NULL, process_start_utc TIMESTAMPTZ NOT NULL, started_at_utc TIMESTAMPTZ NOT NULL,
-  finished_at_utc TIMESTAMPTZ, outcome TEXT, job_id BIGINT, message TEXT, trigger TEXT, machine TEXT
-);
-CREATE TABLE IF NOT EXISTS {T("shared_settings")} (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at_utc TIMESTAMPTZ NOT NULL);
--- v2: "Hozir chiqarish" so'rovi. Supabase Table Editor'da shu ustunni TRUE qilish ham yetarli - worker o'zi oladi.
-ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS publish_now BOOLEAN NOT NULL DEFAULT FALSE;
-CREATE INDEX IF NOT EXISTS ix_jobs_publish_now ON {T("jobs")}(id) WHERE publish_now;
--- v3: "Tayyor videoni YouTube'ga yuklash" so'rovi (Telegram bot). Video qayta tayyorlanmaydi - faqat arxivdagi fayl yuklanadi.
-ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS upload_requested BOOLEAN NOT NULL DEFAULT FALSE;
--- v4: har worker ishga tushishidagi resurs/hajm statistikasi (JSON).
-ALTER TABLE {T("worker_runs")} ADD COLUMN IF NOT EXISTS stats_json TEXT;
--- v5: kompyuterlar holati (heartbeat) va botdan "integratsiyalarni tekshirish" so'rovi.
-CREATE TABLE IF NOT EXISTS {T("machines")} (
-  machine TEXT PRIMARY KEY, last_seen_utc TIMESTAMPTZ NOT NULL, app_open BOOLEAN NOT NULL DEFAULT FALSE, app_seen_utc TIMESTAMPTZ,
-  worker_state TEXT, worker_job_id BIGINT, worker_detail TEXT, worker_seen_utc TIMESTAMPTZ, version TEXT,
-  check_requested BOOLEAN NOT NULL DEFAULT FALSE, check_requested_at_utc TIMESTAMPTZ, check_result_json TEXT, check_finished_at_utc TIMESTAMPTZ
-);
--- v6: botdan "Hozir ishga tushirish" (jadvalni kutmasdan mavzular soniga qarab ishni boshlash) so'rovi.
-ALTER TABLE {T("machines")} ADD COLUMN IF NOT EXISTS run_requested BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE {T("machines")} ADD COLUMN IF NOT EXISTS run_requested_at_utc TIMESTAMPTZ;
--- v9: botdan kompyuterga buyruqlar (shablonni o'chirish, upload sessiyasini tozalash).
-CREATE TABLE IF NOT EXISTS {T("machine_commands")} (
-  id BIGSERIAL PRIMARY KEY, machine TEXT NOT NULL, kind TEXT NOT NULL, arg TEXT NOT NULL DEFAULT '', done BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
-);
--- v8: shablonlar ro'yxati (har kompyuter uchun): tayyor videolar avtomatik shablon bo'ladi, fayllar yuklanmaydi - faqat ma'lumot.
-CREATE TABLE IF NOT EXISTS {T("templates")} (
-  machine TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, size_bytes BIGINT NOT NULL DEFAULT 0, added_at_utc TIMESTAMPTZ,
-  source TEXT NOT NULL DEFAULT 'upload', notes TEXT, PRIMARY KEY (machine, name)
-);
--- v7: botdan yuklangan shablonlar (Supabase Storage) - har kompyuter uchun alohida yozuv; ilova yuklab olib o'rnatadi.
-CREATE TABLE IF NOT EXISTS {T("template_uploads")} (
-  id BIGSERIAL PRIMARY KEY, group_id TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, storage_path TEXT NOT NULL, size_bytes BIGINT NOT NULL DEFAULT 0,
-  machine TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', progress INT NOT NULL DEFAULT 0, message TEXT, download_url TEXT,
-  cleaned BOOLEAN NOT NULL DEFAULT FALSE, created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
-);
--- v10: botda qo'lda kiritilgan subtitr/title (Gemini o'tkazib yuboriladi) va tayyor ovoz (VoiceStudio TTS o'tkazib yuboriladi).
--- manual_audio_path - Storage'dagi yo'l (bot tozalash uchun), manual_audio_url - kompyuter yuklab oladigan imzolangan havola.
-ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS manual_script TEXT;
-ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS manual_title TEXT;
-ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS manual_audio_path TEXT;
-ALTER TABLE {T("jobs")} ADD COLUMN IF NOT EXISTS manual_audio_url TEXT;
-""");
-        tx.Commit();
+        IsDeviceRole = SchemaMigrator.IsDeviceRole(c);
+        SchemaMigrator.EnsureMigrated(c, _schema);
+    }
+
+    /// <summary>Qurilma roli bilan ulangan (ko'p foydalanuvchili rejim): barcha so'rovlar baza tomonidan shu hisobga cheklangan.</summary>
+    public bool IsDeviceRole { get; private set; }
+
+    /// <summary>Hisob tokenini almashtiradi (bazada faqat xeshi). Eski token bilan botga kirganlar chiqarib yuboriladi.</summary>
+    public void RotateToken(string newTokenHash)
+    {
+        using var c = Open();
+        Exec(c, null, $"SELECT {T("rotate_token")}(@h)", ("h", newTokenHash));
+    }
+
+    /// <summary>Shu qurilma hisobining ma'lumoti (id, qurilma nomi, botga token bilan kirgan Telegram foydalanuvchilar soni).</summary>
+    public (Guid AccountId, string DeviceName, DateTimeOffset Created, int TelegramUsers)? AccountInfo()
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"SELECT account_id, device_name, created_at_utc, telegram_users FROM {T("account_info")}()");
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? (r.GetGuid(0), r.GetString(1), r.GetFieldValue<DateTimeOffset>(2), r.GetInt32(3)) : null;
     }
 
     // ------------------------------------------------------------------ helpers
@@ -522,7 +472,7 @@ ON CONFLICT(job_id, stage) DO UPDATE SET state=excluded.state, started_at_utc=ex
 INSERT INTO {T("machines")}(machine, last_seen_utc, app_open, app_seen_utc, worker_state, worker_job_id, worker_detail, worker_seen_utc, version)
 VALUES (@m, now(), COALESCE(@app::boolean, FALSE), CASE WHEN @app::boolean IS NOT NULL THEN now() END,
         @ws::text, @job::bigint, @det::text, CASE WHEN @ws::text IS NOT NULL THEN now() END, @ver::text)
-ON CONFLICT (machine) DO UPDATE SET
+ON CONFLICT (account_id, machine) DO UPDATE SET
   last_seen_utc = now(),
   app_open = COALESCE(@app::boolean, {T("machines")}.app_open),
   app_seen_utc = CASE WHEN @app::boolean IS NOT NULL THEN now() ELSE {T("machines")}.app_seen_utc END,
@@ -566,7 +516,7 @@ RETURNING id, name, kind, download_url, size_bytes
         using var tx = c.BeginTransaction();
         Exec(c, tx, $"DELETE FROM {T("templates")} WHERE machine = @m", ("m", machine));
         foreach (var t in items.GroupBy(i => i.Name, StringComparer.OrdinalIgnoreCase).Select(g => g.First()))
-            Exec(c, tx, $"INSERT INTO {T("templates")}(machine, name, kind, size_bytes, added_at_utc, source, notes) VALUES(@m,@n,@k,@sz,@at::timestamptz,@src,@no) ON CONFLICT (machine, name) DO NOTHING",
+            Exec(c, tx, $"INSERT INTO {T("templates")}(machine, name, kind, size_bytes, added_at_utc, source, notes) VALUES(@m,@n,@k,@sz,@at::timestamptz,@src,@no) ON CONFLICT (account_id, machine, name) DO NOTHING",
                 ("m", machine), ("n", t.Name), ("k", t.Kind), ("sz", t.Size), ("at", t.Added?.ToUniversalTime()), ("src", t.Source), ("no", t.Notes));
         tx.Commit();
     }
@@ -642,7 +592,7 @@ RETURNING id, name, kind, download_url, size_bytes
     public void SetSetting(string key, string value)
     {
         using var c = Open();
-        Exec(c, null, $"INSERT INTO {T("shared_settings")}(key,value,updated_at_utc) VALUES(@k,@v,@t) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at_utc=excluded.updated_at_utc",
+        Exec(c, null, $"INSERT INTO {T("shared_settings")}(key,value,updated_at_utc) VALUES(@k,@v,@t) ON CONFLICT(account_id, key) DO UPDATE SET value=excluded.value, updated_at_utc=excluded.updated_at_utc",
             ("k", key), ("v", value), ("t", DateTimeOffset.UtcNow));
     }
 

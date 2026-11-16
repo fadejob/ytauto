@@ -225,38 +225,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         finally { Busy = false; }
     }
 
-    // ---- Online baza
-    public string PgConnectionInput { get; set; } = "";
-    public string StoreInfo => _svc.IsOnline
-        ? $"Ulangan: {_svc.Store.Kind}. Mavzular va promptlar online saqlanmoqda."
-        : $"Hozir: {_svc.Store.Kind}. Online baza ulanmagan — mavzular faqat shu kompyuterda.";
-
-    [RelayCommand]
-    private async Task SaveConnection()
-    {
-        var cs = PgConnectionInput.Trim();
-        if (cs.Length == 0) { Message = "Ulanish satrini kiriting."; return; }
-        Busy = true; Message = "Online bazaga ulanilmoqda…";
-        try
-        {
-            var (ok, msg) = await Task.Run(() => Infrastructure.Data.PostgresJobStore.Check(cs));
-            if (!ok) { Message = msg; return; }
-            var moved = await Task.Run(() =>
-            {
-                var remote = new Infrastructure.Data.PostgresJobStore(cs);
-                var n = remote.ImportFrom(_svc.LocalDb);
-                var shared = new Infrastructure.Data.SqliteSettingsStore(_svc.LocalDb, AppServices.DefaultSettings, remote);
-                shared.Save(shared.Load());
-                return n;
-            });
-            _svc.Secrets.Set(SecretNames.PostgresConnection, cs);
-            PgConnectionInput = "";
-            Message = $"{msg}. Saqlandi (ko'chirilgan lokal mavzular: {moved}). Ilovani qayta oching — shundan keyin online baza ishlatiladi.";
-        }
-        catch (Exception e) { Message = "Saqlanmadi: " + e.Message; }
-        finally { Busy = false; }
-    }
-
     public SettingsViewModel(AppServices svc) => _svc = svc;
 
     public SettingsViewModel Load()

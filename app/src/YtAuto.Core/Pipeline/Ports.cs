@@ -86,6 +86,10 @@ public static class SecretNames
     public const string UploadSessionPrefix = "upload_session_";
     /// <summary>Online baza (Supabase PostgreSQL) ulanish satri, parol bilan - faqat DPAPI'da.</summary>
     public const string PostgresConnection = "postgres_connection";
+    /// <summary>Shu qurilmaning o'z online baza roli (faqat o'z hisobi ma'lumotlarini ko'radi) - ulanish satri, DPAPI'da.</summary>
+    public const string DeviceConnection = "device_connection";
+    /// <summary>Hisob tokeni (botga kirish uchun foydalanuvchiga ko'rsatiladi) - DPAPI'da; bazada faqat xeshi.</summary>
+    public const string AccountToken = "account_token";
 }
 
 public interface IScriptGenerator

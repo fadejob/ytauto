@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using YtAuto.Core.Domain;
 using YtAuto.Core.Pipeline;
@@ -90,6 +90,13 @@ public static class Program
             }
             if (args.Contains("--check")) return await IntegrationCheck.RunAsync(svc, cts.Token);
             if (args.Contains("--selftest-local")) return await SelfTest.RunAsync(svc, cts.Token);
+
+            // Ko'p foydalanuvchili rejim: hisob sozlanmagan bo'lsa (ilovada "Sozlash" bosilmagan) worker hech narsa qilmaydi.
+            if (dataRoot is null && !svc.IsAccountReady)
+            {
+                if (!poll) svc.Log.Warn("Sozlash tugallanmagan: YtAuto oynasini ochib, «Kerakli fayllarni yuklash» tugmasini bosing. Worker chiqadi.");
+                return 0;
+            }
 
             // Jadval botda o'zgargan bo'lsa Task Scheduler shu yerda yangilanadi (har --poll da, ~10 daqiqada).
             if (dataRoot is null && (poll || scheduled)) Infrastructure.Scheduling.ScheduleSync.Apply(svc, Environment.ProcessPath);
@@ -187,14 +194,12 @@ public static class Program
             if (client["client_secret"]?.GetValue<string>() is { Length: > 0 } cs) { svc.Secrets.Set(SecretNames.YouTubeClientSecret, cs.Trim()); imported.Add("youtube_client_secret"); }
             if (j["postgres_connection"]?.GetValue<string>() is { Length: > 0 } pg)
             {
+                // Bazaning egasi ulanish satri: faqat eski (v1) ma'lumotlarni shu kompyuter hisobiga o'tkazish uchun. Ilovadagi
+                // "Sozlash" uni ishlatib hisob yaratadi va keyin o'chiradi; worker o'zi bu satr bilan ishlamaydi.
                 var (ok, msg) = Infrastructure.Data.PostgresJobStore.Check(pg);
                 if (!ok) { svc.Log.Error("Online baza ulanish satri saqlanmadi: " + msg); return 1; }
                 svc.Secrets.Set(SecretNames.PostgresConnection, pg.Trim());
-                var remote = new Infrastructure.Data.PostgresJobStore(pg.Trim());            // sxema yaratiladi
-                var moved = remote.ImportFrom(svc.LocalDb);
-                var shared = new Infrastructure.Data.SqliteSettingsStore(svc.LocalDb, AppServices.DefaultSettings, remote);
-                shared.Save(shared.Load());                                                    // promptlar online bazaga
-                imported.Add($"postgres_connection ({msg}; ko'chirilgan mavzular: {moved})");
+                imported.Add("postgres_connection (eski ma'lumotlar ilovadagi sozlashda hisobga o'tkaziladi)");
             }
             svc.Settings.Save(s);
             svc.Log.Info($"Konfiguratsiya import qilindi: {string.Join(", ", imported)} (qiymatlar logga yozilmaydi).");
@@ -252,6 +257,7 @@ public static class Program
     private static async Task<List<RunSummary>> RunBatchAsync(AppServices svc, JobRunner runner, CancellationToken ct, bool respectWindow = false)
     {
         var results = await RunPublishNowAsync(svc, runner, ct);
+        if (!svc.HasGeminiKey()) return results; // mavzular muzlatilgan (RunPublishNowAsync logga yozgan)
         var pending = svc.Store.CountPending(DateTimeOffset.UtcNow);
         var plan = BatchPlanner.VideosFor(pending);
         svc.Log.Info($"Bazadan sinxronlandi ({svc.Store.Kind}): navbatda {pending} ta mavzu — {BatchPlanner.Describe(pending)}.");
@@ -310,7 +316,12 @@ public static class Program
     /// </summary>
     private static async Task<List<RunSummary>> RunPublishNowAsync(AppServices svc, JobRunner runner, CancellationToken ct)
     {
-        var list = await runner.RunUploadRequestsAsync(svc.RunId, ct);
+        var list = await runner.RunUploadRequestsAsync(svc.RunId, ct); // tayyor videoni yuklash Gemini'siz ham ishlaydi
+        if (!svc.HasGeminiKey())
+        {
+            svc.Log.Warn("Gemini kaliti yo'q - mavzular muzlatilgan: yangi video tayyorlanmaydi. Botda Sozlamalar → Gemini'ga kalit qo'shing.");
+            return list;
+        }
         for (int i = 0; i < 10; i++)
         {
             var r = await runner.RunOnceAsync(svc.RunId, publishNowOnly: true, ct);
