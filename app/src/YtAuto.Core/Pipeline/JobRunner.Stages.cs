@@ -369,7 +369,13 @@ public sealed partial class JobRunner
                 throw PipelineException.Config("claude_auth", $"Claude Code autentifikatsiyasi ishlamadi (exit {r.Run.ExitCode}). Worker kontekstida `claude` ga kirilganini tekshiring. {Shorten(r.ResultText + " " + r.Run.StderrTail, 300)}");
             throw PipelineException.Transient("claude_failed", $"Claude sessiyasi xato bilan tugadi (exit {r.Run.ExitCode}): {Shorten(r.ResultText + " " + r.Run.StderrTail, 400)}");
         }
-        if (r.PermissionDenials > 0) c.Log.Warn($"Claude {r.PermissionDenials} ta ruxsat etilmagan amalni urindi (rad etildi).", "Edit");
+        if (r.PermissionDenials > 0)
+        {
+            var shown = r.DeniedActions.Take(5).Select(a => "«" + a + "»").ToList();
+            var more = r.DeniedActions.Count > 5 ? $" va yana {r.DeniedActions.Count - 5} ta" : "";
+            c.Log.Warn($"Claude {r.PermissionDenials} ta ruxsat etilmagan amalni urindi (rad etildi)" +
+                       (shown.Count > 0 ? $": {string.Join(", ", shown)}{more}." : "."), "Edit");
+        }
         if (!File.Exists(c.FilmHtml)) throw PipelineException.Transient("claude_no_film", "Claude tugadi, lekin film/film.html yaratilmadi.");
 
         var voicePath = Path.Combine(assets, "voice.wav");

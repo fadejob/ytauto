@@ -95,4 +95,19 @@ public class ClaudeAuthStatusTests
     [InlineData("", 0, null)]
     public void ParsesAuthStatus(string stdout, int exit, bool? expected) =>
         Assert.Equal(expected, YtAuto.Infrastructure.Claude.ClaudeEditorAgent.ParseAuthStatus(stdout, exit).LoggedIn);
+
+    [Fact]
+    public void ClaudeDenials_AreDescribedByToolAndInput()
+    {
+        var arr = (System.Text.Json.Nodes.JsonArray)System.Text.Json.Nodes.JsonNode.Parse("""
+[
+  { "tool_name": "Bash", "tool_use_id": "a", "tool_input": { "command": "python make_scene.py\n--fast", "description": "x" } },
+  { "tool_name": "WebFetch", "tool_use_id": "b", "tool_input": { "url": "https://example.com/font.woff2" } },
+  { "tool_name": "Task", "tool_use_id": "c", "tool_input": {} }
+]
+""")!;
+        var d = YtAuto.Infrastructure.Claude.ClaudeEditorAgent.DescribeDenials(arr);
+        Assert.Equal(new[] { "Bash: python make_scene.py --fast", "WebFetch: https://example.com/font.woff2", "Task" }, d);
+        Assert.Empty(YtAuto.Infrastructure.Claude.ClaudeEditorAgent.DescribeDenials(null));
+    }
 }

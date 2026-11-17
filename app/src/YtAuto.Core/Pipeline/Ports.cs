@@ -154,8 +154,14 @@ public sealed class EditorRunResult
     public bool IsError { get; init; }
     public string ResultText { get; init; } = "";
     public string SessionId { get; init; } = "";
+    /// <summary>
+    /// Claude Code hisoblagan taxminiy narx (total_cost_usd: tokenlar × API narxlari). Claude obunasi (Pro/Max) bilan kirilgan bo'lsa
+    /// alohida pul yechilmaydi - obuna limitidan ketadi; API kaliti bilan bo'lsa shu summa hisobdan yechiladi.
+    /// </summary>
     public double? CostUsd { get; init; }
     public int PermissionDenials { get; init; }
+    /// <summary>Rad etilgan amallar: "Bash: python make.py", "WebFetch: https://..." (qisqartirilgan, sirlar yashirilgan).</summary>
+    public IReadOnlyList<string> DeniedActions { get; init; } = Array.Empty<string>();
 }
 
 public sealed class RenderOptions

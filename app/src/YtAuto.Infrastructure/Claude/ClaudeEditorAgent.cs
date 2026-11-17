@@ -148,6 +148,7 @@ public sealed class ClaudeEditorAgent : IEditorAgent
                 ExePath = s.ExecutablePath, EndedAtUtc = DateTimeOffset.UtcNow, EndReason = r.TimedOut ? "timeout" : $"exit {r.ExitCode}", PeakMemoryBytes = r.PeakMemoryBytes });
 
         bool isError = r.ExitCode != 0; string result = ""; string session = ""; double? cost = null; int denials = 0;
+        IReadOnlyList<string> denied = Array.Empty<string>();
         try
         {
             var raw = File.Exists(spec.StdoutPath) ? await File.ReadAllTextAsync(spec.StdoutPath!, ct).ConfigureAwait(false) : "";
@@ -160,11 +161,38 @@ public sealed class ClaudeEditorAgent : IEditorAgent
                 session = j?["session_id"]?.GetValue<string>() ?? "";
                 cost = j?["total_cost_usd"]?.GetValue<double>();
                 denials = (j?["permission_denials"] as JsonArray)?.Count ?? 0;
+                denied = DescribeDenials(j?["permission_denials"] as JsonArray);
             }
         }
         catch (Exception e) { log.Warn($"Claude JSON natijasini o'qib bo'lmadi: {e.Message}", "Edit"); }
         if (r.LeftoverProcessesKilled > 0) log.Info($"Claude sessiyasidan qolgan {r.LeftoverProcessesKilled} ta child jarayon (masalan, OpenFilm Studio) yopildi.", "Edit");
-        return new EditorRunResult { Run = r, IsError = isError, ResultText = Redactor.Redact(result), SessionId = session, CostUsd = cost, PermissionDenials = denials };
+        return new EditorRunResult { Run = r, IsError = isError, ResultText = Redactor.Redact(result), SessionId = session, CostUsd = cost, PermissionDenials = denials, DeniedActions = denied };
+    }
+
+    /// <summary>
+    /// Claude Code JSON'idagi permission_denials: [{ tool_name, tool_input: { command | file_path | url | pattern | ... } }] →
+    /// "Bash: python make.py" ko'rinishidagi qisqa qatorlar (logga yoziladi; sirlar yashiriladi, uzunlik cheklanadi).
+    /// </summary>
+    internal static IReadOnlyList<string> DescribeDenials(JsonArray? arr)
+    {
+        if (arr is null || arr.Count == 0) return Array.Empty<string>();
+        var list = new List<string>();
+        foreach (var d in arr)
+        {
+            string tool = "?", detail = "";
+            try
+            {
+                tool = d?["tool_name"]?.GetValue<string>() ?? "?";
+                var input = d?["tool_input"] as JsonObject;
+                foreach (var key in new[] { "command", "file_path", "path", "url", "pattern", "query", "notebook_path" })
+                    if (input?[key] is JsonValue v && v.TryGetValue<string>(out var sv) && !string.IsNullOrWhiteSpace(sv)) { detail = sv; break; }
+            }
+            catch { }
+            detail = Redactor.Redact(detail.ReplaceLineEndings(" ").Trim());
+            if (detail.Length > 160) detail = detail[..160] + "…";
+            list.Add(detail.Length > 0 ? $"{tool}: {detail}" : tool);
+        }
+        return list;
     }
 }
 
