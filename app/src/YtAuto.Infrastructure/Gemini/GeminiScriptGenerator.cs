@@ -30,6 +30,9 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
     /// <summary>Online bazadan (bot orqali kiritilgan) kalitlar, tartib bilan. Bo'lsa lokal DPAPI kalitidan ustun turadi.</summary>
     public Func<IReadOnlyList<string>?>? RemoteKeys { get; set; }
 
+    /// <summary>false bo'lsa (mehmon hisobi vazifasi) kompyuterning lokal DPAPI kaliti ishlatilmaydi.</summary>
+    public Func<bool>? LocalKeyAllowed { get; set; }
+
     /// <summary>Oxirgi muvaffaqiyatli kalit: keyingi chaqiruvlar limiti tugagan kalitni qayta-qayta urmasdan shundan boshlaydi.</summary>
     private int _active;
 
@@ -39,7 +42,9 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
         try { remote = RemoteKeys?.Invoke(); } catch { }
         var keys = (remote ?? Array.Empty<string>()).Select(k => k?.Trim() ?? "").Where(k => k.Length > 0).Distinct().ToList();
         if (keys.Count > 0) return keys;
-        return _secrets.Get(SecretNames.GeminiApiKey) is { Length: > 0 } k ? new List<string> { k }
+        var local = true;
+        try { local = LocalKeyAllowed?.Invoke() ?? true; } catch { }
+        return local && _secrets.Get(SecretNames.GeminiApiKey) is { Length: > 0 } k ? new List<string> { k }
             : throw PipelineException.Config("gemini_key_missing", "Gemini API kaliti kiritilmagan (Telegram bot → Sozlamalar → Gemini).");
     }
 

@@ -84,6 +84,8 @@ public sealed class GeminiSettings
     /// Hech qachon saqlanmaydi/snapshotga tushmaydi (JsonIgnore).
     /// </summary>
     [JsonIgnore] public List<string> RemoteApiKeys { get; set; } = new();
+    /// <summary>Mehmon hisobi vazifasi: faqat uning bot orqali kiritgan kalitlari (kompyuter egasining lokal kaliti ishlatilmaydi).</summary>
+    [JsonIgnore] public bool RemoteOnly { get; set; }
 }
 
 public sealed class ClaudeSettings
@@ -142,6 +144,8 @@ public sealed class YouTubeSettings
     public string DefaultDescription { get; set; } = "";
     /// <summary>Bot orqali ulangan kanalning refresh token'i (online baza). Saqlanmaydi/snapshotga tushmaydi (JsonIgnore).</summary>
     [JsonIgnore] public string RemoteRefreshToken { get; set; } = "";
+    /// <summary>Mehmon hisobi vazifasi: faqat uning bot orqali ulagan kanali (egasining lokal tokeni bilan yuklanmaydi va u o'zgartirilmaydi).</summary>
+    [JsonIgnore] public bool RemoteOnly { get; set; }
     /// <summary>Standart public soati "HH:mm".</summary>
     public string PublishTime { get; set; } = "18:00";
     public string TimeZoneId { get; set; } = "Asia/Tashkent";

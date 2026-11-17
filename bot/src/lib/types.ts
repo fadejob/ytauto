@@ -104,7 +104,12 @@ export type State = {
   topics: Topic[]; catalog: Catalog; viewer: { name: string; dev: boolean }; now: string; demo: boolean;
   /** Gemini kaliti bormi: yo'q bo'lsa mavzu qo'shish va AI yordamchi o'chiq, mavjud mavzular muzlatilgan. */
   gemini: { ready: boolean };
+  /** guest - qo'shimcha token hisobi: «Hozir chiqarish» va kompyuter boshqaruvi yo'q; hostLabel - token bergan hisob kompyuteri. */
+  account: { guest: boolean; hostLabel: string | null };
 };
+
+/** Asosiy hisob yaratgan qo'shimcha token (mehmon videolari ko'rsatilmaydi). */
+export type GuestToken = { id: string; label: string; createdAt: string; telegramUsers: number };
 
 export type PromptKey = "script" | "montage";
 export type Prompts = Record<PromptKey, string>;

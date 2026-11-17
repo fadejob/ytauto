@@ -72,7 +72,7 @@ export function ownerSql(): Sql {
   return g.__ytautoSql;
 }
 
-type Ctx = { tx: Sql; accountId: string };
+type Ctx = { tx: Sql; accountId: string; guest: boolean };
 const als = new AsyncLocalStorage<Ctx>();
 
 /** Joriy so'rov hisobining tranzaksiyasi (RLS bilan). Hisob konteksti bo'lmasa xato - tasodifan hamma ma'lumotni o'qib qo'ymaslik uchun. */
@@ -80,6 +80,11 @@ export function sql(): Sql {
   const c = als.getStore();
   if (!c) throw new Error("Ichki xato: hisob konteksti yo'q (withAccount).");
   return c.tx;
+}
+
+/** Joriy hisob qo'shimcha (mehmon) tokenmi: «Hozir chiqarish» va kompyuterga buyruqlar yo'q. */
+export function isGuest(): boolean {
+  return als.getStore()?.guest === true;
 }
 
 export function currentAccountId(): string {
@@ -91,13 +96,13 @@ export function currentAccountId(): string {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** fn ni shu hisob kontekstida, bitta tranzaksiyada bajaradi (xato bo'lsa hammasi bekor qilinadi). */
-export async function withAccount<T>(accountId: string, fn: () => Promise<T>): Promise<T> {
+export async function withAccount<T>(accountId: string, fn: () => Promise<T>, opts?: { guest?: boolean }): Promise<T> {
   if (!UUID.test(accountId)) throw new Error("Hisob aniqlanmadi.");
   await ensureSchema();
   const result = await ownerSql().begin(async (tx) => {
     await tx.unsafe("SET LOCAL ROLE ytauto_bot");
     await tx`SELECT set_config('ytauto_ctx.account', ${accountId}, true)`;
-    return { v: await als.run({ tx: tx as unknown as Sql, accountId }, fn) };
+    return { v: await als.run({ tx: tx as unknown as Sql, accountId, guest: opts?.guest === true }, fn) };
   });
   return (result as { v: T }).v;
 }

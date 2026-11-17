@@ -6,6 +6,7 @@ import { FormatText, type BotConfig, type BotConfigInput, type Catalog, type Voi
 import type { Toast } from "./App";
 import VoiceProfiles from "./VoiceProfiles";
 import Library from "./Library";
+import Guests from "./Guests";
 
 type Sch = { enabled: boolean; startTime: string; endTime: string; timeZoneId: string; wakeToRun: boolean; executionLimitHours: number };
 type Draft = BotConfigInput;
@@ -26,7 +27,11 @@ const CATEGORIES: [string, string][] = [
   ["26", "Qo'llanma va uslub"], ["27", "Ta'lim"], ["28", "Fan va texnologiya"], ["29", "Notijorat va faollik"],
 ];
 
-export default function Settings({ catalog, toast, onSaved, onLogout }: { catalog: Catalog | null; toast: Toast; onSaved?: () => void; onLogout?: () => void }) {
+export default function Settings({ catalog, toast, onSaved, onLogout, account }: {
+  catalog: Catalog | null; toast: Toast; onSaved?: () => void; onLogout?: () => void; account?: { guest: boolean; hostLabel: string | null };
+}) {
+  /** Qo'shimcha token: kompyuter darajasidagi sozlamalar (jadval, Claude, limitlar, render, VoiceStudio) kompyuter egasida qoladi. */
+  const guest = account?.guest === true;
   const [sch, setSch] = useState<Sch | null>(null);
   const [schSaved, setSchSaved] = useState<Sch | null>(null);
   const [cfg, setCfg] = useState<Draft | null>(null);
@@ -115,6 +120,20 @@ export default function Settings({ catalog, toast, onSaved, onLogout }: { catalo
       <div className="list">
         {!sch || !cfg ? <div className="skeleton" style={{ height: 220 }} /> : (
           <>
+            {guest ? (
+              <>
+                <div className="sect">Qo&apos;shimcha token</div>
+                <div className="card formcard">
+                  <div className="hint">
+                    Videolaringiz {account?.hostLabel ? <b>«{account.hostLabel}»</b> : "token bergan hisob"} kompyuterida, uning ish vaqtida tayyorlanadi —
+                    chiqish vaqti yaqinlari birinchi. Kech tayyor bo&apos;lsa, YouTube&apos;ga tayyor bo&apos;lgandan 1 soat keyin chiqadi.
+                    «Hozir chiqarish» va kompyuter sozlamalari (jadval, Claude, render, limitlar) kompyuter egasida.
+                    Gemini kaliti, promptlar, ovoz profillari va YouTube kanalingiz — o&apos;zingizniki.
+                  </div>
+                </div>
+              </>
+            ) : null}
+            {!guest ? <>
             <div className="sect">Jadval</div>
             <div className="card formcard">
               <label className="chk"><input type="checkbox" checked={sch.enabled} onChange={(e) => setSch({ ...sch, enabled: e.target.checked })} /><span>Kunlik jadval yoqilgan</span></label>
@@ -126,6 +145,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout }: { catalo
               <label className="chk"><input type="checkbox" checked={sch.wakeToRun} onChange={(e) => setSch({ ...sch, wakeToRun: e.target.checked })} /><span>Uyqudan uyg&apos;otish (WakeToRun)</span></label>
               <div className="hint">Jadval o&apos;chiq bo&apos;lsa ham «Hozir chiqarish» ishlayveradi.</div>
             </div>
+            </> : null}
 
             <div className="sect">Gemini (ssenariy)</div>
             <div className="card formcard">
@@ -148,6 +168,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout }: { catalo
               <label className="chk"><input type="checkbox" checked={cfg.gemini.useSearchGrounding} onChange={(e) => G({ useSearchGrounding: e.target.checked })} /><span>Hozirgi faktlar uchun Google Search</span></label>
             </div>
 
+            {!guest ? <>
             <div className="sect">Claude (montaj)</div>
             <div className="card formcard">
               <div className="grid2">
@@ -156,12 +177,14 @@ export default function Settings({ catalog, toast, onSaved, onLogout }: { catalo
                 <div className="field"><label>Maks. byudjet USD (0 — cheklovsiz)</label><input className="input" inputMode="decimal" value={cfg.claude.maxBudgetUsd} onChange={(e) => C({ maxBudgetUsd: num(e.target.value) })} /></div>
               </div>
             </div>
+            </> : null}
 
             <VoiceProfiles
               profiles={cfg.voice.profiles} settings={cfg.voice.settings} defaultProfile={cfg.defaults.voiceProfile} info={voiceInfo}
               onProfiles={(p) => setCfg((c) => c && { ...c, voice: { ...c.voice, profiles: p } })}
               onSettings={(s) => setCfg((c) => c && { ...c, voice: { ...c.voice, settings: s } })}
               onDefault={(n) => D({ voiceProfile: n })}
+              machineSettings={!guest}
             />
 
             <div className="sect">Yangi mavzu standartlari</div>
@@ -188,8 +211,11 @@ export default function Settings({ catalog, toast, onSaved, onLogout }: { catalo
               </div>
             </div>
 
-            <Library toast={toast} />
+            <Library toast={toast} canUpload={!guest} />
 
+            {!guest ? <Guests toast={toast} /> : null}
+
+            {!guest ? <>
             <div className="sect">Limitlar</div>
             <div className="card formcard">
               <div className="grid2">
@@ -211,6 +237,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout }: { catalo
               <label className="chk"><input type="checkbox" checked={cfg.openFilm.burnSubtitles} onChange={(e) => O({ burnSubtitles: e.target.checked })} /><span>Subtitrlarni videoga kuydirish</span></label>
               <label className="chk"><input type="checkbox" checked={cfg.openFilm.lookFullAfterRender} onChange={(e) => O({ lookFullAfterRender: e.target.checked })} /><span>Renderdan keyin to&apos;liq ko&apos;rik (look --full)</span></label>
             </div>
+            </> : null}
 
             <div className="sect">YouTube</div>
             <div className="card formcard">

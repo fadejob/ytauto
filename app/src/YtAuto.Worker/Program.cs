@@ -133,7 +133,7 @@ public static class Program
 
             await RefreshYouTubeAsync(svc, runner, cts.Token);
             Housekeeping(svc, runner);
-            try { svc.Settings.PublishCatalog(); } catch (Exception e) { svc.Log.Warn("Bot katalogi yuborilmadi: " + e.Message); }
+            PublishCatalogs(svc);
             if (args.Contains("--refresh")) { await RecordStatsAsync(svc, sampler); svc.Store.FinishRun(svc.RunId, "refresh", null, null); return 0; }
 
             List<RunSummary> results;
@@ -222,9 +222,9 @@ public static class Program
     {
         try
         {
-            if (!svc.IsOnline || !svc.Uploader.IsConnected) return;
-            if (svc.Store.ListByStatus(JobStatus.Processing, JobStatus.Scheduled).Count == 0) return;
-            await RefreshYouTubeAsync(svc, new JobRunner(svc.Pipeline()), ct);
+            if (!svc.IsOnline) return;
+            JobRunner? runner = null;
+            await RefreshYouTubeAsync(svc, () => runner ??= new JobRunner(svc.Pipeline()), ct);
         }
         catch (Exception e) when (e is not OperationCanceledException) { svc.Log.Warn("YouTube holatini yengil yangilashda xato: " + e.Message); }
     }
@@ -310,9 +310,22 @@ public static class Program
         }
     }
 
-    /// <summary>Masofaviy (bot) so'rovlar bormi: "hozir chiqarish" yoki shu kompyuterdagi tayyor videoni "YouTube'ga yuklash".</summary>
-    private static bool HasRemoteRequests(AppServices svc) =>
-        svc.Store.CountPublishNow(DateTimeOffset.UtcNow) > 0 || JobRunner.LocalUploadRequests(svc.Store).Count > 0;
+    /// <summary>
+    /// Masofaviy (bot) so'rovlar bormi: "hozir chiqarish" (faqat asosiy hisob) yoki shu kompyuterdagi tayyor videoni "YouTube'ga yuklash"
+    /// (asosiy va mehmon hisoblari).
+    /// </summary>
+    private static bool HasRemoteRequests(AppServices svc)
+    {
+        if (svc.Store.CountPublishNow(DateTimeOffset.UtcNow) > 0 || JobRunner.LocalUploadRequests(svc.Store).Count > 0) return true;
+        try
+        {
+            foreach (var (account, _) in AccountScopes(svc).Skip(1))
+                using (EnterScope(svc, account))
+                    if (JobRunner.LocalUploadRequests(svc.Store).Count > 0) return true;
+        }
+        catch (Exception e) when (e is not OperationCanceledException) { svc.Log.Warn("Mehmon hisoblari so'rovlari o'qilmadi: " + e.Message); }
+        return false;
+    }
 
     /// <summary>
     /// Masofaviy so'rovlar: avval "tayyor videoni YouTube'ga yuklash" (tez, qayta tayyorlamaydi), so'ng barcha "hozir chiqarish"
@@ -321,6 +334,15 @@ public static class Program
     private static async Task<List<RunSummary>> RunPublishNowAsync(AppServices svc, JobRunner runner, CancellationToken ct)
     {
         var list = await runner.RunUploadRequestsAsync(svc.RunId, ct); // tayyor videoni yuklash Gemini'siz ham ishlaydi
+        // Mehmon hisoblarining "tayyor videoni YouTube'ga yuklash" so'rovlari (o'z kanaliga, o'z chiqish vaqtiga). "Hozir chiqarish"
+        // mehmonlarga berilmaydi - quyidagi tsikl faqat asosiy hisobniki.
+        try
+        {
+            foreach (var (account, _) in AccountScopes(svc).Skip(1))
+                using (EnterScope(svc, account))
+                    list.AddRange(await runner.RunUploadRequestsAsync(svc.RunId, ct));
+        }
+        catch (Exception e) when (e is not OperationCanceledException) { svc.Log.Warn("Mehmon hisoblari yuklash so'rovlari bajarilmadi: " + e.Message); }
         if (!svc.HasGeminiKey())
         {
             svc.Log.Warn("Gemini kaliti yo'q - mavzular muzlatilgan: yangi video tayyorlanmaydi. Botda Sozlamalar → Gemini'ga kalit qo'shing.");
@@ -337,19 +359,65 @@ public static class Program
         return list;
     }
 
-    /// <summary>Processing/Scheduled videolar holatini yengil API so'rovi bilan yangilaydi (og'ir dasturlar ochilmaydi).</summary>
-    private static async Task RefreshYouTubeAsync(AppServices svc, JobRunner runner, CancellationToken ct)
+    /// <summary>
+    /// Hisoblar: shu kompyuterning o'z hisobi (null) va u mezbonlik qiladigan mehmon (qo'shimcha token) hisoblari.
+    /// Mehmonlar ro'yxatini o'qib bo'lmasa xato chiqadi (chaqiruvchi tozalash kabi xavfli ishni o'tkazib yuboradi).
+    /// </summary>
+    private static List<(Guid? Id, string Label)> AccountScopes(AppServices svc)
     {
-        if (!svc.Uploader.IsConnected) return;
-        var jobs = svc.Store.ListByStatus(JobStatus.Processing, JobStatus.Scheduled).Take(25).ToList();
-        if (jobs.Count == 0) return;
+        var list = new List<(Guid?, string)> { (null, "") };
+        if (svc.Store is Infrastructure.Data.PostgresJobStore pg)
+            foreach (var (id, label) in pg.HostedAccounts()) list.Add((id, label));
+        return list;
+    }
+
+    /// <summary>Oqimni mehmon hisobiga o'tkazadi (null - o'z hisobi, hech narsa qilinmaydi).</summary>
+    private static IDisposable? EnterScope(AppServices svc, Guid? account) =>
+        account is null ? null : (svc.Store as Infrastructure.Data.PostgresJobStore)?.UseScope(account);
+
+    private static Task RefreshYouTubeAsync(AppServices svc, JobRunner runner, CancellationToken ct) => RefreshYouTubeAsync(svc, () => runner, ct);
+
+    /// <summary>
+    /// Processing/Scheduled videolar holatini yengil API so'rovi bilan yangilaydi (og'ir dasturlar ochilmaydi). Har hisob o'z
+    /// kanali bilan: mehmonlarning videolari ularning YouTube kanalidan tekshiriladi.
+    /// </summary>
+    private static async Task RefreshYouTubeAsync(AppServices svc, Func<JobRunner> runner, CancellationToken ct)
+    {
+        List<(Guid? Id, string Label)> scopes;
+        try { scopes = AccountScopes(svc); }
+        catch (Exception e) when (e is not OperationCanceledException) { svc.Log.Warn("Mehmon hisoblari o'qilmadi: " + e.Message); scopes = new() { (null, "") }; }
         using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
         budget.CancelAfter(TimeSpan.FromSeconds(90));
-        foreach (var j in jobs)
+        foreach (var (account, _) in scopes)
         {
-            try { await runner.RefreshYouTubeStatusAsync(j, new JobLog(j.Id, svc.Paths.RecordDirFor(j.Id), svc.Store, svc.Log), budget.Token); runner.PurgeFinishedJob(j); }
-            catch (Exception e) { svc.Log.Warn($"#{j.Id} YouTube holati yangilanmadi: {e.Message}"); }
+            using (EnterScope(svc, account))
+            {
+                try
+                {
+                    if (!svc.Uploader.IsConnected) continue;
+                    var jobs = svc.Store.ListByStatus(JobStatus.Processing, JobStatus.Scheduled).Take(25).ToList();
+                    foreach (var j in jobs)
+                    {
+                        try { await runner().RefreshYouTubeStatusAsync(j, new JobLog(j.Id, svc.Paths.RecordDirFor(j.Id), svc.Store, svc.Log), budget.Token); runner().PurgeFinishedJob(j); }
+                        catch (Exception e) { svc.Log.Warn($"#{j.Id} YouTube holati yangilanmadi: {e.Message}"); }
+                    }
+                }
+                catch (Exception e) when (e is not OperationCanceledException) { svc.Log.Warn("YouTube holati yangilanmadi: " + e.Message); }
+            }
         }
+    }
+
+    /// <summary>Bot katalogi (ovozlar, shablonlar, standartlar) har hisob uchun: mehmonlar ham botda shu kompyuter ovozlari/shablonlarini tanlaydi.</summary>
+    private static void PublishCatalogs(AppServices svc)
+    {
+        try { svc.Settings.PublishCatalog(); } catch (Exception e) { svc.Log.Warn("Bot katalogi yuborilmadi: " + e.Message); }
+        try
+        {
+            foreach (var (account, _) in AccountScopes(svc).Skip(1))
+                using (EnterScope(svc, account))
+                    try { svc.Settings.PublishCatalog(); } catch (Exception e) { svc.Log.Warn($"Mehmon hisobi katalogi yuborilmadi: {e.Message}"); }
+        }
+        catch (Exception e) { svc.Log.Warn("Mehmon hisoblari o'qilmadi: " + e.Message); }
     }
 
     /// <summary>
@@ -360,10 +428,16 @@ public static class Program
     {
         try
         {
-            foreach (var j in svc.Store.ListByStatus(JobStatus.Scheduled, JobStatus.Published))
-                try { runner.PurgeFinishedJob(j); } catch (Exception e) { svc.Log.Warn($"#{j.Id} tozalanmadi: {e.Message}"); }
-
-            var ids = svc.Store.ListByStatus(Enum.GetValues<JobStatus>()).Select(j => j.Id).ToHashSet();
+            // Mehmon hisoblari vazifalari ham shu kompyuterda: ularning papkalari "o'chirilgan mavzu" deb tozalanmasligi uchun
+            // barcha hisoblar ro'yxati olinadi (o'qib bo'lmasa xato - hech narsa o'chirilmaydi).
+            var ids = new HashSet<long>();
+            foreach (var (account, _) in AccountScopes(svc))
+                using (EnterScope(svc, account))
+                {
+                    foreach (var j in svc.Store.ListByStatus(JobStatus.Scheduled, JobStatus.Published))
+                        try { runner.PurgeFinishedJob(j); } catch (Exception e) { svc.Log.Warn($"#{j.Id} tozalanmadi: {e.Message}"); }
+                    ids.UnionWith(svc.Store.ListByStatus(Enum.GetValues<JobStatus>()).Select(j => j.Id));
+                }
             var workRoot = svc.Settings.Load().Paths.WorkDir;
             foreach (var root in new[] { workRoot, svc.Paths.RecordsDir })
             {

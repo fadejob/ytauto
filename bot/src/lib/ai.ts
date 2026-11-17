@@ -1,4 +1,5 @@
 import "server-only";
+import { isGuest } from "./db";
 import { getCatalog, getPrompts, listTopics, previewPrompt } from "./topics";
 import { geminiGenerate, type GeminiContent } from "./gemini";
 import { StatusText, type Action, type ChatMessage, type Proposal } from "./types";
@@ -83,7 +84,7 @@ async function systemPrompt(): Promise<string> {
     .map((t) => `#${t.id} | ${t.topic} | ${StatusText[t.status]} | chiqish ${t.publishLocal.date} ${t.publishLocal.time}${t.editable ? " | editable" : ""}${t.deletable ? " | deletable" : ""}${t.publishNow ? " | hozir-chiqarish-kutilmoqda" : ""}${t.canUploadReady ? " | tayyor-yuklanmagan" : ""}${t.uploadRequested ? " | yuklash-kutilmoqda" : ""}`)
     .join("\n");
   return `Siz YtAuto YouTube kanali yordamchisisiz. Foydalanuvchi bilan uning tilida (odatda o'zbekcha) qisqa va aniq gaplashing.
-Vazifangiz: mavzular qo'shish/o'zgartirish/o'chirish, videoni hozir chiqarish va promptlarni o'zgartirishni TAKLIF qilish — buning uchun tool'larni chaqiring.
+Vazifangiz: mavzular qo'shish/o'zgartirish/o'chirish${isGuest() ? "" : ", videoni hozir chiqarish"} va promptlarni o'zgartirishni TAKLIF qilish — buning uchun tool'larni chaqiring.${isGuest() ? "\nBu qo'shimcha token hisobi: «Hozir chiqarish» yo'q — videolar token bergan hisob kompyuterida ish vaqtida tayyorlanib, chiqish vaqtida YouTube'ga chiqadi. So'ralsa shuni tushuntiring." : ""}
 Muhim qoidalar:
 - Siz hech narsani o'zingiz bajarmaysiz: har bir tool chaqiruvi foydalanuvchiga "Ruxsat berish" tugmasi bilan ko'rsatiladi. Javobda "bajarildi" demang — "ruxsat bersangiz qo'shiladi" deng.
 - Video, subtitr va YouTube title DOIM ingliz tilida. Shuning uchun topic va notes ni har doim INGLIZ tilida yozing, foydalanuvchi qaysi tilda so'rasa ham.
@@ -163,12 +164,14 @@ async function describe(a: Action): Promise<Pick<Proposal, "summary" | "preview"
 
 /** Gemini function calling: OpenAI uslubidagi tool ta'riflaridan functionDeclarations. */
 const DECLARATIONS = TOOLS.map((t) => t.function);
+/** Qo'shimcha (mehmon) tokenda «Hozir chiqarish» taklif qilinmaydi. */
+const GUEST_DECLARATIONS = DECLARATIONS.filter((d) => d.name !== "publish_now");
 
 export async function chat(history: ChatMessage[]): Promise<{ reply: string; proposals: Proposal[] }> {
   const contents: GeminiContent[] = history.slice(-12).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: clip(m.content, 6000) }] }));
   const base = {
     systemInstruction: { parts: [{ text: await systemPrompt() }] },
-    tools: [{ functionDeclarations: DECLARATIONS }],
+    tools: [{ functionDeclarations: isGuest() ? GUEST_DECLARATIONS : DECLARATIONS }],
     toolConfig: { functionCallingConfig: { mode: "AUTO" } },
     generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
   };

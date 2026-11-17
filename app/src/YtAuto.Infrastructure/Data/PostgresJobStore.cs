@@ -33,7 +33,90 @@ public sealed class PostgresJobStore : IAppStore
 
     private string T(string table) => $"\"{_schema}\".{table}";
 
-    private NpgsqlConnection Open() => _ds.OpenConnection();
+    private NpgsqlConnection Open()
+    {
+        var c = _ds.OpenConnection();
+        if (IsDeviceRole) ApplyScope(c);
+        return c;
+    }
+
+    // ------------------------------------------------------------------ mehmon (qo'shimcha token) hisoblari
+    // Mezbon kompyuter mehmon vazifasini bajarayotganda shu async oqimdagi barcha so'rovlar mehmon hisobi nomidan ketadi:
+    // ulanishda set_config('ytauto_ctx.guest', ...) qilinadi va baza (current_account) faqat shu kompyuter mezbon bo'lgan
+    // mehmonni qabul qiladi. AsyncLocal: fon taymerlari (heartbeat) va boshqa oqimlar o'z (mezbon) hisobida qoladi.
+    private readonly AsyncLocal<Guid?> _scope = new();
+    private readonly HashSet<int> _guestBackends = new(); // mehmon konteksti o'rnatilgan (hali tozalanmagan) server ulanishlari
+    private readonly object _scopeLock = new();
+
+    /// <summary>Joriy oqim mehmon hisobi nomidan ishlayapti (null - o'z hisobi).</summary>
+    public Guid? Scope => _scope.Value;
+    public bool InGuestScope => _scope.Value is not null;
+
+    /// <summary>Oqimni berilgan hisobga o'tkazadi (null - o'z hisobi); Dispose avvalgisini tiklaydi.</summary>
+    public IDisposable UseScope(Guid? account)
+    {
+        var prev = _scope.Value;
+        _scope.Value = account;
+        return new ScopeRestore(() => _scope.Value = prev);
+    }
+
+    private sealed class ScopeRestore(Action restore) : IDisposable
+    {
+        private Action? _restore = restore;
+        public void Dispose() => Interlocked.Exchange(ref _restore, null)?.Invoke();
+    }
+
+    private void ApplyScope(NpgsqlConnection c)
+    {
+        var g = _scope.Value;
+        var pid = c.ProcessID;
+        bool dirty;
+        lock (_scopeLock) dirty = _guestBackends.Contains(pid);
+        if (g is null && !dirty) return; // pul ulanishi toza: qo'shimcha so'rov kerak emas
+        using (var cmd = new NpgsqlCommand("SELECT set_config('ytauto_ctx.guest', @g, false)", c))
+        {
+            cmd.Parameters.AddWithValue("g", g?.ToString() ?? "");
+            cmd.ExecuteNonQuery();
+        }
+        lock (_scopeLock) { if (g is null) _guestBackends.Remove(pid); else _guestBackends.Add(pid); }
+    }
+
+    /// <summary>
+    /// Shu kompyuter hisobi mezbon bo'lgan mehmon hisoblari (asosiy hisob botda yaratgan qo'shimcha tokenlar). Ularning mavzulari ham
+    /// shu kompyuterda, ish vaqtida tayyorlanadi. Baza eski (v3 dan oldingi) bo'lsa - bo'sh.
+    /// </summary>
+    public IReadOnlyList<(Guid Id, string Label)> HostedAccounts()
+    {
+        if (!IsDeviceRole) return Array.Empty<(Guid, string)>();
+        try
+        {
+            using var _ = UseScope(null);
+            using var c = Open();
+            using var cmd = Cmd(c, $"SELECT account_id, label FROM {T("hosted_accounts")}()");
+            using var r = cmd.ExecuteReader();
+            var list = new List<(Guid, string)>();
+            while (r.Read()) list.Add((r.GetGuid(0), r.IsDBNull(1) ? "" : r.GetString(1)));
+            return list;
+        }
+        catch (PostgresException e) when (e.SqlState is PostgresErrorCodes.UndefinedFunction or PostgresErrorCodes.InsufficientPrivilege)
+        {
+            return Array.Empty<(Guid, string)>();
+        }
+    }
+
+    /// <summary>Kompyuter egasi (mezbon) hisobining sozlamasi - mehmon kontekstida ham.</summary>
+    public string? GetHostSetting(string key)
+    {
+        using (UseScope(null)) return GetSetting(key);
+    }
+
+    /// <summary>Navbat ko'radigan hisoblar: o'zi (null) va mezbonlik qilayotgan mehmonlar.</summary>
+    private List<Guid?> QueueScopes()
+    {
+        var list = new List<Guid?> { null };
+        foreach (var (id, _) in HostedAccounts()) list.Add(id);
+        return list;
+    }
 
     /// <summary>
     /// Sxema: yagona manba bot/db/schema.sql. Jadval egasi bilan ulanganda (bot yoki eski ulanish satri) kerak bo'lsa migratsiya qiladi;
@@ -185,6 +268,50 @@ WHERE id=@id
 
     public VideoJob? ClaimNext(string runId, DateTimeOffset nowUtc)
     {
+        if (!IsDeviceRole) return ClaimNextIn(runId, nowUtc);
+        // Mezbon kompyuter: o'z va mehmon hisoblari bitta navbat - chiqish vaqti (deadline) eng yaqini birinchi.
+        // Har hisob o'z RLS kontekstida ko'riladi; band qilish atomar (boshqa worker oldin olsa keyingi nomzod tanlanadi).
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            (Guid? Scope, long Id, DateTimeOffset Pub, DateTimeOffset Created)? best = null;
+            foreach (var scope in QueueScopes())
+            {
+                using var _ = UseScope(scope);
+                using var c = Open();
+                using var cmd = Cmd(c, $"""
+SELECT id, publish_at_utc, created_at_utc FROM {T("jobs")}
+WHERE status = ANY(@st) AND claimed_by IS NULL AND cancel_requested = FALSE AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= @now)
+ORDER BY publish_at_utc, created_at_utc, id LIMIT 1
+""", ("st", Claimable), ("now", U(nowUtc)));
+                using var r = cmd.ExecuteReader();
+                if (!r.Read()) continue;
+                var id = r.GetInt64(0); var pub = r.GetFieldValue<DateTimeOffset>(1); var created = r.GetFieldValue<DateTimeOffset>(2);
+                if (best is null || (pub, created, id).CompareTo((best.Value.Pub, best.Value.Created, best.Value.Id)) < 0)
+                    best = (scope, id, pub, created);
+            }
+            if (best is null) { _scope.Value = null; return null; }
+            VideoJob? job;
+            using (UseScope(best.Value.Scope))
+            {
+                using var c = Open();
+                using var cmd = Cmd(c, $"""
+UPDATE {T("jobs")} SET claimed_by=@run, claimed_at_utc=@now, updated_at_utc=@now
+WHERE id=@id AND claimed_by IS NULL AND cancel_requested = FALSE AND status = ANY(@st)
+RETURNING {JobColumns}
+""", ("run", runId), ("now", U(nowUtc)), ("id", best.Value.Id), ("st", Claimable));
+                job = ReadJobs(cmd).FirstOrDefault();
+            }
+            if (job is null) continue; // boshqa kompyuter oldinroq oldi
+            // Vazifaning qolgan ishi (bosqichlar, loglar, sozlamalar, YouTube) shu hisob nomidan: kontekst chaqiruvchi async oqimda qoladi.
+            _scope.Value = best.Value.Scope;
+            return job;
+        }
+        _scope.Value = null;
+        return null;
+    }
+
+    private VideoJob? ClaimNextIn(string runId, DateTimeOffset nowUtc)
+    {
         using var c = Open();
         using var cmd = Cmd(c, $"""
 UPDATE {T("jobs")} SET claimed_by=@run, claimed_at_utc=@now, updated_at_utc=@now
@@ -203,6 +330,17 @@ RETURNING {JobColumns}
     private static readonly int[] FinalStatuses = { (int)JobStatus.Published, (int)JobStatus.Cancelled };
 
     public int CountPending(DateTimeOffset nowUtc)
+    {
+        if (IsDeviceRole && _scope.Value is null)
+        {
+            var total = 0;
+            foreach (var scope in QueueScopes()) using (UseScope(scope)) total += CountPendingIn(nowUtc);
+            return total;
+        }
+        return CountPendingIn(nowUtc);
+    }
+
+    private int CountPendingIn(DateTimeOffset nowUtc)
     {
         using var c = Open();
         using var cmd = Cmd(c, $"SELECT COUNT(*) FROM {T("jobs")} WHERE status = ANY(@st) AND cancel_requested = FALSE AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= @now)",
@@ -283,6 +421,17 @@ RETURNING {JobColumns}
     /// <see cref="StaleClaimAfter"/> dan beri yangilanmagan boshqa kompyuterlarniki.
     /// </summary>
     public int ReleaseStaleClaims(string currentRunId)
+    {
+        if (IsDeviceRole && _scope.Value is null)
+        {
+            var total = 0;
+            foreach (var scope in QueueScopes()) using (UseScope(scope)) total += ReleaseStaleClaimsIn(currentRunId);
+            return total;
+        }
+        return ReleaseStaleClaimsIn(currentRunId);
+    }
+
+    private int ReleaseStaleClaimsIn(string currentRunId)
     {
         var machinePrefix = MachineRunPrefix(currentRunId);
         using var c = Open();

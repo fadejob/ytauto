@@ -1,4 +1,4 @@
--- ytauto-schema-version: 2
+-- ytauto-schema-version: 3
 -- YtAuto online bazasi (Supabase PostgreSQL, "ytauto" sxemasi) - YAGONA manba. Bot (bot/src/lib/schema.ts) ham, desktop ilova
 -- (PostgresJobStore, egasi huquqi bilan ulanganda) ham shu faylni ishga tushiradi. Fayl idempotent: qayta ishga tushirish xavfsiz.
 -- Yuqoridagi versiya o'zgarmasa, fayl qayta bajarilmaydi (ytauto.schema_meta). O'zgartirganda versiyani oshiring.
@@ -11,6 +11,13 @@
 --      - qurilma roli: hisob faqat account_roles'dan olinadi (o'zgartirib bo'lmaydi);
 --      - bot (jadval egasi): har so'rov tranzaksiyasida set_config('ytauto_ctx.account', ...) qiladi; o'rnatilmasa hech narsa ko'rinmaydi.
 --    Shu tufayli bir foydalanuvchi boshqasining ma'lumotini na o'qiy, na o'zgartira oladi - xato kod bo'lsa ham baza ruxsat bermaydi.
+--
+-- Qo'shimcha (mehmon) tokenlar (v3):
+--  * Asosiy hisob egasi botda qo'shimcha token yaratadi: bu alohida hisob (accounts.host_account_id = asosiy hisob).
+--    Mehmon botga shu token bilan kiradi va o'z mavzulari, sozlamalari (Gemini, promptlar) va YouTube kanali bilan ishlaydi.
+--  * Videolar asosiy hisob kompyuterida tayyorlanadi: qurilma roli set_config('ytauto_ctx.guest', <mehmon>) qilsa,
+--    current_account() faqat o'zi "mezbon" bo'lgan mehmon hisobini qaytaradi (boshqa hisobga o'tib bo'lmaydi).
+--  * Bot konteksti o'zgarmaydi: asosiy hisob mehmonning ma'lumotini ko'rmaydi, mehmon - asosiynikini.
 
 SELECT pg_advisory_xact_lock(hashtext('ytauto.schema.migrate'));
 
@@ -88,6 +95,9 @@ CREATE TABLE IF NOT EXISTS ytauto.accounts (
   created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now(),
   token_rotated_at_utc TIMESTAMPTZ
 );
+-- v3: qo'shimcha (mehmon) token hisobi - videolari shu (mezbon) hisob kompyuterida tayyorlanadi.
+ALTER TABLE ytauto.accounts ADD COLUMN IF NOT EXISTS host_account_id UUID REFERENCES ytauto.accounts(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS ix_accounts_host ON ytauto.accounts(host_account_id) WHERE host_account_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS ytauto.account_roles (
   role_name TEXT PRIMARY KEY,
   account_id UUID NOT NULL REFERENCES ytauto.accounts(id) ON DELETE CASCADE,
@@ -120,10 +130,15 @@ END $$;
 -- Qurilma roli uchun GUC hisobga olinmaydi - boshqa hisobga "o'tib" bo'lmaydi (mapping o'chirilgan bo'lsa ham NULL - hech narsa ko'rinmaydi).
 CREATE OR REPLACE FUNCTION ytauto.current_account() RETURNS UUID
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
-DECLARE acc UUID;
+DECLARE acc UUID; g UUID;
 BEGIN
   SELECT account_id INTO acc FROM ytauto.account_roles WHERE role_name = session_user;
-  IF acc IS NOT NULL OR session_user LIKE 'ytd\_%' OR pg_has_role(session_user, 'ytauto_device', 'USAGE') THEN RETURN acc; END IF;
+  IF acc IS NOT NULL OR session_user LIKE 'ytd\_%' OR pg_has_role(session_user, 'ytauto_device', 'USAGE') THEN
+    -- Mezbon kompyuter mehmon vazifasini bajarayotganda: faqat shu hisob mezbon bo'lgan mehmon (aks holda o'z hisobi).
+    g := NULLIF(current_setting('ytauto_ctx.guest', true), '')::UUID;
+    IF acc IS NOT NULL AND g IS NOT NULL AND EXISTS (SELECT 1 FROM ytauto.accounts a WHERE a.id = g AND a.host_account_id = acc) THEN RETURN g; END IF;
+    RETURN acc;
+  END IF;
   RETURN NULLIF(current_setting('ytauto_ctx.account', true), '')::UUID;
 END $$;
 
@@ -250,6 +265,16 @@ BEGIN
   DELETE FROM ytauto.telegram_links WHERE account_id = acc;
 END $$;
 
+-- Shu qurilma hisobi mezbon bo'lgan mehmon hisoblari (worker ularning vazifalarini ham tayyorlaydi). Mehmon kontekstida ham
+-- o'z (mezbon) hisobi bo'yicha qaytaradi.
+CREATE OR REPLACE FUNCTION ytauto.hosted_accounts()
+RETURNS TABLE(account_id UUID, label TEXT)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
+  SELECT a.id, a.device_name FROM ytauto.accounts a
+  WHERE a.host_account_id IS NOT NULL AND a.host_account_id = (SELECT r.account_id FROM ytauto.account_roles r WHERE r.role_name = session_user)
+  ORDER BY a.created_at_utc;
+$$;
+
 CREATE OR REPLACE FUNCTION ytauto.account_info()
 RETURNS TABLE(account_id UUID, device_name TEXT, created_at_utc TIMESTAMPTZ, telegram_users INT)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog AS $$
@@ -265,9 +290,11 @@ REVOKE ALL ON FUNCTION ytauto.claim_legacy_account(TEXT, TEXT, TEXT, TEXT) FROM 
 REVOKE ALL ON FUNCTION ytauto._set_pk(TEXT, TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION ytauto.rotate_token(TEXT) FROM PUBLIC;
 REVOKE ALL ON FUNCTION ytauto.account_info() FROM PUBLIC;
+REVOKE ALL ON FUNCTION ytauto.hosted_accounts() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION ytauto.current_account() TO PUBLIC;
 GRANT EXECUTE ON FUNCTION ytauto.rotate_token(TEXT) TO ytauto_device;
 GRANT EXECUTE ON FUNCTION ytauto.account_info() TO ytauto_device;
+GRANT EXECUTE ON FUNCTION ytauto.hosted_accounts() TO ytauto_device;
 
 GRANT USAGE ON SCHEMA ytauto TO ytauto_device, ytauto_bot;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ytauto.jobs, ytauto.job_stages, ytauto.job_events, ytauto.owned_processes, ytauto.worker_runs,
@@ -275,4 +302,4 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ytauto.jobs, ytauto.job_stages, ytauto.j
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ytauto TO ytauto_device, ytauto_bot;
 REVOKE ALL ON ytauto.accounts, ytauto.account_roles, ytauto.telegram_links, ytauto.login_attempts, ytauto.schema_meta FROM ytauto_device, ytauto_bot;
 
-INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '2') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '3') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

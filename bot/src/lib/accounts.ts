@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import { ensureSchema, ownerConnectionInfo, ownerSql } from "./db";
 
 /**
@@ -11,20 +11,80 @@ import { ensureSchema, ownerConnectionInfo, ownerSql } from "./db";
  *     hisob + shu kompyuter uchun Postgres roli yaratiladi, ilovaga ulanish ma'lumoti qaytariladi.
  *  2. Foydalanuvchi tokenni ilovadan nusxalab, botga birinchi kirishda kiritadi → Telegram ID shu hisobga bog'lanadi.
  *  3. Keyingi har so'rovda bog'lanish tekshiriladi: hisob tokeni almashtirilgan bo'lsa bog'lanish bekor (token qayta so'raladi).
+ *
+ * Qo'shimcha (mehmon) tokenlar: asosiy hisob egasi botda token yaratadi → alohida hisob (host_account_id = asosiy hisob).
+ * Mehmon botga shu token bilan kiradi va asosiy hisob kabi ishlaydi (o'z mavzulari, sozlamalari, YouTube kanali), faqat
+ * «Hozir chiqarish» yo'q: videolari asosiy hisob kompyuterida, ish vaqtida, deadline navbati bilan tayyorlanadi.
+ * Ma'lumotlar RLS bilan ajratilgan: asosiy hisob mehmon videolarini ko'rmaydi, mehmon - asosiynikini.
  */
 
 export const hashToken = (token: string) => createHash("sha256").update(token.trim()).digest("hex");
 export const TOKEN_RE = /^yt_[0-9A-Za-z]{30,60}$/;
 const HASH_RE = /^[0-9a-f]{64}$/;
 
-/** Telegram foydalanuvchisi bog'langan hisob (token hali amal qilsa). */
-export async function accountForTelegram(telegramId: number): Promise<string | null> {
+export type LinkedAccount = { id: string; guest: boolean; hostLabel: string | null };
+
+/** Telegram foydalanuvchisi bog'langan hisob (token hali amal qilsa) va u qo'shimcha (mehmon) tokenmi. */
+export async function accountForTelegram(telegramId: number): Promise<LinkedAccount | null> {
   await ensureSchema();
   const [row] = await ownerSql()`
-    SELECT l.account_id::text AS id FROM ytauto.telegram_links l
+    SELECT l.account_id::text AS id, a.host_account_id IS NOT NULL AS guest, h.device_name AS host_label FROM ytauto.telegram_links l
     JOIN ytauto.accounts a ON a.id = l.account_id AND a.token_hash = l.token_hash
+    LEFT JOIN ytauto.accounts h ON h.id = a.host_account_id
     WHERE l.telegram_id = ${telegramId}`;
-  return (row?.id as string | undefined) ?? null;
+  if (!row) return null;
+  return { id: row.id as string, guest: row.guest === true, hostLabel: (row.host_label as string | null) ?? null };
+}
+
+// ------------------------------------------------------------------ qo'shimcha (mehmon) tokenlar
+export const GUEST_LIMIT = 20;
+const ALNUM = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+/** Yangi token: "yt_" + 40 ta tasodifiy harf/raqam (desktop ilova tokenlari bilan bir xil ko'rinish, TOKEN_RE). */
+function newToken(): string {
+  let t = "yt_";
+  for (let i = 0; i < 40; i++) t += ALNUM[randomInt(ALNUM.length)];
+  return t;
+}
+
+export type GuestToken = { id: string; label: string; createdAt: string; telegramUsers: number };
+
+async function assertHost(hostId: string) {
+  const [h] = await ownerSql()`SELECT host_account_id IS NOT NULL AS guest FROM ytauto.accounts WHERE id = ${hostId}`;
+  if (!h) throw new Error("Hisob topilmadi.");
+  if (h.guest === true) throw new Error("Qo'shimcha token bilan yangi token yaratib bo'lmaydi — buni faqat asosiy hisob egasi qiladi.");
+}
+
+/** Asosiy hisob yaratgan qo'shimcha tokenlar (faqat nomi va kim kirgani; mehmon videolari ko'rsatilmaydi). */
+export async function listGuests(hostId: string): Promise<GuestToken[]> {
+  await assertHost(hostId);
+  const rows = await ownerSql()`
+    SELECT a.id::text AS id, a.device_name AS label, a.created_at_utc AS created,
+      (SELECT count(*)::int FROM ytauto.telegram_links l WHERE l.account_id = a.id AND l.token_hash = a.token_hash) AS users
+    FROM ytauto.accounts a WHERE a.host_account_id = ${hostId} ORDER BY a.created_at_utc`;
+  return rows.map((r) => ({ id: r.id as string, label: r.label as string, createdAt: (r.created as Date).toISOString(), telegramUsers: r.users as number }));
+}
+
+/** Yangi qo'shimcha token. Token o'zi faqat shu javobda qaytadi (bazada - xeshi). */
+export async function createGuest(hostId: string, label: string): Promise<{ token: string; guest: GuestToken }> {
+  await assertHost(hostId);
+  const name = label.trim().slice(0, 60);
+  if (!name) throw new Error("Token uchun nom kiriting (masalan, kim uchun).");
+  const [c] = await ownerSql()`SELECT count(*)::int AS n FROM ytauto.accounts WHERE host_account_id = ${hostId}`;
+  if ((c?.n as number) >= GUEST_LIMIT) throw new Error(`Qo'shimcha tokenlar ${GUEST_LIMIT} tadan oshmasin.`);
+  const token = newToken();
+  const [r] = await ownerSql()`
+    INSERT INTO ytauto.accounts(token_hash, device_name, host_account_id) VALUES (${hashToken(token)}, ${name}, ${hostId})
+    RETURNING id::text AS id, created_at_utc AS created`;
+  return { token, guest: { id: r.id as string, label: name, createdAt: (r.created as Date).toISOString(), telegramUsers: 0 } };
+}
+
+/** Qo'shimcha tokenni o'chiradi: shu token hisobi va uning barcha mavzulari, sozlamalari o'chadi (bekor qilib bo'lmaydi). */
+export async function deleteGuest(hostId: string, guestId: string): Promise<boolean> {
+  await assertHost(hostId);
+  if (!/^[0-9a-f-]{36}$/i.test(guestId)) return false;
+  const rows = await ownerSql()`DELETE FROM ytauto.accounts WHERE id = ${guestId} AND host_account_id = ${hostId} RETURNING id`;
+  return rows.length > 0;
 }
 
 /** Oddiy cheklov: kalit bo'yicha oynada ko'pi bilan max urinish (token terish/ro'yxatdan o'tishni suiiste'mol qilmaslik uchun). */
@@ -53,7 +113,13 @@ export async function loginTelegram(telegramId: number, name: string, token: str
     INSERT INTO ytauto.telegram_links(telegram_id, account_id, token_hash, name) VALUES (${telegramId}, ${acc.id as string}, ${h}, ${name.slice(0, 80)})
     ON CONFLICT (telegram_id) DO UPDATE SET account_id = EXCLUDED.account_id, token_hash = EXCLUDED.token_hash, name = EXCLUDED.name, linked_at_utc = now()`;
   await ownerSql()`DELETE FROM ytauto.login_attempts WHERE key = ${`tg:${telegramId}`}`;
-  return { ok: true, message: "Kirdingiz. Bu Telegram hisobi endi shu kompyuter bilan bog'langan." };
+  const [k] = await ownerSql()`SELECT host_account_id IS NOT NULL AS guest FROM ytauto.accounts WHERE id = ${acc.id as string}`;
+  return {
+    ok: true,
+    message: k?.guest === true
+      ? "Kirdingiz (qo'shimcha token). Videolaringiz token bergan hisob kompyuterida, ish vaqtida tayyorlanadi."
+      : "Kirdingiz. Bu Telegram hisobi endi shu kompyuter bilan bog'langan.",
+  };
 }
 
 export async function logoutTelegram(telegramId: number) {
@@ -116,6 +182,9 @@ export async function loginDevice(body: DeviceRequest, ip: string): Promise<Devi
   await ensureSchema();
   await rateLimit(`dev:${ip}`, 10, 15);
   const v = validate(body);
+  const [g] = await ownerSql()`SELECT host_account_id IS NOT NULL AS guest FROM ytauto.accounts WHERE token_hash = ${v.tokenHash}`;
+  if (g?.guest === true)
+    throw new Error("Bu qo'shimcha token: u faqat Telegram botga kirish uchun. Videolar token bergan hisob kompyuterida tayyorlanadi — YtAuto ilovasini shu token bilan ulab bo'lmaydi.");
   const [r] = await ownerSql()`SELECT account_id::text AS account_id, role_name FROM ytauto.login_account(${v.tokenHash}, ${v.deviceName}, ${v.machine}, ${v.password})`;
   if (!r) return null;
   return { accountId: r.account_id as string, roleName: r.role_name as string, db: deviceDb(r.role_name as string), botUsername: await botUsername() };

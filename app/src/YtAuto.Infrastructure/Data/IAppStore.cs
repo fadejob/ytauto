@@ -10,6 +10,10 @@ namespace YtAuto.Infrastructure.Data;
 public interface IAppStore : IJobStore
 {
     string Kind { get; }
+    /// <summary>Joriy oqim mehmon (qo'shimcha token) hisobi nomidan ishlayapti: kompyuterning lokal kalitlari/tokenlari ishlatilmaydi.</summary>
+    bool InGuestScope => false;
+    /// <summary>Kompyuter egasi (mezbon) hisobining sozlamasi - mehmon kontekstida ham (kompyuter darajasidagi sozlamalar uchun).</summary>
+    string? GetHostSetting(string key) => GetSetting(key);
     IReadOnlyList<VideoJob> Page(bool released, int offset, int limit, out int total);
     IReadOnlyList<JobEvent> GetEvents(long jobId, int limit = 300);
     void RequestCancel(long jobId);

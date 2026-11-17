@@ -13,7 +13,8 @@ const MONTHS = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "
 const day = (iso: string | null) => { if (!iso) return "—"; const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 
 /** Shablonlar va ovoz: kompyuterlar bazaga yozgan ma'lumotlar (faqat ko'rsatiladi) + qo'lda shablon yuklash. */
-export default function Library({ toast }: { toast: Toast }) {
+/** canUpload=false - qo'shimcha token: shablon kompyuter egasi tomonidan yuklanadi (mehmon faqat tanlaydi). */
+export default function Library({ toast, canUpload = true }: { toast: Toast; canUpload?: boolean }) {
   const [templates, setTemplates] = useState<TemplateItem[] | null>(null);
   const [voice, setVoice] = useState<VoiceInfo[] | null>(null);
 
@@ -59,7 +60,7 @@ export default function Library({ toast }: { toast: Toast }) {
           </>
         )}
       </div>
-      <TemplateUpload toast={toast} />
+      {canUpload ? <TemplateUpload toast={toast} /> : null}
 
       <div className="sect">Ovoz</div>
       {!voice ? <div className="card formcard"><div className="skeleton" /></div> : voice.length === 0 ? (

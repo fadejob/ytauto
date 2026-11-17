@@ -619,10 +619,34 @@ public sealed class SqliteSettingsStore : ISettingsStore
         {
             var sp = _shared.GetSetting(ScriptPromptKey);
             var mp = _shared.GetSetting(MontagePromptKey);
-            // Online bazada hali yo'q bo'lsa - lokaldagisi bir marta yuklanadi.
-            if (sp is null) _shared.SetSetting(ScriptPromptKey, s.Gemini.ScriptPrompt); else s.Gemini.ScriptPrompt = MigratePrompt(sp, true);
-            if (mp is null) _shared.SetSetting(MontagePromptKey, s.Claude.MontagePrompt); else s.Claude.MontagePrompt = MigratePrompt(mp, false);
+            var guest = _shared.InGuestScope;
+            if (guest)
+            {
+                // Mehmon hisobi vazifasi: uning o'z promptlari (bo'lmasa standart), kalitlari va kanali. Kompyuter egasining lokal
+                // promptlari, Gemini kaliti va YouTube tokeni mehmonga o'tmaydi; mehmon sozlamalariga hech narsa yozilmaydi.
+                s.Gemini.ScriptPrompt = sp is null ? DefaultPrompts.Script : MigratePrompt(sp, true);
+                s.Claude.MontagePrompt = mp is null ? DefaultPrompts.Montage : MigratePrompt(mp, false);
+                s.Gemini.RemoteOnly = true;
+                s.YouTube.RemoteOnly = true;
+                s.YouTube.ChannelTitle = "";
+            }
+            else
+            {
+                // Online bazada hali yo'q bo'lsa - lokaldagisi bir marta yuklanadi.
+                if (sp is null) _shared.SetSetting(ScriptPromptKey, s.Gemini.ScriptPrompt); else s.Gemini.ScriptPrompt = MigratePrompt(sp, true);
+                if (mp is null) _shared.SetSetting(MontagePromptKey, s.Claude.MontagePrompt); else s.Claude.MontagePrompt = MigratePrompt(mp, false);
+            }
             ApplyBotConfig(s, _shared.GetSetting(ConfigKey));
+            if (guest)
+            {
+                // Kompyuter darajasidagi sozlamalar (Claude modeli/vaqti/byudjeti, VoiceStudio, OpenFilm render, limitlar) - kompyuter
+                // egasiniki: mehmon ularni o'z botida o'zgartirsa ham shu kompyuterga ta'sir qilmaydi.
+                var host = LoadLocal();
+                ApplyBotConfig(host, _shared.GetHostSetting(ConfigKey));
+                var montage = s.Claude.MontagePrompt;
+                s.Claude = host.Claude; s.Claude.MontagePrompt = montage;
+                s.VoiceStudio = host.VoiceStudio; s.OpenFilm = host.OpenFilm; s.Limits = host.Limits;
+            }
             try
             {
                 var oauth = _shared.GetSetting("youtube.oauth");

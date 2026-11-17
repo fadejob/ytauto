@@ -63,3 +63,18 @@ Yoki `DB_AUTO_MIGRATE=1` — bot birinchi so'rovda o'zi migratsiya qiladi. Aks h
   botga faqat token xeshi va parol yuboriladi; bot hisob va shu kompyuter uchun alohida Postgres rolini yaratadi.
 - Token terish cheklangan (Telegram ID bo'yicha 15 daqiqada 10 urinish). Storage fayllari `acc/<hisob>/` papkalarida.
 - Bot tokeni, Gemini kalitlari va baza paroli faqat server muhitida (`.env.local` / Vercel); git'ga tushmaydi.
+
+## Qo'shimcha tokenlar (sxema v3)
+
+Asosiy hisob egasi botda **Sozlamalar → Qo'shimcha tokenlar** bo'limida boshqalar uchun token yaratadi. Token egasi botga shu token
+bilan kiradi va asosiy hisob kabi ishlaydi (o'z mavzulari, Gemini kalitlari, promptlari, ovoz profillari, YouTube kanali), lekin:
+
+- **«Hozir chiqarish» yo'q** (UI, AI yordamchi va API'da). Videolar asosiy hisob kompyuterida, **ish vaqtida**, umumiy navbatda
+  tayyorlanadi: chiqish vaqti (deadline) eng yaqini birinchi. Kech tayyor bo'lsa YouTube'ga tayyor bo'lgandan 1 soat keyin chiqadi.
+- Kompyuter darajasidagi sozlamalar (jadval, Claude, VoiceStudio, render, limitlar) va shablon yuklash — asosiy hisobda.
+- Ma'lumotlar RLS bilan ajratilgan: asosiy hisob mehmon videolarini ko'rmaydi, mehmon — asosiynikini.
+- Worker mehmon vazifasini mehmon hisobi nomidan bajaradi (`set_config('ytauto_ctx.guest', ...)`; baza faqat shu kompyuter
+  mezbon bo'lgan mehmonni qabul qiladi). Mehmonning YouTube kanali ulanmagan bo'lsa video egasining kanaliga **yuklanmaydi**.
+- Qo'shimcha token bilan YtAuto ilovasini (kompyuterni) ulab bo'lmaydi. Tokenni o'chirish shu hisob ma'lumotlarini ham o'chiradi.
+
+Yangilash: `npm run db:migrate` (sxema v2 → v3), so'ng botni deploy qiling va kompyuterlardagi YtAuto'ni yangilang.

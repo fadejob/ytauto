@@ -5,7 +5,8 @@ import { AuthError, authenticate, type Viewer } from "./auth";
 import { withAccount } from "./db";
 import { isDemo } from "./demo";
 
-export type AccountViewer = Viewer & { accountId: string };
+/** guest - qo'shimcha token hisobi (hostLabel - token bergan asosiy hisob kompyuteri nomi). */
+export type AccountViewer = Viewer & { accountId: string; guest: boolean; hostLabel: string | null };
 
 /**
  * Har API so'rovi: Telegram auth → token bilan bog'langan hisob → shu hisob kontekstida (RLS, bitta tranzaksiya) handler.
@@ -16,10 +17,10 @@ export function handler(fn: (req: Request, viewer: AccountViewer) => Promise<unk
     await connection(); // har doim so'rov vaqtida (prerender qilinmaydi)
     try {
       const viewer = authenticate(req);
-      if (isDemo()) return json(await fn(req, { ...viewer, accountId: "00000000-0000-0000-0000-000000000000" }));
-      const accountId = await accountForTelegram(viewer.id);
-      if (!accountId) throw new AuthError("YtAuto ilovasidagi tokenni kiriting.", 401, viewer.id, "token_required");
-      return json(await withAccount(accountId, () => fn(req, { ...viewer, accountId })));
+      if (isDemo()) return json(await fn(req, { ...viewer, accountId: "00000000-0000-0000-0000-000000000000", guest: false, hostLabel: null }));
+      const acc = await accountForTelegram(viewer.id);
+      if (!acc) throw new AuthError("YtAuto ilovasidagi tokenni kiriting.", 401, viewer.id, "token_required");
+      return json(await withAccount(acc.id, () => fn(req, { ...viewer, accountId: acc.id, guest: acc.guest, hostLabel: acc.hostLabel }), { guest: acc.guest }));
     } catch (e) {
       return errorResponse(e);
     }

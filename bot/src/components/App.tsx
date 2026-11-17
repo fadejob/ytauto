@@ -115,7 +115,7 @@ export default function App() {
       {tab === "ai" && !geminiOff && <Ai run={run} toast={show} />}
       {tab === "prompts" && <Prompts run={run} toast={show} />}
       {tab === "history" && <History state={state} toast={show} />}
-      {tab === "settings" && <Settings catalog={state?.catalog ?? null} toast={show} onSaved={() => void refresh()} onLogout={logout} />}
+      {tab === "settings" && <Settings catalog={state?.catalog ?? null} toast={show} onSaved={() => void refresh()} onLogout={logout} account={state?.account} />}
 
       {toast ? <div className={`toast${toast.bad ? " bad" : ""}`} role="status">{toast.text}</div> : null}
 

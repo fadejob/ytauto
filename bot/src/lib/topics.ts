@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { isGuest, sql } from "./db";
 import { queueForAll } from "./commands";
 import { GEMINI_REQUIRED, geminiReady, getConfig } from "./config";
 import { templateCatalog } from "./library";
@@ -8,6 +8,10 @@ import { removeObjects } from "./storage";
 import { demoApply, demoCatalog, demoPrompts, demoTopics, isDemo } from "./demo";
 import { addDays, parseLocal, utcToZoned, zonedToUtc } from "./time";
 import { Status, type Action, type ActionResult, type Catalog, type NewTopic, type PromptKey, type Prompts, type Topic } from "./types";
+
+/** Qo'shimcha (mehmon) tokenda «Hozir chiqarish» yo'q. */
+export const GUEST_NO_PUBLISH_NOW =
+  "Qo'shimcha tokenda «Hozir chiqarish» yo'q: video token bergan hisob kompyuterida ish vaqtida tayyorlanadi va chiqish vaqtida YouTube'ga chiqadi.";
 
 /** Shablon va format: berilmasa bot sozlamasidagi (yoki katalogdagi) standart; berilsa katalogda borligi tekshiriladi. */
 async function pickTemplateFormat(cat: Catalog, template?: string, format?: number, voice?: string): Promise<{ template: string; format: number; voice: string } | { error: string }> {
@@ -83,7 +87,7 @@ function toTopic(r: Row, tz: string): Topic {
     error: r.status === Status.NeedsAttention ? r.attention_reason ?? r.last_error_message : r.status === Status.Failed ? r.last_error_message : null,
     editable: !made && (EDITABLE as readonly number[]).includes(r.status),
     deletable: !made && (DELETABLE as readonly number[]).includes(r.status),
-    canPublishNow: !r.publish_now && !r.cancel_requested && !(FINAL as readonly number[]).includes(r.status),
+    canPublishNow: !isGuest() && !r.publish_now && !r.cancel_requested && !(FINAL as readonly number[]).includes(r.status),
     canUploadReady: !r.upload_requested && !r.publish_now && readyNotUploaded(r),
     uploadRequested: r.upload_requested && !r.youtube_video_id,
     template: r.template_name, format: r.format, voice: r.voice_profile,
@@ -248,6 +252,7 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       return n.count ? { ok: true, message: `#${a.id} o'chirildi.` } : { ok: false, message: `#${a.id}: o'chirib bo'lmadi (worker band qilgan).` };
     }
     case "publish_now": {
+      if (isGuest()) return { ok: false, message: GUEST_NO_PUBLISH_NOW };
       const n = await sql()`
         UPDATE ytauto.jobs SET publish_now = TRUE, next_attempt_at_utc = NULL, updated_at_utc = now()
         WHERE id = ${a.id} AND status NOT IN ${sql()(FINAL as unknown as number[])} AND cancel_requested = FALSE`;

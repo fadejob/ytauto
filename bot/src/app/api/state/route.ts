@@ -7,5 +7,8 @@ import type { State } from "@/lib/types";
 export const GET = handler(async (_req, viewer): Promise<State> => {
   const catalog = await getCatalog();
   const topics = await listTopics(catalog.youtube.timeZone);
-  return { topics, catalog, viewer: { name: viewer.name, dev: viewer.dev }, now: new Date().toISOString(), demo: isDemo(), gemini: { ready: await geminiReady() } };
+  return {
+    topics, catalog, viewer: { name: viewer.name, dev: viewer.dev }, now: new Date().toISOString(), demo: isDemo(), gemini: { ready: await geminiReady() },
+    account: { guest: viewer.guest, hostLabel: viewer.hostLabel },
+  };
 });

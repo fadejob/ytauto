@@ -6,9 +6,11 @@ import type { BotConfig, VoiceInfo, VoiceProfileCfg } from "@/lib/types";
 type VSettings = BotConfig["voice"]["settings"];
 
 /** Ovoz profillari (qo'shish, tezlik/til, standart, o'chirish) va VoiceStudio sozlamalari. Ro'yxat botda asosiy manba. */
-export default function VoiceProfiles({ profiles, settings, defaultProfile, info, onProfiles, onSettings, onDefault }: {
+export default function VoiceProfiles({ profiles, settings, defaultProfile, info, onProfiles, onSettings, onDefault, machineSettings = true }: {
   profiles: VoiceProfileCfg[]; settings: VSettings; defaultProfile: string; info: VoiceInfo[];
   onProfiles: (p: VoiceProfileCfg[]) => void; onSettings: (s: VSettings) => void; onDefault: (name: string) => void;
+  /** false - qo'shimcha token: VoiceStudio (kompyuter) sozlamalari kompyuter egasida, ko'rsatilmaydi. */
+  machineSettings?: boolean;
 }) {
   // Ishlatsa bo'ladigan dvigatellar (barcha kompyuterlar birlashmasi, takrorsiz).
   const engines = new Map<string, { id: string; displayName: string; voices: string[] }>();
@@ -74,6 +76,7 @@ export default function VoiceProfiles({ profiles, settings, defaultProfile, info
         )}
       </div>
 
+      {machineSettings ? <>
       <div className="sect">VoiceStudio sozlamalari</div>
       <div className="card formcard">
         <div className="field"><label>Lokal API manzili</label><input className="input" value={settings.baseUrl} onChange={(e) => set("baseUrl", e.target.value)} /></div>
@@ -86,6 +89,7 @@ export default function VoiceProfiles({ profiles, settings, defaultProfile, info
         </div>
         <div className="field"><label>Whisper modeli (subtitr vaqtlari)</label><input className="input" value={settings.whisperModel} onChange={(e) => set("whisperModel", e.target.value)} /></div>
       </div>
+      </> : null}
     </>
   );
 }

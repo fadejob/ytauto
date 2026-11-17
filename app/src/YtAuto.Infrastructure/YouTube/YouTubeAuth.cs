@@ -42,8 +42,21 @@ public sealed class YouTubeAuth
 
     public bool HasTokens => Load() is { RefreshToken.Length: > 0 };
 
+    /// <summary>Mehmon hisoblari kanallari tokenlari: faqat xotirada (kompyuter egasining lokal tokeni ustiga yozilmaydi).</summary>
+    private readonly Dictionary<string, OAuthTokens> _remoteOnly = new();
+
+    private bool RemoteOnly() { try { return _settings().RemoteOnly; } catch { return false; } }
+
     private OAuthTokens? Load()
     {
+        if (RemoteOnly())
+        {
+            // Mehmon vazifasi: faqat uning bot orqali ulagan kanali. Ulanmagan bo'lsa - "ulanmagan" (egasining kanaliga yuklanmaydi).
+            string rt = "";
+            try { rt = _settings().RemoteRefreshToken?.Trim() ?? ""; } catch { }
+            if (rt.Length == 0) return null;
+            lock (_remoteOnly) return _remoteOnly.TryGetValue(rt, out var t) ? t : new OAuthTokens { RefreshToken = rt };
+        }
         OAuthTokens? local = null;
         var json = _secrets.Get(SecretNames.YouTubeTokens);
         if (!string.IsNullOrEmpty(json))
@@ -56,7 +69,11 @@ public sealed class YouTubeAuth
         return local;
     }
 
-    private void Save(OAuthTokens t) => _secrets.Set(SecretNames.YouTubeTokens, JsonSerializer.Serialize(t));
+    private void Save(OAuthTokens t, string? remoteOnlyKey = null)
+    {
+        if (remoteOnlyKey is not null) { lock (_remoteOnly) _remoteOnly[remoteOnlyKey] = t; return; }
+        _secrets.Set(SecretNames.YouTubeTokens, JsonSerializer.Serialize(t));
+    }
 
     public void Disconnect() => _secrets.Set(SecretNames.YouTubeTokens, null);
 
@@ -74,7 +91,11 @@ public sealed class YouTubeAuth
         await _lock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var t = Load() ?? throw PipelineException.Config("youtube_not_connected", "YouTube kanali ulanmagan.");
+            var remoteOnly = RemoteOnly();
+            var t = Load() ?? throw PipelineException.Config("youtube_not_connected", remoteOnly
+                ? "YouTube kanali ulanmagan: botda Sozlamalar → YouTube'ni ulang (video arxivda saqlandi)."
+                : "YouTube kanali ulanmagan.");
+            var memKey = remoteOnly ? t.RefreshToken : null;
             if (!forceRefresh && t.AccessToken.Length > 0 && t.ExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(2)) return t.AccessToken;
             var (id, secret) = Client();
             var form = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -97,7 +118,7 @@ public sealed class YouTubeAuth
                 t.AccessToken = j["access_token"]!.GetValue<string>();
                 t.ExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(j["expires_in"]?.GetValue<int>() ?? 3600);
                 if (j["refresh_token"] is JsonNode rt) t.RefreshToken = rt.GetValue<string>();
-                Save(t);
+                Save(t, memKey);
                 Redactor.Register(t.AccessToken);
                 return t.AccessToken;
             }

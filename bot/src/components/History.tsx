@@ -49,7 +49,9 @@ function chipClass(s: number) {
 }
 
 export default function History({ state, toast }: { state: State | null; toast: Toast }) {
-  const [view, setView] = useState<"machines" | "runs" | "videos" | "stats">("machines");
+  // Qo'shimcha token: kompyuter va worker ishga tushishlari kompyuter egasiniki - faqat o'z videolari loglari ko'rinadi.
+  const guest = state?.account?.guest === true;
+  const [view, setView] = useState<"machines" | "runs" | "videos" | "stats">(guest ? "videos" : "machines");
   const [openStats, setOpenStats] = useState<string | null>(null);
   const [runs, setRuns] = useState<WorkerRun[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -89,10 +91,10 @@ export default function History({ state, toast }: { state: State | null; toast: 
         <button className="iconbtn" aria-label="Yangilash" onClick={() => { haptic.tap(); void loadRuns(); }} disabled={loading}><IconRefresh /></button>
       </header>
       <div className="seg">
-        <button className={view === "machines" ? "on" : ""} onClick={() => { haptic.tap(); setView("machines"); }}>Kompyuter</button>
-        <button className={view === "runs" ? "on" : ""} onClick={() => { haptic.tap(); setView("runs"); }}>Workerlar{runs ? <span className="n">{runs.length}</span> : null}</button>
+        {!guest ? <button className={view === "machines" ? "on" : ""} onClick={() => { haptic.tap(); setView("machines"); }}>Kompyuter</button> : null}
+        {!guest ? <button className={view === "runs" ? "on" : ""} onClick={() => { haptic.tap(); setView("runs"); }}>Workerlar{runs ? <span className="n">{runs.length}</span> : null}</button> : null}
         <button className={view === "videos" ? "on" : ""} onClick={() => { haptic.tap(); setView("videos"); }}>Videolar<span className="n">{videos.length}</span></button>
-        <button className={view === "stats" ? "on" : ""} onClick={() => { haptic.tap(); setView("stats"); }}>Statistika</button>
+        {!guest ? <button className={view === "stats" ? "on" : ""} onClick={() => { haptic.tap(); setView("stats"); }}>Statistika</button> : null}
       </div>
 
       <div className="list">
