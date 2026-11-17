@@ -253,7 +253,7 @@ public static class Program
     /// Jadval bo'yicha ishga tushish: avval "hozir chiqarish" so'rovlari, so'ng bazadan sinxronlab navbatdagi BARCHA mavzular
     /// (<see cref="BatchPlanner"/>): chiqish vaqti uzoq bo'lsa ham video oldindan tayyorlanadi va YouTube'ga rejalashtirilgan holda yuklanadi.
     /// Navbat har videodan keyin qayta o'qiladi (ish paytida qo'shilgan mavzular ham kiradi). Ish oynasi tugasa yangi video boshlanmaydi.
-    /// Videolar orasida tanaffus (navbat uzun bo'lsa qisqa); tanaffusda kelgan "hozir chiqarish" so'rovlari darhol bajariladi.
+    /// Har video tayyor bo'lgach 15 daqiqa tanaffus (kompyuter sovib oladi); tanaffusda kelgan "hozir chiqarish" so'rovlari darhol bajariladi.
     /// Vaqtinchalik xato (tarmoq, limit) bo'lsa, qolgan videolar keyingi jadvalga qoladi.
     /// </summary>
     private static async Task<List<RunSummary>> RunBatchAsync(AppServices svc, JobRunner runner, CancellationToken ct, bool respectWindow = false)
@@ -286,7 +286,7 @@ public static class Program
             }
             if (remaining == 0) { svc.Log.Info("Navbatdagi barcha mavzular tayyorlandi."); break; }
             var pause = BatchPlanner.PauseFor(remaining);
-            svc.Log.Info($"{pause.TotalMinutes:0} daqiqa tanaffus, so'ng keyingi video.");
+            svc.Log.Info($"{pause.TotalMinutes:0} daqiqa tanaffus (kompyuter sovib oladi), so'ng keyingi video.");
             results.AddRange(await PauseAsync(svc, runner, pause, ct));
         }
         return results;

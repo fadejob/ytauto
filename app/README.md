@@ -126,17 +126,14 @@ avtomatik ko'chiriladi. Supabase'ning `db.*.supabase.co` manzili faqat IPv6 — 
 
 - **Yangi mavzu**: mavzu, izoh, til, davomiylik, format, shablon, ovoz profili, chiqish sanasi/soati. Sana taklifi:
   oxirgi (bekor qilinmagan, navbatdagilar ham) rejalashtirilgan sana + 2 kun; o'tgan bo'lsa yoki vazifa yo'q bo'lsa — bugun.
-- Worker har vazifada: OS mutex → eskirgan band qilishlarni bo'shatish → eng eski yaroqli vazifani **atomar** band qilish →
+- Worker har vazifada: OS mutex → eskirgan band qilishlarni bo'shatish → chiqish vaqti eng yaqin yaroqli vazifani **atomar** band qilish →
   tugallanmagan bosqichdan davom ettirish. Navbat bo'sh bo'lsa og'ir dasturlar ochilmaydi.
 - **Jadval vaqtida (`--scheduled`)**: avval "Hozir chiqarish" so'rovlari bajariladi, so'ng online bazadan navbatdagi mavzular
-  soni olinadi (sinxronlash) va shunga qarab bir ishga tushishda nechta video qilinishi belgilanadi:
+  olinadi (sinxronlash) va ish oynasi tugaguncha **barchasi** ketma-ket tayyorlanadi (chiqish vaqti yaqinlari birinchi):
 
-  | Navbatdagi mavzular | Videolar | Tartib |
-  |---|---|---|
-  | 1–2 | 1 | video → worker yopiladi |
-  | 3–4 | 2 | video → 15 daqiqa tanaffus → video |
-  | 5–7 | 3 | video → 15 daq → video → 15 daq → video |
-  | 7 dan ko'p | 3 (ko'pi bilan) | 4–5 video qilinmaydi; qolganlari keyingi kunlarga qoladi |
+  `video → 15 daqiqa tanaffus (kompyuter sovib oladi) → video → 15 daqiqa tanaffus → … → navbat bo'shaydi yoki ish oynasi tugaydi`
+
+  Ish oynasi tugasa yangi video boshlanmaydi (boshlangani oxirigacha tugatiladi), qolganlari keyingi kechaga qoladi.
 
   Har videodan oldin mavzu bazadan qayta olinadi (boshqa kompyuterda o'zgargan bo'lsa ham). Vaqtinchalik xato (tarmoq, API limit)
   bo'lsa qolgan videolar keyingi jadvalga qoladi. Tanaffus paytida kelgan "Hozir chiqarish" so'rovi darhol bajariladi (reja soniga kirmaydi).

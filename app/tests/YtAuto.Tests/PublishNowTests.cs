@@ -16,11 +16,11 @@ public class BatchPlannerTests
     public void VideosPerRun_IsWholeQueue(int pending, int expected) => Assert.Equal(expected, BatchPlanner.VideosFor(pending));
 
     [Fact]
-    public void Pause_IsShorter_WhenQueueIsLong()
+    public void Pause_IsAlways15Minutes_AfterEachVideo()
     {
+        Assert.Equal(TimeSpan.FromMinutes(15), BatchPlanner.PauseBetweenVideos);
         Assert.Equal(BatchPlanner.PauseBetweenVideos, BatchPlanner.PauseFor(1));
-        Assert.Equal(BatchPlanner.ShortPauseBetweenVideos, BatchPlanner.PauseFor(10));
-        Assert.True(BatchPlanner.ShortPauseBetweenVideos < BatchPlanner.PauseBetweenVideos);
+        Assert.Equal(BatchPlanner.PauseBetweenVideos, BatchPlanner.PauseFor(40)); // navbat uzun bo'lsa ham qisqarmaydi
     }
 
     [Fact]

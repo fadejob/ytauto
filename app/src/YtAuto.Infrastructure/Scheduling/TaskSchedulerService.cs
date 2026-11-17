@@ -29,7 +29,7 @@ public sealed class TaskSchedulerService
     /// <summary>Masofaviy "Hozir chiqarish" buyrug'ini kutuvchi vazifa: har 10 daqiqada yengil --poll: holat yuboradi, so'rov bo'lsagina ishlaydi (navbatga tegmaydi).</summary>
     public const string PollTaskName = "YtAuto Remote Trigger";
     public const int PollIntervalMinutes = 10;
-    /// <summary>Bir ishga tushishda 3 tagacha video + tanaffuslar: ish vaqti limiti kamida shuncha soat.</summary>
+    /// <summary>Bir ishga tushishda bir nechta video + har biridan keyin 15 daqiqa tanaffus: ish vaqti limiti kamida shuncha soat.</summary>
     public const int MinBatchExecutionHours = 10;
     private const int TASK_CREATE_OR_UPDATE = 6;
     private const int TASK_LOGON_INTERACTIVE_TOKEN = 3;
