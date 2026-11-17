@@ -9,7 +9,7 @@ namespace YtAuto.Worker;
 
 /// <summary>
 /// YtAuto worker. Oynasiz. Rejimlar:
-/// --scheduled: bazadan sinxronlash → navbatdagi mavzular soniga qarab 1-3 ta video (orasida 15 daqiqa tanaffus, <see cref="BatchPlanner"/>);
+/// --scheduled: bazadan sinxronlash → navbatdagi barcha mavzular, ish oynasi tugaguncha (chiqish vaqti faqat YouTube uchun, <see cref="BatchPlanner"/>);
 /// --poll: faqat masofaviy (bot) so'rovlar: "Tayyor videoni YouTube'ga yuklash" va "Hozir chiqarish" (so'rov bo'lmasa darhol jim chiqadi);
 /// --manual: bitta vazifa. Har rejimda "Hozir chiqarish" so'rovlari birinchi bajariladi.
 /// Exit kodlar: 0 - muvaffaqiyatli yoki navbat bo'sh, 1 - xato (keyingi safar qayta uriniladi), 2 - e'tibor kerak,
@@ -250,40 +250,44 @@ public static class Program
     };
 
     /// <summary>
-    /// Jadval bo'yicha ishga tushish: avval "hozir chiqarish" so'rovlari, so'ng bazadan sinxronlab navbatdagi mavzular soniga qarab
-    /// 1-3 ta video (<see cref="BatchPlanner"/>). Videolar orasida 15 daqiqa tanaffus; tanaffusda kelgan "hozir chiqarish" so'rovlari
-    /// darhol bajariladi (ular reja soniga kirmaydi). Vaqtinchalik xato (tarmoq, limit) bo'lsa, qolgan videolar keyingi jadvalga qoladi.
+    /// Jadval bo'yicha ishga tushish: avval "hozir chiqarish" so'rovlari, so'ng bazadan sinxronlab navbatdagi BARCHA mavzular
+    /// (<see cref="BatchPlanner"/>): chiqish vaqti uzoq bo'lsa ham video oldindan tayyorlanadi va YouTube'ga rejalashtirilgan holda yuklanadi.
+    /// Navbat har videodan keyin qayta o'qiladi (ish paytida qo'shilgan mavzular ham kiradi). Ish oynasi tugasa yangi video boshlanmaydi.
+    /// Videolar orasida tanaffus (navbat uzun bo'lsa qisqa); tanaffusda kelgan "hozir chiqarish" so'rovlari darhol bajariladi.
+    /// Vaqtinchalik xato (tarmoq, limit) bo'lsa, qolgan videolar keyingi jadvalga qoladi.
     /// </summary>
     private static async Task<List<RunSummary>> RunBatchAsync(AppServices svc, JobRunner runner, CancellationToken ct, bool respectWindow = false)
     {
         var results = await RunPublishNowAsync(svc, runner, ct);
         if (!svc.HasGeminiKey()) return results; // mavzular muzlatilgan (RunPublishNowAsync logga yozgan)
         var pending = svc.Store.CountPending(DateTimeOffset.UtcNow);
-        var plan = BatchPlanner.VideosFor(pending);
         svc.Log.Info($"Bazadan sinxronlandi ({svc.Store.Kind}): navbatda {pending} ta mavzu — {BatchPlanner.Describe(pending)}.");
         int made = 0;
         var sched = svc.Settings.Load().Schedule;
-        for (int guard = 0; made < plan && guard < plan + 10; guard++)
+        while (made < BatchPlanner.MaxVideosPerRun)
         {
             // Ish oynasi (masalan 01:00-04:00) tugagan bo'lsa yangi video boshlanmaydi; boshlangan ish esa oxirigacha bajariladi (to'xtatilmaydi).
             if (respectWindow && !BatchPlanner.InWorkWindow(sched, DateTimeOffset.UtcNow))
             {
-                svc.Log.Info($"Ish oynasi ({sched.StartTime}-{sched.EndTime}) tugadi - yangi video boshlanmaydi, qolganlari keyingi kechaga.");
+                var left = svc.Store.CountPending(DateTimeOffset.UtcNow);
+                svc.Log.Info($"Ish oynasi ({sched.StartTime}-{sched.EndTime}) tugadi - yangi video boshlanmaydi{(left > 0 ? $", qolgan {left} ta mavzu keyingi kechaga" : "")}.");
                 break;
             }
             var r = await runner.RunOnceAsync(svc.RunId, ct);
             results.Add(r);
             if (r.Outcome == RunOutcome.QueueEmpty) { svc.Log.Info("Navbat bo'shadi — ishga tushish yakunlandi."); break; }
             if (!r.PublishNow) made++;
-            svc.Log.Info($"{(r.PublishNow ? "Hozir chiqarish" : $"Video {made}/{plan}")}: #{r.JobId} {r.Outcome} ({r.Elapsed.TotalMinutes:0.0} daqiqa).");
+            var remaining = svc.Store.CountPending(DateTimeOffset.UtcNow);
+            svc.Log.Info($"{(r.PublishNow ? "Hozir chiqarish" : $"Video {made}")}: #{r.JobId} {r.Outcome} ({r.Elapsed.TotalMinutes:0.0} daqiqa), navbatda yana {remaining} ta.");
             if (r.Outcome == RunOutcome.Failed)
             {
                 svc.Log.Warn("Vaqtinchalik xato — qolgan videolar keyingi jadvalda tayyorlanadi.");
                 break;
             }
-            if (made >= plan) break;
-            svc.Log.Info($"{BatchPlanner.PauseBetweenVideos.TotalMinutes:0} daqiqa tanaffus, so'ng keyingi video.");
-            results.AddRange(await PauseAsync(svc, runner, BatchPlanner.PauseBetweenVideos, ct));
+            if (remaining == 0) { svc.Log.Info("Navbatdagi barcha mavzular tayyorlandi."); break; }
+            var pause = BatchPlanner.PauseFor(remaining);
+            svc.Log.Info($"{pause.TotalMinutes:0} daqiqa tanaffus, so'ng keyingi video.");
+            results.AddRange(await PauseAsync(svc, runner, pause, ct));
         }
         return results;
     }

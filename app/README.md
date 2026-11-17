@@ -3,7 +3,7 @@
 Windows uchun yengil desktop ilova: navbatdagi mavzu bo'yicha ssenariy (Gemini), ovoz (VoiceStudio), so'z darajasidagi subtitr
 (faster-whisper), montaj (Claude Code + OpenFilm), render va sifat tekshiruvi, arxiv va YouTube'ga **rejalashtirilgan** upload.
 Ish Windows Task Scheduler orqali, foydalanuvchi aralashuvisiz: jadval vaqtida bazadan mavzular sinxronlanadi va navbatga qarab
-**1–3 ta video** tayyorlanadi (orasida 15 daqiqa tanaffus). Online bazadan **"Hozir chiqarish"** buyrug'i ham qabul qilinadi.
+navbatdagi **barcha mavzulardan** video tayyorlanadi (chiqish vaqti yaqinlari birinchi; ish oynasi tugasa qolgani keyingi kechaga). Chiqish vaqti faqat YouTube uchun: video private + publishAt bilan yuklanadi, YouTube vaqti kelganda o'zi public qiladi. Online bazadan **"Hozir chiqarish"** buyrug'i ham qabul qilinadi.
 
 - `YtAuto.exe` — boshqaruv oynasi (WPF). Ochilishi video tayyorlashni boshlamaydi.
 - `YtAuto.Worker.exe` — oynasiz worker. Jadval bo'yicha ishga tushadi, vazifalarni bajaradi yoki davom ettiradi va chiqadi.
@@ -157,7 +157,7 @@ avtomatik ko'chiriladi. Supabase'ning `db.*.supabase.co` manzili faqat IPv6 — 
   - urinishlar limiti (standart 3) tugasa — `NeedsAttention`, navbat keyingi vazifaga o'tadi;
   - noto'g'ri sozlama — darhol `NeedsAttention` va tushunarli sabab;
   - sifat tekshiruvi o'tmasa — aniq xatolar Claude'ga qaytariladi (standart 2 sikl, TTS takrorlanmaydi); limit tugasa video YouTube'ga yuborilmaydi.
-- Video tayyor bo'lganda public vaqti o'tib ketgan (yoki 30 daqiqadan yaqin) bo'lsa, chiqish vaqti avtomatik **hozir + 35 daqiqa**
+- Video tayyor bo'lganda public vaqti o'tib ketgan (yoki 30 daqiqadan yaqin) bo'lsa, chiqish vaqti avtomatik **hozir + 1 soat**
   ga suriladi va video shu vaqtga rejalashtirib yuklanadi (log'da eski va yangi vaqt yoziladi).
 - Upload: resumable; sessiya URI (DPAPI'da) va video ID darhol saqlanadi. Uzilsa sessiya davom ettiriladi. Natija noaniq bo'lsa
   (sessiya yo'qolgan va kanalda mos video topilmagan) yangi upload **boshlanmaydi** — `NeedsAttention`; YouTube Studio'ni tekshirib,
@@ -193,7 +193,7 @@ avtomatik ko'chiriladi. Supabase'ning `db.*.supabase.co` manzili faqat IPv6 — 
 ## Worker buyruqlari
 
 ```powershell
-YtAuto.Worker.exe --scheduled          # Task Scheduler: sinxronlash + 1-3 video (15 daq tanaffus bilan)
+YtAuto.Worker.exe --scheduled          # Task Scheduler: sinxronlash + navbatdagi barcha video (ish oynasi ichida)
 YtAuto.Worker.exe --poll               # Task Scheduler (har 2 daq): faqat "Hozir chiqarish" so'rovlari
 YtAuto.Worker.exe --manual             # qo'lda: bitta vazifa
 YtAuto.Worker.exe --refresh            # faqat YouTube holatlarini yangilash

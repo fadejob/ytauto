@@ -18,7 +18,7 @@ function chipClass(s: number) {
 }
 
 const MONTHS = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"];
-/** Desktop ilovadagi qoida: vaqt o'tib ketgan yoki 30 daqiqadan yaqin bo'lsa, video yuklangandan 35 daqiqa keyin chiqadi. */
+/** Desktop ilovadagi qoida: vaqt o'tib ketgan yoki 30 daqiqadan yaqin bo'lsa, video yuklangandan 1 soat keyin chiqadi. */
 const isLate = (iso: string) => new Date(iso).getTime() <= Date.now() + 30 * 60000;
 const fmt = (d: { date: string; time: string }) => `${Number(d.date.slice(8, 10))} ${MONTHS[Number(d.date.slice(5, 7)) - 1]}, ${d.time}`;
 
@@ -45,7 +45,7 @@ export default function Topics({ state, loading, refresh, run, locked }: { state
       ? `"${t.topic}" YouTube'da hozir public qilinsinmi?`
       : `"${t.topic}" hozir tayyorlanib, YouTube'ga darhol chiqarilsinmi?`))) return;
     if (kind === "upload" && !(await confirmBox(
-      `"${t.title || t.topic}" tayyor videosi YouTube'ga yuklansinmi?\n\nVideo qayta tayyorlanmaydi. Chiqish vaqti: ${isLate(t.publishAt) ? "o'tib ketgan — yuklangandan 35 daqiqa keyin" : fmt(t.publishLocal)}.`))) return;
+      `"${t.title || t.topic}" tayyor videosi YouTube'ga yuklansinmi?\n\nVideo qayta tayyorlanmaydi. Chiqish vaqti: ${isLate(t.publishAt) ? "o'tib ketgan — yuklangandan 1 soat keyin" : fmt(t.publishLocal)}.`))) return;
     if (kind === "delete" && !(await confirmBox(`"${t.topic}" o'chirilsinmi? Qaytarib bo'lmaydi.`))) return;
     setBusy(t.id);
     const action: Action =

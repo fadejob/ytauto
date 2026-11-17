@@ -47,7 +47,7 @@ export default function Machines({ toast }: { toast: Toast }) {
   }
 
   async function runNow(name: string) {
-    if (!(await confirmBox(`${name}: ishni hozir boshlaymi? Worker jadvalni kutmasdan, navbatdagi mavzular soniga qarab (1–3 video) tayyorlaydi.`))) return;
+    if (!(await confirmBox(`${name}: ishni hozir boshlaymi? Worker jadvalni kutmasdan, navbatdagi barcha mavzulardan video tayyorlaydi (chiqish vaqti yaqinlari birinchi).`))) return;
     haptic.tap();
     setBusy(name);
     try {

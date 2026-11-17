@@ -407,7 +407,7 @@ public class PipelineTests
         Assert.Equal(h.Clock.UtcNow.AddMinutes(JobRunner.LatePublishDelayMinutes), j.PublishAtUtc);
         Assert.Equal(1, h.Uploader.Initiations);
         Assert.Equal(JobStatus.Scheduled, j.Status);
-        Assert.Contains(h.Log.Lines, l => l.Contains("hozir + 35 daqiqa"));
+        Assert.Contains(h.Log.Lines, l => l.Contains("hozir + 60 daqiqa"));
     }
 
     [Fact]

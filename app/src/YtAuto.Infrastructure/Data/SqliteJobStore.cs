@@ -236,14 +236,15 @@ WHERE id=$id;
         var statuses = string.Join(",", JobStateMachine.ClaimableStatuses.Select(s => (int)s));
         using var c = Open();
         using var cmd = c.CreateCommand();
-        // Bitta atomar UPDATE: eng eski yaroqli vazifa, hali hech kim band qilmagan bo'lsa.
+        // Bitta atomar UPDATE: chiqish vaqti eng yaqin yaroqli vazifa (teng bo'lsa eng eskisi), hali hech kim band qilmagan bo'lsa.
+        // Chiqish vaqti uzoq bo'lsa ham vazifa olinadi: video oldindan tayyorlanadi, YouTube vaqti kelganda o'zi public qiladi.
         cmd.CommandText = $"""
 UPDATE jobs SET claimed_by=$run, claimed_at_utc=$now, updated_at_utc=$now
 WHERE id = (
   SELECT id FROM jobs
   WHERE status IN ({statuses}) AND claimed_by IS NULL AND cancel_requested = 0
     AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= $now)
-  ORDER BY created_at_utc, id LIMIT 1)
+  ORDER BY publish_at_utc, created_at_utc, id LIMIT 1)
   AND claimed_by IS NULL
 RETURNING {JobColumns};
 """;

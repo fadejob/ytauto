@@ -7,8 +7,8 @@ namespace YtAuto.Core.Pipeline;
 
 public sealed partial class JobRunner
 {
-    /// <summary>Muddat o'tib ketgan video shuncha daqiqadan keyin chiqariladi.</summary>
-    public const int LatePublishDelayMinutes = 35;
+    /// <summary>Muddat (deadline) o'tib ketgan video YouTube'ga shuncha daqiqadan keyin public bo'lishga rejalashtirib yuklanadi (YouTube o'zi public qiladi).</summary>
+    public const int LatePublishDelayMinutes = 60;
 
     // ---------------------------------------------------------------- YouTube upload
     private async Task UploadStageAsync(JobContext c, VideoScript script)
@@ -34,7 +34,7 @@ public sealed partial class JobRunner
         }
         else if (c.Job.PublishAtUtc <= _x.Clock.UtcNow + lead)
         {
-            // Video tayyor bo'lguncha chiqish vaqti o'tib ketgan: hozirgi vaqtdan 35 daqiqa keyinga suriladi.
+            // Video tayyor bo'lguncha chiqish vaqti o'tib ketgan: tayyor bo'lgan paytdan 1 soat keyinga suriladi (YouTube o'zi public qiladi).
             var old = c.Job.PublishAtUtc;
             c.Job.PublishAtUtc = _x.Clock.UtcNow.AddMinutes(LatePublishDelayMinutes);
             _x.Store.Update(c.Job);

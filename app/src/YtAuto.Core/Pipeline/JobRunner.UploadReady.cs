@@ -46,7 +46,7 @@ public sealed partial class JobRunner
     /// <summary>
     /// "Tayyor videoni YouTube'ga yuklash": arxivdagi tayyor MP4 to'g'ridan-to'g'ri YouTube API orqali yuklanadi -
     /// Gemini, ovoz, Claude, OpenFilm qayta ishga tushirilmaydi. Title/tavsif/teglar vazifada saqlangan qiymatlardan.
-    /// Chiqish vaqti o'tib ketgan bo'lsa - hozir + 35 daqiqa; <paramref name="publishNow"/> - darhol public.
+    /// Chiqish vaqti o'tib ketgan bo'lsa - hozir + 1 soat; <paramref name="publishNow"/> - darhol public.
     /// Xato bo'lsa vazifa worker navbatiga QAYTMAYDI (aks holda u videoni qayta yasashi mumkin) - "E'tibor kerak" bo'ladi.
     /// </summary>
     public async Task<RunSummary> UploadReadyAsync(long jobId, string runId, bool publishNow, CancellationToken ct)

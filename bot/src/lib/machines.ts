@@ -89,7 +89,7 @@ function demoMachines(): Machine[] {
 }
 
 /**
- * "Hozir ishga tushirish": kompyuterda worker jadvalni kutmasdan, navbatdagi mavzular soniga qarab (1-3 video) ishni boshlaydi.
+ * "Hozir ishga tushirish": kompyuterda worker jadvalni kutmasdan, navbatdagi barcha mavzulardan video tayyorlashni boshlaydi.
  * Ilova ochiq bo'lsa ~30 soniyada, aks holda yengil worker (≤10 daqiqa) olganda boshlanadi. Band bo'lsa so'rov bekor (ikki marta ishlamaydi).
  */
 export async function requestRun(machine: string): Promise<{ ok: boolean; message: string }> {

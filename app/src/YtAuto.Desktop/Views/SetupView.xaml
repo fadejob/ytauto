@@ -30,7 +30,7 @@
                 <StackPanel IsEnabled="{Binding Running, Converter={x:Static local:InverseBool.Instance}}">
                     <TextBlock Text="Kompyuter qachon video tayyorlasin?" FontWeight="SemiBold"/>
                     <TextBlock Style="{StaticResource Muted}" Margin="0,2,0,8"
-                               Text="Har kuni shu oraliqda navbatdagi mavzulardan 1–3 ta video tayyorlanadi (boshlangan video oxirigacha tugatiladi). Kompyuter shu vaqtda yoqiq bo'lsin. Keyin ilovada yoki botda o'zgartirish mumkin."/>
+                               Text="Har kuni shu oraliqda navbatdagi barcha mavzulardan video tayyorlanadi (boshlangan video oxirigacha tugatiladi); YouTube ularni o'z chiqish vaqtida public qiladi. Kompyuter shu vaqtda yoqiq bo'lsin. Keyin ilovada yoki botda o'zgartirish mumkin."/>
                     <CheckBox Content="Har kuni avtomatik ishlash" IsChecked="{Binding ScheduleEnabled}"/>
                     <WrapPanel Margin="0,8,0,0" IsEnabled="{Binding ScheduleEnabled}">
                         <TextBlock Text="Boshlanish" VerticalAlignment="Center" Margin="0,0,6,0"/>

@@ -192,7 +192,7 @@ WHERE id = (
   SELECT id FROM {T("jobs")}
   WHERE status = ANY(@st) AND claimed_by IS NULL AND cancel_requested = FALSE
     AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= @now)
-  ORDER BY created_at_utc, id LIMIT 1 FOR UPDATE SKIP LOCKED)
+  ORDER BY publish_at_utc, created_at_utc, id LIMIT 1 FOR UPDATE SKIP LOCKED)
   AND claimed_by IS NULL
 RETURNING {JobColumns}
 """, ("run", runId), ("now", U(nowUtc)), ("st", JobStateMachine.ClaimableStatuses.Select(s => (int)s).ToArray()));

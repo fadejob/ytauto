@@ -52,7 +52,7 @@ public sealed class TaskSchedulerService
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Author>YtAuto</Author>
-    <Description>YtAuto: bazadan mavzularni sinxronlab, navbatga qarab 1-3 ta video tayyorlaydi (orasida 15 daqiqa tanaffus) va YouTube'ga rejalashtirib yuklaydi.</Description>
+    <Description>YtAuto: bazadan mavzularni sinxronlab, ish oynasi tugaguncha navbatdagi barcha mavzulardan video tayyorlaydi va YouTube'ga rejalashtirib yuklaydi.</Description>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>

@@ -9,14 +9,33 @@ public class BatchPlannerTests
     [Theory]
     [InlineData(0, 0)]
     [InlineData(1, 1)]
-    [InlineData(2, 1)]
-    [InlineData(3, 2)]
-    [InlineData(4, 2)]
-    [InlineData(5, 3)]
-    [InlineData(7, 3)]
-    [InlineData(8, 3)]   // 7 dan ko'p bo'lsa ham 4-5 video qilinmaydi
-    [InlineData(40, 3)]
-    public void VideosPerRun_FollowsTopicCount(int pending, int expected) => Assert.Equal(expected, BatchPlanner.VideosFor(pending));
+    [InlineData(3, 3)]
+    [InlineData(8, 8)]   // navbatdagi barcha mavzular tayyorlanadi (oldin ko'pi 3 ta edi)
+    [InlineData(40, 40)]
+    [InlineData(500, BatchPlanner.MaxVideosPerRun)]
+    public void VideosPerRun_IsWholeQueue(int pending, int expected) => Assert.Equal(expected, BatchPlanner.VideosFor(pending));
+
+    [Fact]
+    public void Pause_IsShorter_WhenQueueIsLong()
+    {
+        Assert.Equal(BatchPlanner.PauseBetweenVideos, BatchPlanner.PauseFor(1));
+        Assert.Equal(BatchPlanner.ShortPauseBetweenVideos, BatchPlanner.PauseFor(10));
+        Assert.True(BatchPlanner.ShortPauseBetweenVideos < BatchPlanner.PauseBetweenVideos);
+    }
+
+    [Fact]
+    public void ClaimNext_TakesNearestPublishDateFirst_AndFarFutureTopicsToo()
+    {
+        using var h = new Harness();
+        var far = h.AddJob("far future topic", minutesAgo: 120, publishInDays: 30);
+        var soon = h.AddJob("soon topic", minutesAgo: 5, publishInDays: 1);
+        Assert.Equal(2, h.Store.CountPending(h.Clock.UtcNow));
+
+        var first = h.Store.ClaimNext("run-a", h.Clock.UtcNow);
+        Assert.Equal(soon.Id, first!.Id); // chiqish vaqti yaqini birinchi, qo'shilgan vaqtidan qat'i nazar
+        var second = h.Store.ClaimNext("run-a", h.Clock.UtcNow);
+        Assert.Equal(far.Id, second!.Id); // 30 kun keyingi mavzu ham hozir tayyorlanadi (deadline faqat YouTube uchun)
+    }
 }
 
 public class PublishNowTests

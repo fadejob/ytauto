@@ -50,7 +50,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "upload_ready",
-      description: "TAYYOR (arxivda turgan), lekin YouTube'ga hali yuklanmagan videoni qayta tayyorlamasdan YouTube'ga yuklashni taklif qiladi (ro'yxatda tayyor-yuklanmagan belgisi bo'lsa). Vaqti o'tib ketgan bo'lsa hozir + 35 daqiqaga rejalashtiriladi.",
+      description: "TAYYOR (arxivda turgan), lekin YouTube'ga hali yuklanmagan videoni qayta tayyorlamasdan YouTube'ga yuklashni taklif qiladi (ro'yxatda tayyor-yuklanmagan belgisi bo'lsa). Vaqti o'tib ketgan bo'lsa hozir + 1 soatga rejalashtiriladi.",
       parameters: { type: "object", properties: { id: { type: "integer" } }, required: ["id"] },
     },
   },
