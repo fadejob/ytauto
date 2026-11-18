@@ -328,21 +328,8 @@ public sealed partial class JobRunner
         File.Copy(c.VoiceVtt, Path.Combine(assets, "voice.vtt"), true);
         var voiceSha = Hashing.Sha256File(Path.Combine(assets, "voice.wav"));
 
-        // MP4 reference: Claude videoni ko'ra olmaydi, shuning uchun kadrlar ajratiladi.
-        var refDir = Path.Combine(c.EditDir, "reference");
-        var refMp4 = tpl?.Kind == TemplateKind.Mp4Reference ? tpl.Path : tpl?.ReferenceMp4;
-        var refFrames = new List<string>();
-        if (!string.IsNullOrWhiteSpace(refMp4) && File.Exists(refMp4))
-        {
-            Directory.CreateDirectory(refDir);
-            var info = await _x.Media.ProbeAsync(refMp4, c.Ct).ConfigureAwait(false);
-            foreach (var frac in new[] { 0.05, 0.2, 0.35, 0.5, 0.65, 0.8, 0.95 })
-            {
-                var p = Path.Combine(refDir, $"style_{(int)(frac * 100):00}.png");
-                if (!File.Exists(p)) await _x.Media.ExtractFrameAsync(refMp4, info.Duration * frac, p, 960, c.Ct).ConfigureAwait(false);
-                if (File.Exists(p)) refFrames.Add(Path.GetRelativePath(c.EditDir, p).Replace('\\', '/'));
-            }
-        }
+        // MP4 reference: Claude videoni ko'ra olmaydi - 12 kadr va Gemini dizayn qo'llanmasi (STYLE_GUIDE.md), shablon bo'yicha keshlanadi.
+        var style = await PrepareTemplateStyleAsync(c, tpl).ConfigureAwait(false);
 
         var skillPath = Path.Combine(c.EditDir, "openfilm-edit-skill.md");
         if (!File.Exists(skillPath))
@@ -351,12 +338,13 @@ public sealed partial class JobRunner
         // Claude'ga: subtitr (matn + vaqtli cue'lar), ovoz, shablon (bo'lsa) va saqlangan Claude prompti.
         var duration = c.Job.AudioDurationSec ?? Wav.ReadInfo(c.VoiceWav).Duration;
         var cues = VttParser.Parse(File.ReadAllText(c.VoiceVtt));
+        var media = await PrepareMediaAsync(c, script, cues).ConfigureAwait(false);
         File.WriteAllText(Path.Combine(c.EditDir, "subtitles.txt"), script.SubtitleText, new UTF8Encoding(false));
         File.Copy(c.VoiceSrt, Path.Combine(c.EditDir, "subtitles.srt"), true);
         var stale = Path.Combine(c.EditDir, "script.json");
         if (File.Exists(stale)) File.Delete(stale);
         File.WriteAllText(Path.Combine(c.EditDir, "instructions.md"),
-            EditorInstructions.Build(c, script, cues, duration, tpl, refFrames), new UTF8Encoding(false));
+            EditorInstructions.Build(c, script, cues, duration, tpl, style.Frames, style.Guide.Length > 0, media), new UTF8Encoding(false));
         File.Copy(Path.Combine(c.EditDir, "instructions.md"), Path.Combine(c.RecordDir, "instructions.md"), true);
 
         var shimDir = _x.Film.WriteShims(Path.Combine(_x.Paths.ToolsDir, "openfilm-shim"));
@@ -525,6 +513,8 @@ public sealed partial class JobRunner
             else if (lf.ExitCode != 0) r.Add("look_full", QaSeverity.Warning, $"openfilm look --full exit {lf.ExitCode}: {Shorten(outText, 800)}");
             else foreach (var line in LookFullFindings(outText)) r.Add("look_full_finding", QaSeverity.Warning, line);
         }
+
+        await ReviewStyleAsync(c, times, r).ConfigureAwait(false);
 
         Directory.CreateDirectory(c.QaDir);
         var json = JsonSerializer.Serialize(r, new JsonSerializerOptions { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping });

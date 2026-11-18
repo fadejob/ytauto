@@ -52,7 +52,7 @@ public sealed partial class JobRunner
             .Distinct(StringComparer.OrdinalIgnoreCase).Take(30).ToList();
         var req = new UploadRequest
         {
-            VideoPath = c.Job.VideoArchivePath!, Title = Trunc(c.Job.DisplayTitle, 100), Description = Trunc(string.Join("\n\n", new[] { c.Job.Description?.Trim(), c.S.YouTube.DefaultDescription?.Trim() }.Where(s => !string.IsNullOrWhiteSpace(s))), 5000),
+            VideoPath = c.Job.VideoArchivePath!, Title = Trunc(c.Job.DisplayTitle, 100), Description = ComposeDescription(c.Job.Description, MediaCreditsBlock(c), c.S.YouTube.DefaultDescription),
             Tags = tags, CategoryId = c.S.YouTube.CategoryId, Language = c.Job.Language, PublishAtUtc = c.Job.PublishAtUtc, PublishNow = c.PublishNow,
             MadeForKids = c.S.YouTube.MadeForKids, ContainsSyntheticMedia = c.S.YouTube.ContainsSyntheticMedia, ThumbnailPath = c.Job.ThumbnailPath,
             License = c.S.YouTube.License == "creativeCommon" ? "creativeCommon" : "youtube", Embeddable = c.S.YouTube.Embeddable,
@@ -265,5 +265,21 @@ public sealed partial class JobRunner
             var pct = total == 0 ? 100 : (int)(sent * 100 / total);
             if (pct / 10 != _lastPct / 10) { _lastPct = pct; _c.Log.Info($"Upload: {pct}% ({sent / 1048576} / {total / 1048576} MB)", "Upload"); }
         }
+    }
+
+    /// <summary>
+    /// YouTube tavsifi (5000 belgi): video tavsifi + rasm mualliflari (CC BY talabi) + kanal standart matni.
+    /// Joy yetmasa video tavsifi qisqartiriladi; mualliflar bloki kesilmaydi.
+    /// </summary>
+    internal static string ComposeDescription(string? description, string credits, string? channelDefault)
+    {
+        const int Max = 5000;
+        var tail = string.Join("\n\n", new[] { credits?.Trim(), channelDefault?.Trim() }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        var main = description?.Trim() ?? "";
+        if (tail.Length == 0) return Trunc(main, Max);
+        var room = Max - tail.Length - 2;
+        if (room <= 0) return Trunc(tail, Max);
+        main = Trunc(main, room);
+        return main.Length == 0 ? tail : main + "\n\n" + tail;
     }
 }

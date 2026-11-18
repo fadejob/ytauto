@@ -22,6 +22,8 @@ public sealed class AppSettings
     public List<TemplateDefinition> Templates { get; set; } = new();
     /// <summary>Bot kanal tahlilidan tayyorlagan kontekst (online baza: shared_settings['channel.context']); job snapshot'iga tushadi.</summary>
     public ChannelContextSettings ChannelContext { get; set; } = new();
+    /// <summary>Video sifati: shablon uslubi tahlili, ochiq manbalardan real rasm/ikonlar va shablonga moslik tekshiruvi.</summary>
+    public VisualSettings Visuals { get; set; } = new();
     /// <summary>Hisobning o'z ovoz namunasi («Mening ovozim», bot: shared_settings['voice.clone']); job snapshot'iga tushadi.</summary>
     public VoiceCloneSettings VoiceClone { get; set; } = new();
 
@@ -136,6 +138,21 @@ public sealed class ClaudeSettings
     public int TimeoutMinutes { get; set; } = 45;
     /// <summary>0 - cheklanmagan.</summary>
     public double MaxBudgetUsd { get; set; }
+}
+
+/// <summary>Video sifati sozlamalari (bot: config.visuals).</summary>
+public sealed class VisualSettings
+{
+    /// <summary>Ochiq manbalardan (Iconify, Openverse, Wikimedia Commons) real ikon, logo va fotolar qo'shiladi.</summary>
+    public bool RealMedia { get; set; } = true;
+    /// <summary>Bitta videoga ko'pi bilan nechta rasm/ikon.</summary>
+    public int MaxMedia { get; set; } = 16;
+    /// <summary>Shablon kadrlaridan Gemini dizayn qo'llanmasi (STYLE_GUIDE.md) yaratiladi va Claude'ga beriladi.</summary>
+    public bool TemplateStyleGuide { get; set; } = true;
+    /// <summary>Render'dan keyin kadrlar shablon bilan solishtiriladi; ball past bo'lsa Claude tuzatadi.</summary>
+    public bool StyleReview { get; set; } = true;
+    /// <summary>Shundan past ball (0-10) - tuzatishga qaytariladi.</summary>
+    public double MinStyleScore { get; set; } = 6.5;
 }
 
 public sealed class VoiceStudioSettings

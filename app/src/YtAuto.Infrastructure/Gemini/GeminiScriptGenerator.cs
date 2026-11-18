@@ -51,6 +51,10 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
             : throw PipelineException.Config("gemini_key_missing", "Gemini API kaliti kiritilmagan (Telegram bot → Sozlamalar → Gemini).");
     }
 
+    /// <summary>Boshqa Gemini chaqiruvlari (vision) uchun: shu kalitlar navbati va limit/429 almashinuvi qayta ishlatiladi.</summary>
+    internal List<string> KeysForCall() => Keys();
+    internal static string TextOf(JsonNode json) => ExtractText(json);
+
     public async Task<ScriptResult> GenerateAsync(ScriptRequest req, IJobLog log, CancellationToken ct)
     {
         var keys = Keys();

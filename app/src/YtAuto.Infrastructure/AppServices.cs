@@ -124,6 +124,9 @@ public sealed class AppServices
             Tts = new VoiceStudioTtsService(Store, RunId),
             AudioImporter = new RemoteAudioImporter(Http, media),
             Aligner = Aligner(), Editor = Claude(), Film = film, Media = media,
+            // Video sifati: Gemini vision (shablon uslubi, rasm rejasi, moslik) va ochiq manbalardan real rasmlar.
+            Visuals = new Gemini.GeminiVisualDirector(Gemini, () => Settings.Load().Gemini.Model),
+            MediaLibrary = new Media.OpenMediaLibrary(),
             Uploader = Uploader, Resources = Resources, Paths = Paths, Clock = new SystemClock(),
             JobLogFactory = id => new JobLog(id, Paths.RecordDirFor(id), Store, Log),
             RunLog = Log, AppVersion = typeof(AppServices).Assembly.GetName().Version?.ToString() ?? "1.0.0",

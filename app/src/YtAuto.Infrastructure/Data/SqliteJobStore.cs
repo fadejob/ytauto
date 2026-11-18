@@ -779,6 +779,15 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 if (cl["timeoutMinutes"] is { } ctm) s.Claude.TimeoutMinutes = Math.Clamp(ctm.GetValue<int>(), 5, 600);
                 if (cl["maxBudgetUsd"] is { } cb) s.Claude.MaxBudgetUsd = Math.Max(0, cb.GetValue<double>());
             }
+            if (root?["visuals"] is { } vis)
+            {
+                // Video sifati (bot → Sozlamalar → Video): real rasmlar, shablon uslubi, shablonga moslik tekshiruvi.
+                if (vis["realMedia"] is System.Text.Json.Nodes.JsonValue rm && rm.TryGetValue<bool>(out var rmv)) s.Visuals.RealMedia = rmv;
+                if (vis["maxMedia"] is System.Text.Json.Nodes.JsonValue mm && mm.TryGetValue<int>(out var mmv)) s.Visuals.MaxMedia = Math.Clamp(mmv, 0, 40);
+                if (vis["templateStyleGuide"] is System.Text.Json.Nodes.JsonValue sg && sg.TryGetValue<bool>(out var sgv)) s.Visuals.TemplateStyleGuide = sgv;
+                if (vis["styleReview"] is System.Text.Json.Nodes.JsonValue sr && sr.TryGetValue<bool>(out var srv)) s.Visuals.StyleReview = srv;
+                if (vis["minStyleScore"] is System.Text.Json.Nodes.JsonValue ms && ms.TryGetValue<double>(out var msv)) s.Visuals.MinStyleScore = Math.Clamp(msv, 0, 10);
+            }
             if (root?["voice"] is { } vc)
             {
                 // Ovoz profillari botda boshqariladi: ro'yxat bo'sh bo'lmasa lokal ro'yxat o'rniga qo'llanadi.

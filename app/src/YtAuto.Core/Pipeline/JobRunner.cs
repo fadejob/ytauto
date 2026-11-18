@@ -17,6 +17,10 @@ public sealed class PipelineServices
     public required IEditorAgent Editor { get; init; }
     public required IFilmTool Film { get; init; }
     public required IMediaProbe Media { get; init; }
+    /// <summary>Gemini vision: shablon uslubi, rasm rejasi, shablonga moslik (berilmasa - o'tkazib yuboriladi).</summary>
+    public Visuals.IVisualDirector? Visuals { get; init; }
+    /// <summary>Ochiq manbalardan real rasm/ikonlar (berilmasa - faqat chizilgan grafika).</summary>
+    public Visuals.IMediaLibrary? MediaLibrary { get; init; }
     public required IVideoUploader Uploader { get; init; }
     public required IResourceMonitor Resources { get; init; }
     public required ISecretStore Secrets { get; init; }

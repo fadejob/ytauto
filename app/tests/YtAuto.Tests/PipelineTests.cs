@@ -97,12 +97,16 @@ internal sealed class FakeEditor : IEditorAgent
     public int Calls; public int GappyCalls; public int TransientFailures; public Func<Task>? DuringRun; public string? LastInstructions;
     /// <summary>Haqiqiy Claude kabi film/cover.html (muqova) ham yozadi.</summary>
     public bool WriteCover = true;
+    /// <summary>Tuzatish sikllarida Claude ko'rgan qa_feedback.md matnlari.</summary>
+    public readonly List<string> Feedbacks = new();
     public string Version => "fake-claude";
     public async Task<EditorRunResult> RunAsync(string dir, string prompt, TimeSpan timeout, string prefix, IReadOnlyList<string> extra, IJobLog log, CancellationToken ct)
     {
         Calls++;
         var ins = Path.Combine(dir, "instructions.md");
         if (File.Exists(ins)) LastInstructions = File.ReadAllText(ins);
+        var fb = Path.Combine(dir, "qa_feedback.md");
+        if (File.Exists(fb)) Feedbacks.Add(File.ReadAllText(fb));
         if (DuringRun is not null) await DuringRun();
         if (TransientFailures > 0) { TransientFailures--; return new EditorRunResult { Run = new ToolRunResult { ExitCode = 1, StderrTail = "network glitch" }, IsError = true }; }
         Assert.True(File.Exists(Path.Combine(dir, "instructions.md")));
@@ -183,8 +187,10 @@ internal sealed class FakeUploader : IVideoUploader
     public bool Connected = true; public int Initiations, Resumes; public int FailAfterSession; public bool LoseSession;
     public readonly HashSet<string> Public = new(); public int MakePublicCalls; public bool? LastPublishNow;
     public bool IsConnected => Connected;
+    public UploadRequest? Last;
     public Task<string> UploadAsync(UploadRequest r, IUploadStateSink state, IJobLog log, CancellationToken ct)
     {
+        Last = r;
         Assert.True(File.Exists(r.VideoPath));
         var existing = state.LoadSessionUri();
         if (existing is not null)
@@ -256,8 +262,10 @@ internal sealed class Harness : IDisposable
         Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = Script, Tts = TtsOverride ?? Tts, AudioImporter = AudioImporter, Aligner = Aligner, Editor = Editor,
         Film = Film, Media = Media, Uploader = Uploader, Resources = new FakeResources(), Paths = Paths, Clock = Clock,
         JobLogFactory = _ => Log, RunLog = Log, PostUploadPoll = TimeSpan.Zero, StopBeforeUpload = stopBeforeUpload, OnPublished = OnPublished,
-        OnVoiceCloneStatus = OnVoiceCloneStatus,
+        OnVoiceCloneStatus = OnVoiceCloneStatus, Visuals = Visuals, MediaLibrary = MediaLib,
     });
+    public YtAuto.Core.Visuals.IVisualDirector? Visuals;
+    public YtAuto.Core.Visuals.IMediaLibrary? MediaLib;
 
     public VideoJob AddJob(string topic = "Boiling water", int minutesAgo = 10, int publishInDays = 3)
     {
