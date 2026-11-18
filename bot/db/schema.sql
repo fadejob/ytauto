@@ -1,4 +1,4 @@
--- ytauto-schema-version: 3
+-- ytauto-schema-version: 4
 -- YtAuto online bazasi (Supabase PostgreSQL, "ytauto" sxemasi) - YAGONA manba. Bot (bot/src/lib/schema.ts) ham, desktop ilova
 -- (PostgresJobStore, egasi huquqi bilan ulanganda) ham shu faylni ishga tushiradi. Fayl idempotent: qayta ishga tushirish xavfsiz.
 -- Yuqoridagi versiya o'zgarmasa, fayl qayta bajarilmaydi (ytauto.schema_meta). O'zgartirganda versiyani oshiring.
@@ -86,6 +86,21 @@ ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS manual_title TEXT;
 ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS manual_audio_path TEXT;
 ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS manual_audio_url TEXT;
 
+-- ------------------------------------------------------------------ v4: kanal konteksti
+-- Bot ulangan YouTube kanalini tahlil qiladi (nom, tavsif, sarlavhalar, oxirgi 3 videoning montaji/ovozi/subtitri/ssenariysi).
+-- Hisobga bitta yozuv (PK account_id - pastda). Promptlarga qo'shiladigan ixcham matn shared_settings['channel.context'] da.
+CREATE TABLE IF NOT EXISTS ytauto.channel_profile (
+  channel_id TEXT NOT NULL DEFAULT '', channel_title TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'idle', error TEXT, enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  context_json TEXT, last_video_id TEXT, analyzed_at_utc TIMESTAMPTZ,
+  started_at_utc TIMESTAMPTZ, updated_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Kunlik mavzu tavsiyalari (kanal kontekstidan).
+CREATE TABLE IF NOT EXISTS ytauto.topic_suggestions (
+  id BIGSERIAL PRIMARY KEY, for_date DATE NOT NULL, topic TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'new', job_id BIGINT, created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ------------------------------------------------------------------ v2: hisoblar va izolyatsiya
 CREATE TABLE IF NOT EXISTS ytauto.accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -146,7 +161,8 @@ END $$;
 DO $$
 DECLARE
   t TEXT;
-  tables TEXT[] := ARRAY['jobs','job_stages','job_events','owned_processes','worker_runs','shared_settings','machines','machine_commands','templates','template_uploads'];
+  tables TEXT[] := ARRAY['jobs','job_stages','job_events','owned_processes','worker_runs','shared_settings','machines','machine_commands','templates','template_uploads',
+                         'channel_profile','topic_suggestions'];
   legacy_id UUID;
   orphan BOOLEAN := FALSE;
   has BOOLEAN;
@@ -190,6 +206,8 @@ END $$;
 SELECT ytauto._set_pk('shared_settings', 'account_id, key');
 SELECT ytauto._set_pk('machines', 'account_id, machine');
 SELECT ytauto._set_pk('templates', 'account_id, machine, name');
+SELECT ytauto._set_pk('channel_profile', 'account_id');
+CREATE INDEX IF NOT EXISTS ix_topic_suggestions_account ON ytauto.topic_suggestions(account_id, for_date DESC, id);
 CREATE INDEX IF NOT EXISTS ix_jobs_account_queue ON ytauto.jobs(account_id, status, created_at_utc, id);
 CREATE INDEX IF NOT EXISTS ix_worker_runs_account ON ytauto.worker_runs(account_id, started_at_utc DESC);
 CREATE INDEX IF NOT EXISTS ix_machine_commands_account ON ytauto.machine_commands(account_id, machine) WHERE NOT done;
@@ -298,8 +316,9 @@ GRANT EXECUTE ON FUNCTION ytauto.hosted_accounts() TO ytauto_device;
 
 GRANT USAGE ON SCHEMA ytauto TO ytauto_device, ytauto_bot;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ytauto.jobs, ytauto.job_stages, ytauto.job_events, ytauto.owned_processes, ytauto.worker_runs,
-  ytauto.shared_settings, ytauto.machines, ytauto.machine_commands, ytauto.templates, ytauto.template_uploads TO ytauto_device, ytauto_bot;
+  ytauto.shared_settings, ytauto.machines, ytauto.machine_commands, ytauto.templates, ytauto.template_uploads,
+  ytauto.channel_profile, ytauto.topic_suggestions TO ytauto_device, ytauto_bot;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ytauto TO ytauto_device, ytauto_bot;
 REVOKE ALL ON ytauto.accounts, ytauto.account_roles, ytauto.telegram_links, ytauto.login_attempts, ytauto.schema_meta FROM ytauto_device, ytauto_bot;
 
-INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '3') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '4') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

@@ -43,6 +43,23 @@ try {
       ok &&= good;
       console.log(`  hisob ${acc.id.slice(0, 8)}…: kontekst ${x.cur === acc.id ? "to'g'ri" : "XATO"}, ko'rinadigan mavzular ${x.jobs}/${acc.own}, boshqa hisoblar ${x.accs > 1 ? "KO'RINADI (XATO)" : "ko'rinmaydi"}`);
     }
+    // v4: kanal konteksti jadvallari ham hisob bo'yicha ajratilgan (yozish - o'z hisobiga, boshqa hisob ko'rmaydi).
+    const [t4] = await tx`select to_regclass('ytauto.channel_profile') is not null as p, to_regclass('ytauto.topic_suggestions') is not null as s`;
+    console.log(`  v4 jadvallari: channel_profile ${t4.p}, topic_suggestions ${t4.s}`);
+    ok &&= t4.p && t4.s;
+    if (accs.length >= 1) {
+      await tx`select set_config('ytauto_ctx.account', ${accs[0].id}, true)`;
+      await tx`insert into ytauto.channel_profile(channel_title) values ('dryrun') on conflict (account_id) do update set channel_title = 'dryrun'`;
+      await tx`insert into ytauto.topic_suggestions(for_date, topic) values (current_date, 'dryrun')`;
+      const [own] = await tx`select count(*)::int as n from ytauto.channel_profile where channel_title = 'dryrun'`;
+      ok &&= own.n === 1;
+      if (accs.length >= 2) {
+        await tx`select set_config('ytauto_ctx.account', ${accs[1].id}, true)`;
+        const [other] = await tx`select (select count(*)::int from ytauto.channel_profile where channel_title = 'dryrun') + (select count(*)::int from ytauto.topic_suggestions where topic = 'dryrun') as n`;
+        console.log(`  v4 izolyatsiya: boshqa hisob dryrun yozuvlarini ${other.n === 0 ? "ko'rmaydi" : "KO'RADI (XATO)"}`);
+        ok &&= other.n === 0;
+      }
+    }
     await tx`select set_config('ytauto_ctx.account', '', true)`;
     const [none] = await tx`select count(*)::int as n from ytauto.jobs`;
     console.log(`  kontekstsiz: ${none.n} ta mavzu ko'rinadi (0 bo'lishi kerak)`);
