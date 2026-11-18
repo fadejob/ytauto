@@ -2,6 +2,7 @@ import "server-only";
 import { isGuest } from "./db";
 import { getCatalog, getPrompts, listTopics, previewPrompt } from "./topics";
 import { geminiGenerate, type GeminiContent } from "./gemini";
+import { readBlocks } from "./channel/store";
 import { StatusText, type Action, type ChatMessage, type Proposal } from "./types";
 
 const topicProps = {
@@ -62,7 +63,7 @@ const TOOLS = [
       description:
         "Promptni o'zgartirishni taklif qiladi. key='script' — Gemini ssenariy prompti, key='montage' — Claude montaj prompti. " +
         "Kichik o'zgarish uchun 'edits' ishlating: har 'find' promptdagi AYNAN mavjud matn (bir marta uchraydi), 'replace' — yangisi. " +
-        "Butunlay qayta yozish so'ralsa 'text' ga to'liq yangi prompt. Ssenariy promptidagi {topic} {notes} {language} {language_name} {length_rule} {format} {fact_sheet} placeholder'larini saqlang.",
+        "Butunlay qayta yozish so'ralsa 'text' ga to'liq yangi prompt. Ssenariy promptidagi {topic} {notes} {language} {language_name} {length_rule} {format} {fact_sheet} {channel_context} placeholder'larini saqlang.",
       parameters: {
         type: "object",
         properties: {
@@ -78,7 +79,8 @@ const TOOLS = [
 
 async function systemPrompt(): Promise<string> {
   const cat = await getCatalog();
-  const [topics, prompts] = await Promise.all([listTopics(cat.youtube.timeZone), getPrompts()]);
+  const [topics, prompts, blocks] = await Promise.all([listTopics(cat.youtube.timeZone), getPrompts(), readBlocks().catch(() => null)]);
+  const channel = blocks?.enabled && blocks.script ? `\n\n=== Kanal konteksti (kanal tahlilidan; yangi mavzu va notes shu uslubga mos bo'lsin, chiqqan mavzularni takrorlamang) ===\n${blocks.script}` : "";
   const now = new Intl.DateTimeFormat("sv-SE", { timeZone: cat.youtube.timeZone, dateStyle: "short", timeStyle: "short" }).format(new Date());
   const list = topics
     .map((t) => `#${t.id} | ${t.topic} | ${StatusText[t.status]} | chiqish ${t.publishLocal.date} ${t.publishLocal.time}${t.editable ? " | editable" : ""}${t.deletable ? " | deletable" : ""}${t.publishNow ? " | hozir-chiqarish-kutilmoqda" : ""}${t.canUploadReady ? " | tayyor-yuklanmagan" : ""}${t.uploadRequested ? " | yuklash-kutilmoqda" : ""}`)
@@ -103,7 +105,7 @@ ${list || "(hozircha yo'q)"}
 ${prompts.script || "(bo'sh)"}
 
 === Montaj prompti (key=montage) ===
-${prompts.montage || "(bo'sh)"}`;
+${prompts.montage || "(bo'sh)"}${channel}`;
 }
 
 type ToolTopic = { topic?: string; notes?: string; publish_at?: string };

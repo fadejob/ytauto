@@ -1,6 +1,10 @@
-import { connection } from "next/server";
+import { after, connection } from "next/server";
+import { analyzeChannel } from "@/lib/channel/analyze";
+import { generateSuggestions } from "@/lib/channel/suggest";
 import { withAccount } from "@/lib/db";
 import { checkState, finishYouTube, originOf } from "@/lib/youtube";
+
+export const maxDuration = 300;
 
 /** Google shu manzilga qaytaradi (brauzerda). Telegram auth yo'q: so'rov imzolangan `state` bilan tekshiriladi. */
 const page = (title: string, text: string, ok: boolean) =>
@@ -22,7 +26,14 @@ export async function GET(req: Request) {
   if (!code) return page("Kod kelmadi", "Telegramga qaytib, qayta urinib ko'ring.", false);
   try {
     const title = await withAccount(accountId, () => finishYouTube(code, originOf(req)));
-    return page("YouTube ulandi ✓", `Kanal: <b>${esc(title)}</b>. Endi Telegramdagi botga qaytishingiz mumkin.`, true);
+    // Kanal ulangach darhol o'rganiladi (oxirgi 3 video) va bugungi mavzu tavsiyalari tayyorlanadi.
+    after(async () => {
+      try {
+        const r = await analyzeChannel(accountId, { force: true });
+        if (r.status === "analyzed") await generateSuggestions(accountId);
+      } catch (e) { console.error("[channel] ulangandan keyingi tahlil:", e instanceof Error ? e.message : e); }
+    });
+    return page("YouTube ulandi ✓", `Kanal: <b>${esc(title)}</b>. Kanal hozir o'rganilmoqda (1–3 daqiqa) — natija botdagi «Kanal» bo'limida. Endi Telegramdagi botga qaytishingiz mumkin.`, true);
   } catch (e) {
     return page("Ulanmadi", esc(e instanceof Error ? e.message : String(e)), false);
   }

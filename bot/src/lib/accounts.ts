@@ -36,6 +36,18 @@ export async function accountForTelegram(telegramId: number): Promise<LinkedAcco
   return { id: row.id as string, guest: row.guest === true, hostLabel: (row.host_label as string | null) ?? null };
 }
 
+/**
+ * Kunlik fon ishi (cron) uchun: botdan foydalanayotgan hisoblar (Telegram bog'langan, token amal qiladi).
+ * Faqat id - ma'lumotlarga keyin withAccount (RLS) orqali tegiladi.
+ */
+export async function activeAccounts(): Promise<{ id: string; guest: boolean }[]> {
+  await ensureSchema();
+  const rows = await ownerSql()`
+    SELECT DISTINCT a.id::text AS id, a.host_account_id IS NOT NULL AS guest FROM ytauto.accounts a
+    JOIN ytauto.telegram_links l ON l.account_id = a.id AND l.token_hash = a.token_hash`;
+  return rows.map((r) => ({ id: r.id as string, guest: r.guest === true }));
+}
+
 // ------------------------------------------------------------------ qo'shimcha (mehmon) tokenlar
 export const GUEST_LIMIT = 20;
 const ALNUM = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";

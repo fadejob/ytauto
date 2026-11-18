@@ -5,6 +5,7 @@ import { GEMINI_REQUIRED, geminiReady, getConfig } from "./config";
 import { templateCatalog } from "./library";
 import { attachAudio } from "./audio";
 import { removeObjects } from "./storage";
+import { readBlocks } from "./channel/store";
 import { demoApply, demoCatalog, demoPrompts, demoTopics, isDemo } from "./demo";
 import { addDays, parseLocal, utcToZoned, zonedToUtc } from "./time";
 import { Status, type Action, type ActionResult, type Catalog, type NewTopic, type PromptKey, type Prompts, type Topic } from "./types";
@@ -18,11 +19,22 @@ async function pickTemplateFormat(cat: Catalog, template?: string, format?: numb
   const cfg = await getConfig();
   const tpl = template !== undefined ? template : cfg.defaults.template || cat.defaults.template;
   const fmt = format !== undefined ? format : cfg.defaults.format ?? cat.defaults.format;
-  const vc = voice !== undefined && voice !== "" ? voice : cfg.defaults.voiceProfile || cat.defaults.voiceProfile || cat.voiceProfiles[0] || "";
+  // Ovoz: aniq berilgan → bot sozlamasidagi standart → kanal tahlili tavsiyasi (kanal ovoziga mos) → katalog standarti.
+  const channelVoice = isDemo() ? "" : await channelVoiceProfile(cat);
+  const vc = voice !== undefined && voice !== "" ? voice : cfg.defaults.voiceProfile || channelVoice || cat.defaults.voiceProfile || cat.voiceProfiles[0] || "";
   if (![0, 1, 2].includes(fmt)) return { error: "Format noto'g'ri (0 = 16:9, 1 = Shorts 9:16, 2 = 1:1)." };
   if (tpl && cat.known && cat.templates.length > 0 && !cat.templates.some((t) => t.name === tpl)) return { error: `Shablon topilmadi: "${tpl}".` };
   if (vc && cat.known && cat.voiceProfiles.length > 0 && !cat.voiceProfiles.includes(vc)) return { error: `Ovoz profili topilmadi: "${vc}".` };
   return { template: tpl, format: fmt, voice: vc };
+}
+
+/** Kanal kontekstidagi tavsiya etilgan ovoz profili (kontekst yoqilgan va profil katalogda bor bo'lsa). */
+async function channelVoiceProfile(cat: Catalog): Promise<string> {
+  try {
+    const b = await readBlocks();
+    const v = b?.enabled ? b.voiceProfile : "";
+    return v && (!cat.known || cat.voiceProfiles.includes(v)) ? v : "";
+  } catch { return ""; }
 }
 
 const MAX_TOPICS_PER_REQUEST = 5;
