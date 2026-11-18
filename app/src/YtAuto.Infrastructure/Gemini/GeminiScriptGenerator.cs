@@ -36,6 +36,9 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
     /// <summary>Oxirgi muvaffaqiyatli kalit: keyingi chaqiruvlar limiti tugagan kalitni qayta-qayta urmasdan shundan boshlaydi.</summary>
     private int _active;
 
+    /// <summary>Kamida bitta Gemini kaliti bormi (tarmoqqa chiqmaydi; kalit ishlashini <see cref="CheckAsync"/> tekshiradi).</summary>
+    public int KeyCount { get { try { return Keys().Count; } catch (PipelineException) { return 0; } } }
+
     private List<string> Keys()
     {
         IReadOnlyList<string>? remote = null;

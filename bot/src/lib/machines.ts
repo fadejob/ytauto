@@ -44,12 +44,16 @@ export async function getMachines(): Promise<Machine[]> {
   const rows = await sql()<Row[]>`SELECT * FROM ytauto.machines ORDER BY last_seen_utc DESC`;
   // Kerakli dasturlar holati (har kompyuter yozadi).
   const st = await sql()`SELECT key, value FROM ytauto.shared_settings WHERE key LIKE 'tools.status.%'`;
-  const byMachine = new Map<string, { items?: { name: string; ok: boolean; detail: string }[]; updatedAtUtc?: string }>();
+  const byMachine = new Map<string, { items?: { key?: string; name: string; ok: boolean; detail: string }[]; updatedAtUtc?: string }>();
   for (const s of st) { try { byMachine.set((s.key as string).slice("tools.status.".length), JSON.parse(s.value as string)); } catch { /* buzilgan */ } }
+  // Tekshiruv natijasidan keyin bot sozlamalari o'zgargan bo'lsa (masalan Gemini kaliti qo'shilgan) natija eskirgan deb belgilanadi.
+  const [chg] = await sql()<{ at: Date | null }[]>`
+    SELECT max(updated_at_utc) AS at FROM ytauto.shared_settings WHERE key IN ('config', 'schedule', 'youtube.oauth')`;
   return rows.map((r) => {
     const m = toMachine(r);
+    if (chg?.at && r.check_finished_at_utc && chg.at > r.check_finished_at_utc) m.check.stale = true;
     const t = byMachine.get(r.machine);
-    return t ? { ...m, tools: (t.items ?? []).map((i) => ({ name: i.name, ok: !!i.ok, detail: i.detail ?? "" })), toolsUpdatedAt: t.updatedAtUtc ?? null } : m;
+    return t ? { ...m, tools: (t.items ?? []).map((i) => ({ key: i.key ?? "", name: i.name, ok: !!i.ok, detail: i.detail ?? "" })), toolsUpdatedAt: t.updatedAtUtc ?? null } : m;
   });
 }
 
@@ -74,7 +78,7 @@ function demoMachines(): Machine[] {
   return [
     {
       name: "AIBA", lastSeen: iso(12_000), online: true, app: { open: true, seen: iso(12_000) }, run: { requested: false, requestedAt: null },
-      tools: [{ name: "OpenFilm", ok: true, detail: "" }, { name: "VoiceStudio", ok: true, detail: "" }, { name: "Subtitr modeli (Systran/faster-whisper-base)", ok: false, detail: "" }, { name: "Ovoz modeli (KittenML/kitten-tts-mini-0.8)", ok: true, detail: "Kitten EN ayol, Kitten EN erkak" }, { name: "Claude Code", ok: true, detail: "" }, { name: "YouTube kanali", ok: true, detail: "Fadejob" }], toolsUpdatedAt: iso(60_000),
+      tools: [{ key: "openfilm", name: "OpenFilm", ok: true, detail: "" }, { key: "voicestudio", name: "VoiceStudio", ok: true, detail: "" }, { key: "whisper", name: "Subtitr modeli (Systran/faster-whisper-base)", ok: false, detail: "" }, { key: "tts", name: "Ovoz modeli (KittenML/kitten-tts-mini-0.8)", ok: true, detail: "Kitten EN ayol, Kitten EN erkak" }, { key: "claude", name: "Claude Code", ok: true, detail: "" }, { key: "youtube", name: "YouTube kanali", ok: true, detail: "Fadejob" }, { key: "gemini", name: "Gemini kaliti", ok: true, detail: "1 ta kalit · gemini-2.5-flash" }, { key: "schedule", name: "Windows jadvali", ok: true, detail: "har kuni 01:00 (Asia/Tashkent)" }], toolsUpdatedAt: iso(60_000),
       worker: { state: "busy", jobId: 104, detail: "render: How vaccines train the immune system", seen: iso(9_000) }, version: "1.0.0.0",
       check: done ? { requested: false, requestedAt: demoCheck!.requestedAt.toISOString(), finishedAt: iso(1000), durationSec: 6.2, results: items }
         : { requested: !!demoCheck, requestedAt: demoCheck?.requestedAt.toISOString() ?? null, finishedAt: null, durationSec: null, results: [] },

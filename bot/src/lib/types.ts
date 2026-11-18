@@ -165,9 +165,10 @@ export type Machine = {
   /** Botdan "Hozir ishga tushirish" so'rovi yuborilgan, kompyuter hali olmagan. */
   run: { requested: boolean; requestedAt: string | null };
   /** Kerakli dasturlar holati (kompyuter yozadi: shared_settings tools.status.KOMPYUTER). */
-  tools: { name: string; ok: boolean; detail: string }[] | null;
+  tools: { key: string; name: string; ok: boolean; detail: string }[] | null;
   toolsUpdatedAt: string | null;
-  check: { requested: boolean; requestedAt: string | null; finishedAt: string | null; durationSec: number | null; results: CheckItem[] };
+  /** stale: tekshiruvdan keyin bot sozlamalari (Gemini, jadval, YouTube) o'zgargan — natija eskirgan. */
+  check: { requested: boolean; requestedAt: string | null; finishedAt: string | null; durationSec: number | null; results: CheckItem[]; stale?: boolean };
 };
 
 /** Botdan yuklangan shablonlar (ytauto.template_uploads): har kompyuter uchun alohida yozuv. */

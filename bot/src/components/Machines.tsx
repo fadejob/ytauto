@@ -14,6 +14,14 @@ const ago = (iso: string | null) => {
   return `${Math.round(s / 86400)} kun oldin`;
 };
 
+/** Kerakli dastur qatorining matni: dasturlar "o'rnatilgan", YouTube "ulangan", Gemini/jadval esa kompyuter yozgan izoh. */
+function toolText(t: NonNullable<Machine["tools"]>[number]) {
+  if (t.key === "gemini" || t.key === "schedule") return t.detail || (t.ok ? "tayyor" : "sozlanmagan");
+  if (t.name.startsWith("YouTube")) return t.ok ? (t.detail ? `ulangan: ${t.detail}` : "ulangan") : "ulanmagan";
+  if (!t.ok) return "o'rnatilmagan";
+  return t.detail && t.name.startsWith("Ovoz") ? `o'rnatilgan · ${t.detail}` : "o'rnatilgan";
+}
+
 const LEVEL: Record<string, { icon: string; cls: string }> = { Ok: { icon: "✓", cls: "" }, Warning: { icon: "!", cls: "warn" }, Failed: { icon: "✗", cls: "error" } };
 
 /** Kompyuterlar: online/offline, ilova ochiqligi, worker faoliyati va botdan integratsiyalarni tekshirish. */
@@ -89,7 +97,7 @@ export default function Machines({ toast }: { toast: Toast }) {
                 <div className="hint">Kerakli dasturlar ({ago(m.toolsUpdatedAt)}):</div>
                 {m.tools.map((t) => (
                   <div key={t.name} className={`logline ${t.ok ? "" : "error"}`}>
-                    <span className="t">{t.ok ? "✓" : "✗"}</span><b>{t.name}</b> — {t.ok ? (t.detail ? (t.name.startsWith("YouTube") ? `ulangan: ${t.detail}` : t.name.startsWith("Ovoz") ? `o'rnatilgan · ${t.detail}` : "o'rnatilgan") : t.name.startsWith("YouTube") ? "ulangan" : "o'rnatilgan") : t.name.startsWith("YouTube") ? "ulanmagan" : "o'rnatilmagan"}
+                    <span className="t">{t.ok ? "✓" : "✗"}</span><b>{t.name}</b> — {toolText(t)}
                   </div>
                 ))}
               </div>
@@ -107,8 +115,9 @@ export default function Machines({ toast }: { toast: Toast }) {
             {m.check.results.length > 0 && !pending ? (
               <div className="card formcard" style={{ background: "transparent", boxShadow: "none", padding: 0 }}>
                 <div className="hint">Oxirgi tekshiruv: {ago(m.check.finishedAt)}{m.check.durationSec ? ` · ${m.check.durationSec.toFixed(0)} s` : ""}</div>
+                {m.check.stale ? <div className="notes open">⚠️ Bu natija eski: undan keyin sozlamalar (Gemini, jadval yoki YouTube) o&apos;zgargan. Hozirgi holat yuqoridagi «Kerakli dasturlar» ro&apos;yxatida — to&apos;liq tekshiruv uchun «Integratsiyalarni tekshirish»ni bosing.</div> : null}
                 {m.check.results.map((r) => (
-                  <div key={r.name} className={`logline ${LEVEL[r.level]?.cls ?? ""}`}>
+                  <div key={r.name} className={`logline ${m.check.stale ? "" : LEVEL[r.level]?.cls ?? ""}`} style={m.check.stale ? { opacity: 0.55 } : undefined}>
                     <span className="t">{LEVEL[r.level]?.icon ?? "•"}</span><b>{r.name}</b> — {r.message}
                   </div>
                 ))}
