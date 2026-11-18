@@ -34,7 +34,7 @@ Pipeline (og'ir bosqichlar ketma-ket, har biridan keyin checkpoint):
 ## Talablar
 
 - Windows 10/11 x64. .NET o'rnatish **shart emas** (distributiv self-contained).
-- **VoiceStudio** (0.5.7 da sinalgan), unda TTS modeli o'rnatilgan (masalan, `KittenML/kitten-tts-mini-0.8`, faqat inglizcha)
+- **VoiceStudio** (0.5.7 da sinalgan), unda **MOSS-TTS-Nano** dvigateli o'rnatilgan (yagona ruxsat etilgan TTS modeli; o'z muhiti ~8 GB — C: kichik bo'lsa `OMNIVOICE_ENGINES_DIR` ni D: ga yo'naltiring). Ayol/erkak ovozi VoiceStudio'dagi «YtAuto ayol» / «YtAuto erkak» profillaridagi namuna audiodan olinadi; profil bo'lmasa MOSS standart ovozi ishlatiladi
   va alignment uchun `Systran/faster-whisper-base` keshda bo'lishi kerak. Worker VoiceStudio'ning o'z Python muhitidan foydalanadi.
 - **OpenFilm** (0.3.2 da sinalgan). Ichidagi CLI, ffmpeg/ffprobe va headless brauzer ishlatiladi; `npx` ishlatilmaydi.
 - **Claude Code** (2.1.310 da sinalgan), shu Windows foydalanuvchisi tizimga kirgan bo'lishi kerak.
@@ -62,7 +62,7 @@ bilan self-contained `YtAuto-win-x64.zip` yig'adi va uni `v1.0.<build raqami>` n
 ## Birinchi sozlash
 
 Ilova birinchi ochilganda bitta tugma: **«Kerakli fayllarni yuklash va sozlash»** — yetishmagan dasturlar va modellar yuklanadi
-(OpenFilm, VoiceStudio, faster-whisper, KittenTTS va ayol/erkak ovoz profillari, Claude Code; bori qayta yuklanmaydi), online hisob
+(OpenFilm, VoiceStudio, faster-whisper, MOSS-TTS-Nano va ayol/erkak ovoz profillari, Claude Code; bori qayta yuklanmaydi), online hisob
 va token yaratiladi, sozlamalar serverga yoziladi va Task Scheduler sozlanadi. So'ng bosh sahifada token (nusxalash, ko'rsatish,
 yangilash), ish vaqti (jadval), Gemini va dasturlar holati. Claude Code'ga kirish — «Claude'ga kirish» tugmasi (bir marta).
 Gemini kaliti, YouTube, promptlar va mavzular — Telegram botda. Quyidagilar **Kengaytirilgan sozlamalar** oynasida:

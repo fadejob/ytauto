@@ -159,7 +159,9 @@ public sealed partial class JobRunner
     private async Task<StageOutputs> VoiceStageAsync(JobContext c, VideoScript script)
     {
         if (c.Job.HasManualAudio) return await ManualVoiceStageAsync(c, script).ConfigureAwait(false);
-        var voice =c.S.FindVoice(c.Job.VoiceProfileName) ?? throw PipelineException.Config("voice_profile", $"Ovoz profili topilmadi: {c.Job.VoiceProfileName}");
+        var voice = c.S.FindVoice(c.Job.VoiceProfileName) ?? throw PipelineException.Config("voice_profile", $"Ovoz profili topilmadi: {c.Job.VoiceProfileName}");
+        if (!TtsVoices.IsAllowed(voice))
+            throw PipelineException.Config("voice_model", $"Ovoz profili '{voice.Name}' '{voice.Model}' modelini ishlatadi. Faqat {TtsVoices.DisplayName} ({TtsVoices.Model}) ruxsat etilgan.");
         var ram = _x.Resources.AvailableRamGb();
         if (ram < c.S.Limits.MinFreeRamGbForTts)
             c.Log.Warn($"Bo'sh RAM kam ({ram:0.00} GB < {c.S.Limits.MinFreeRamGbForTts} GB). Boshqa og'ir dasturlarni yopish tavsiya etiladi; TTS ketma-ket, bo'laklab bajariladi.", "Voice");

@@ -152,6 +152,14 @@ internal sealed class VoiceStudioSession : ITtsSession
         }
     }
 
+    /// <summary>Bo'sh tanali POST (masalan, dvigatel o'rnatishni boshlash). Javob matni va HTTP kodi qaytadi.</summary>
+    internal async Task<(int Status, string Body)> PostAsync(string path, TimeSpan timeout, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct); cts.CancelAfter(timeout);
+        using var r = await _http.PostAsync(path, new StringContent("", Encoding.UTF8, "application/json"), cts.Token).ConfigureAwait(false);
+        return ((int)r.StatusCode, await r.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false));
+    }
+
     public async Task EnsureModelAvailableAsync(string model, CancellationToken ct)
     {
         try

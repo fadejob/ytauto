@@ -664,7 +664,15 @@ public sealed class SqliteSettingsStore : ISettingsStore
             }
             // Kanal konteksti (bot kanal tahlilidan yozadi) - hisob doirasida: mehmon vazifasiga mehmonning o'z kanali konteksti.
             s.ChannelContext = ReadChannelContext(_shared.GetSetting(ChannelContextKey));
+            // Faqat MOSS-TTS-Nano ishlatiladi: botdagi eski (KittenTTS va h.k.) profillar MOSS ayol/erkak bilan almashtiriladi
+            // va bot ro'yxati ham bir marta tozalanadi (kompyuter egasi; mehmon sozlamalariga yozilmaydi).
+            if (TtsVoices.Normalize(s) && !guest)
+            {
+                try { PushVoiceProfiles(s.VoiceProfiles, s.Defaults.VoiceProfile); } catch { /* keyingi Load'da yana urinadi */ }
+            }
+            return s;
         }
+        TtsVoices.Normalize(s);
         return s;
     }
 
@@ -750,7 +758,7 @@ public sealed class SqliteSettingsStore : ISettingsStore
                         if (string.IsNullOrEmpty(name)) continue;
                         list.Add(new VoiceProfile
                         {
-                            Name = name, Model = p?["model"]?.GetValue<string>() ?? "kittentts", Voice = p?["voice"]?.GetValue<string>() ?? "",
+                            Name = name, Model = p?["model"]?.GetValue<string>() ?? TtsVoices.Model, Voice = p?["voice"]?.GetValue<string>() ?? "",
                             Language = p?["language"]?.GetValue<string>() ?? "en", Speed = Math.Clamp(p?["speed"]?.GetValue<double>() ?? 1.0, 0.5, 2.0),
                         });
                     }
@@ -899,7 +907,7 @@ public sealed class SqliteSettingsStore : ISettingsStore
     /// Ilovadagi "Ayol/Erkak ovozi" paneli profillarni o'zgartirganda ular bot konfigidagi (config.voice.profiles) ro'yxatga ham yoziladi:
     /// bot ro'yxati asosiy manba, shuning uchun lokal o'zgarish uni bekor qilib qo'ymasligi uchun.
     /// </summary>
-    public void PushVoiceProfiles(IReadOnlyList<VoiceProfile> profiles)
+    public void PushVoiceProfiles(IReadOnlyList<VoiceProfile> profiles, string? defaultProfile = null)
     {
         if (_shared is null) return;
         var root = System.Text.Json.Nodes.JsonNode.Parse(_shared.GetSetting(ConfigKey) ?? "{}") as System.Text.Json.Nodes.JsonObject ?? new();
@@ -909,6 +917,12 @@ public sealed class SqliteSettingsStore : ISettingsStore
             arr.Add(new System.Text.Json.Nodes.JsonObject { ["name"] = p.Name, ["model"] = p.Model, ["voice"] = p.Voice, ["language"] = p.Language, ["speed"] = p.Speed });
         voice["profiles"] = arr;
         root["voice"] = voice;
+        if (!string.IsNullOrEmpty(defaultProfile))
+        {
+            var defaults = root["defaults"] as System.Text.Json.Nodes.JsonObject ?? new();
+            defaults["voiceProfile"] = defaultProfile;
+            root["defaults"] = defaults;
+        }
         _shared.SetSetting(ConfigKey, root.ToJsonString());
     }
 

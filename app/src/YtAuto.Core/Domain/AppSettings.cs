@@ -53,8 +53,9 @@ public sealed class AppSettings
         s.VoiceStudio.PythonPath = Path.Combine(roamingAppData, "VoiceStudio", "runtime", "project", ".venv", "Scripts", "python.exe");
         s.VoiceStudio.HfCacheDir = Path.Combine(localAppData, "OmniVoice", "hf_cache");
         s.OpenFilm.ExePath = @"D:\AppData\Local\OpenFilm\OpenFilm.exe";
-        s.VoiceProfiles.Add(new VoiceProfile { Name = "Kitten EN ayol", Model = "kittentts", Voice = "expr-voice-2-f", Language = "en" });
-        s.Defaults.VoiceProfile = "Kitten EN ayol";
+        s.VoiceProfiles.Add(TtsVoices.Female());
+        s.VoiceProfiles.Add(TtsVoices.Male());
+        s.Defaults.VoiceProfile = TtsVoices.FemaleName;
         s.Gemini.ScriptPrompt = DefaultPrompts.Script;
         s.Claude.MontagePrompt = DefaultPrompts.Montage;
         return s;
@@ -211,7 +212,7 @@ public sealed class LimitSettings
 public sealed class VoiceProfile
 {
     public string Name { get; set; } = "";
-    public string Model { get; set; } = "kittentts";
+    public string Model { get; set; } = TtsVoices.Model;
     public string Voice { get; set; } = "";
     public string Language { get; set; } = "en";
     public double Speed { get; set; } = 1.0;

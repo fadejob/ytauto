@@ -216,7 +216,7 @@ internal sealed class Harness : IDisposable
         s.Paths.WorkDir = Path.Combine(Tmp.Path, "jobs");
         s.Paths.VideoArchiveDir = Path.Combine(Tmp.Path, "archive", "video");
         s.Paths.AudioArchiveDir = Path.Combine(Tmp.Path, "archive", "audio");
-        s.VoiceProfiles.Add(new VoiceProfile { Name = "v", Model = "kittentts", Voice = "x" });
+        s.VoiceProfiles.Add(new VoiceProfile { Name = "v", Model = TtsVoices.Model, Voice = "x" });
         s.Claude.MontagePrompt = "PROMPT-V1";
         s.OpenFilm.LookFullAfterRender = false;
         // Preflight tashqi dastur yo'llarini tekshiradi: sinovda mavjud fayllarga ishora qilamiz.

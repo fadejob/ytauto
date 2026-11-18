@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using YtAuto.Core.Domain;
 using YtAuto.Infrastructure.Data;
 using YtAuto.Infrastructure.Scheduling;
+using YtAuto.Infrastructure.Voice;
 
 namespace YtAuto.Infrastructure.Setup;
 
@@ -16,7 +17,7 @@ public sealed record ToolItem(string Key, string Name, bool Ok, string Detail);
 /// <summary>
 /// Bitta tugma bilan kompyuterni to'liq tayyorlash ("Kerakli fayllarni yuklash"):
 /// <list type="number">
-/// <item>Kerakli dasturlar va modellar: OpenFilm, VoiceStudio, subtitr modeli (faster-whisper), ovoz modeli (KittenTTS) va
+/// <item>Kerakli dasturlar va modellar: OpenFilm, VoiceStudio, subtitr modeli (faster-whisper), ovoz modeli (MOSS-TTS-Nano) va
 /// ayol/erkak ovoz profillari, Claude Code. Kompyuterda bori qayta yuklanmaydi.</item>
 /// <item>Online hisob (DeviceAccount) - ilovada.</item>
 /// <item>Sozlamalar va katalog serverga, ish jadvali va Task Scheduler (kunlik ish + har 10 daqiqada yengil tekshiruv).</item>
@@ -25,28 +26,20 @@ public sealed record ToolItem(string Key, string Name, bool Ok, string Detail);
 /// </summary>
 public static class MachineSetup
 {
-    public const string TtsModel = "KittenML/kitten-tts-mini-0.8";
-    private const string FemaleName = "Kitten EN ayol", FemaleVoice = "expr-voice-2-f";
-    private const string MaleName = "Kitten EN erkak", MaleVoice = "expr-voice-2-m";
 
     public static readonly (string Key, string Name)[] ToolSteps =
     {
         ("openfilm", "OpenFilm (montaj va render)"),
         ("voicestudio", "VoiceStudio (ovoz)"),
         ("whisper", "Subtitr modeli (faster-whisper)"),
-        ("tts", "Ovoz modeli va ovozlar (KittenTTS)"),
+        ("tts", "Ovoz modeli va ovozlar (MOSS-TTS-Nano)"),
         ("claude", "Claude Code (montaj agenti)"),
     };
-
-    public static string VoiceCacheDir(AppSettings s) =>
-        !string.IsNullOrWhiteSpace(s.VoiceStudio.HfCacheDir) && Path.IsPathFullyQualified(s.VoiceStudio.HfCacheDir)
-            ? s.VoiceStudio.HfCacheDir
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OmniVoice", "hf_cache");
 
     private static bool HasModel(string? dir, string model) =>
         !string.IsNullOrWhiteSpace(dir) && Directory.Exists(Path.Combine(dir, "models--" + model.Replace("/", "--")));
 
-    private static bool HasProfile(AppSettings s, string name) => s.VoiceProfiles.Any(v => v.Name == name && v.Model == "kittentts");
+    private static bool HasProfile(AppSettings s, string name) => s.VoiceProfiles.Any(v => v.Name == name && TtsVoices.IsAllowed(v));
 
     /// <summary>Hozirgi holat (yuklamasdan). Claude'ga kirish aniq tekshiriladi (claude auth status) - UI oqimida chaqirmang.</summary>
     public static List<ToolItem> Status(AppServices svc)
@@ -59,7 +52,7 @@ public static class MachineSetup
             new("openfilm", "OpenFilm", File.Exists(s.OpenFilm.ExePath), s.OpenFilm.ExePath ?? ""),
             new("voicestudio", "VoiceStudio", File.Exists(s.VoiceStudio.ExePath), s.VoiceStudio.ExePath ?? ""),
             new("whisper", $"Subtitr modeli ({s.VoiceStudio.WhisperModel})", HasModel(s.VoiceStudio.HfCacheDir, s.VoiceStudio.WhisperModel), s.VoiceStudio.HfCacheDir ?? ""),
-            new("tts", $"Ovoz modeli ({TtsModel})", HasModel(VoiceCacheDir(s), TtsModel) && HasProfile(s, FemaleName) && HasProfile(s, MaleName),
+            new("tts", $"Ovoz modeli ({TtsVoices.DisplayName})", MossEngine.IsInstalled() && HasProfile(s, TtsVoices.FemaleName) && HasProfile(s, TtsVoices.MaleName),
                 string.Join(", ", s.VoiceProfiles.Select(v => v.Name))),
             new("claude", "Claude Code", claude, claude ? s.Claude.ExecutablePath : ""),
             new("claude-login", "Claude Code'ga kirish", auth.LoggedIn == true, auth.Message),
@@ -113,13 +106,11 @@ public static class MachineSetup
             }
             case "tts":
             {
-                var had = HasModel(VoiceCacheDir(s), TtsModel);
-                if (!had) await AppInstaller.DownloadHfModelAsync(TtsModel, VoiceCacheDir(s), ip, ct);
+                // MOSS-TTS-Nano VoiceStudio orqali o'z muhiti bilan o'rnatiladi (~8 GB); ayol/erkak profillari Load'da doim bor.
+                var had = MossEngine.IsInstalled();
+                if (!had) await MossEngine.InstallAsync(s.VoiceStudio, svc.LocalDb, svc.Log, new Progress<string>(t => ip.Report(new InstallProgress("tts", -1, t))), ct);
                 var cur = svc.Settings.Load();
-                var added = false;
-                if (!HasProfile(cur, FemaleName)) { cur.VoiceProfiles.Add(new VoiceProfile { Name = FemaleName, Model = "kittentts", Voice = FemaleVoice, Language = "en", Speed = 1.0 }); added = true; }
-                if (!HasProfile(cur, MaleName)) { cur.VoiceProfiles.Add(new VoiceProfile { Name = MaleName, Model = "kittentts", Voice = MaleVoice, Language = "en", Speed = 1.0 }); added = true; }
-                if (string.IsNullOrEmpty(cur.Defaults.VoiceProfile) || !cur.VoiceProfiles.Any(v => v.Name == cur.Defaults.VoiceProfile)) { cur.Defaults.VoiceProfile = FemaleName; added = true; }
+                var added = TtsVoices.Normalize(cur);
                 if (added) svc.Settings.Save(cur);
                 return had && !added ? "✓ bor: " + string.Join(", ", cur.VoiceProfiles.Select(v => v.Name)) : "Tayyor: " + string.Join(", ", cur.VoiceProfiles.Select(v => v.Name));
             }

@@ -39,13 +39,11 @@
                 </DockPanel>
                 <DockPanel Margin="0,2">
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                        <CheckBox Content="Ayol ovozi" IsChecked="{Binding TtsFemale}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <CheckBox Content="Erkak ovozi" IsChecked="{Binding TtsMale}" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <Button Content="Yuklab olish va qo'shish" Command="{Binding InstallTtsVoicesCommand}"
-                                Visibility="{Binding TtsNeedsAction, Converter={x:Static local:BoolToVis.Instance}}"
+                        <Button Content="O'rnatish (~8 GB)" Command="{Binding InstallTtsVoicesCommand}"
+                                Visibility="{Binding TtsMissing, Converter={x:Static local:BoolToVis.Instance}}"
                                 IsEnabled="{Binding Busy, Converter={x:Static local:InverseBool.Instance}}"/>
                         <TextBlock Text="✓ O'rnatilgan" Foreground="#15803D" FontWeight="SemiBold" VerticalAlignment="Center"
-                                   Visibility="{Binding TtsNeedsAction, Converter={x:Static local:InverseBoolVis.Instance}}"/>
+                                   Visibility="{Binding TtsMissing, Converter={x:Static local:InverseBoolVis.Instance}}"/>
                     </StackPanel>
                     <TextBlock Text="{Binding TtsState}" VerticalAlignment="Center" TextWrapping="Wrap"/>
                 </DockPanel>

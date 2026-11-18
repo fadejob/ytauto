@@ -7,6 +7,7 @@ using YtAuto.Core.Files;
 using YtAuto.Core.Pipeline;
 using YtAuto.Desktop.Ui;
 using YtAuto.Infrastructure;
+using YtAuto.Infrastructure.Voice;
 using YtAuto.Infrastructure.Scheduling;
 
 namespace YtAuto.Desktop.ViewModels;
@@ -57,74 +58,38 @@ public sealed partial class SettingsViewModel : ObservableObject
         return dir;
     });
 
-    // Ovoz (TTS) modeli: VoiceStudio shu HuggingFace keshidan o'qiydi; model yo'q bo'lsa dvigatel "ishlatib bo'lmaydi" va ovozlar ro'yxati bo'sh.
-    public const string TtsModel = "KittenML/kitten-tts-mini-0.8";
+    // Ovoz (TTS): faqat MOSS-TTS-Nano. VoiceStudio uni o'z Python muhiti bilan o'rnatadi (~8 GB, OMNIVOICE_ENGINES_DIR papkasiga).
+    // Ayol/erkak profillari sozlamalar yuklanganda doim bor (TtsVoices.Normalize); ovoz namunasi VoiceStudio profillarida.
     [ObservableProperty] private bool _ttsMissing;
     [ObservableProperty] private string _ttsState = "";
-
-    private string VoiceCacheDir()
-    {
-        var dir = S.VoiceStudio.HfCacheDir;
-        if (!string.IsNullOrWhiteSpace(dir) && Path.IsPathFullyQualified(dir)) return dir;
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OmniVoice", "hf_cache");
-    }
-
-    // Ayol/erkak ovozlari: bitta KittenTTS modelining ikki ovozi. Tanlangani profil sifatida qo'shiladi (bot mavzu yaratishda shulardan tanlaydi).
-    private const string FemaleName = "Kitten EN ayol", FemaleVoice = "expr-voice-2-f";
-    private const string MaleName = "Kitten EN erkak", MaleVoice = "expr-voice-2-m";
-    [ObservableProperty] private bool _ttsFemale = true;
-    [ObservableProperty] private bool _ttsMale = true;
-    [ObservableProperty] private bool _ttsNeedsAction;
-    private bool _ttsInit;
-
-    partial void OnTtsFemaleChanged(bool value) => RefreshTtsAction();
-    partial void OnTtsMaleChanged(bool value) => RefreshTtsAction();
-
-    private bool HasProfile(string name) => S.VoiceProfiles.Any(v => v.Name == name && v.Model == "kittentts");
-
-    private void RefreshTtsAction() =>
-        TtsNeedsAction = (TtsFemale || TtsMale) && (TtsMissing || TtsFemale != HasProfile(FemaleName) || TtsMale != HasProfile(MaleName));
-
-    private static void EnsureProfile(AppSettings s, string name, string voice, bool want)
-    {
-        var existing = s.VoiceProfiles.FirstOrDefault(v => v.Name == name && v.Model == "kittentts");
-        if (want && existing is null) s.VoiceProfiles.Add(new VoiceProfile { Name = name, Model = "kittentts", Voice = voice, Language = "en", Speed = 1.0 });
-        else if (!want && existing is not null) s.VoiceProfiles.Remove(existing);
-    }
 
     [RelayCommand]
     private async Task InstallTtsVoices()
     {
-        if (!TtsFemale && !TtsMale) { Message = "Kamida bitta ovozni (ayol yoki erkak) tanlang."; return; }
         if (TtsMissing)
         {
-            await RunInstall(async p => await AppInstaller.DownloadHfModelAsync(TtsModel, VoiceCacheDir(), p, CancellationToken.None));
-            if (TtsMissing) return; // yuklanmadi (xato RunInstall'da ko'rsatilgan)
+            await RunInstall(async p =>
+            {
+                await MossEngine.InstallAsync(S.VoiceStudio, _svc.LocalDb, _svc.Log,
+                    new Progress<string>(text => p.Report(new InstallProgress("tts", -1, text))), CancellationToken.None);
+                return MossEngine.CheckoutDir();
+            });
+            if (TtsMissing) return; // o'rnatilmadi (xato RunInstall'da ko'rsatilgan)
         }
-        var s = _svc.Settings.Load();
-        EnsureProfile(s, FemaleName, FemaleVoice, TtsFemale);
-        EnsureProfile(s, MaleName, MaleVoice, TtsMale);
-        if (!s.VoiceProfiles.Any(v => v.Name == s.Defaults.VoiceProfile)) s.Defaults.VoiceProfile = s.VoiceProfiles.First().Name;
-        _svc.Settings.Save(s); // profillar bot katalogiga ham yoziladi
-        try { _svc.Settings.PushVoiceProfiles(s.VoiceProfiles); } catch { } // bot konfigidagi ro'yxat ham yangilanadi (asosiy manba)
+        var s = _svc.Settings.Load(); // MOSS ayol/erkak profillari shu yerda qo'yiladi
+        _svc.Settings.Save(s);
+        try { _svc.Settings.PushVoiceProfiles(s.VoiceProfiles, s.Defaults.VoiceProfile); } catch { } // bot ro'yxati ham (asosiy manba)
         Load();
         Message = $"Ovozlar tayyor: {string.Join(", ", S.VoiceProfiles.Select(v => v.Name))}. Botda mavzu yaratishda tanlanadi.";
-        await RefreshCatalogCommand.ExecuteAsync(null); // VoiceStudio yangi modelni ko'rishi uchun ro'yxatni qayta o'qiymiz
+        await RefreshCatalogCommand.ExecuteAsync(null);
     }
 
     private void RefreshToolState()
     {
-        TtsMissing = !Directory.Exists(Path.Combine(VoiceCacheDir(), "models--" + TtsModel.Replace("/", "--")));
-        if (!_ttsInit)
-        {
-            _ttsInit = true;
-            var f = HasProfile(FemaleName); var m = HasProfile(MaleName);
-            if (f || m) { TtsFemale = f; TtsMale = m; }
-        }
+        TtsMissing = !MossEngine.IsInstalled();
         TtsState = TtsMissing
-            ? $"Ovoz modeli ({TtsModel}, ~80 MB): kompyuterda yo'q — ovozlar ro'yxati bo'sh bo'ladi. Kerakli ovozlarni tanlab yuklang:"
-            : $"Ovoz modeli o'rnatilgan. Faol ovoz profillari: {(S.VoiceProfiles.Count == 0 ? "yo'q" : string.Join(", ", S.VoiceProfiles.Select(v => v.Name)))}";
-        RefreshTtsAction();
+            ? $"Ovoz modeli ({TtsVoices.DisplayName}): kompyuterda yo'q. VoiceStudio orqali o'rnatiladi (~8 GB, {MossEngine.EnginesDir()})."
+            : $"Ovoz modeli: {TtsVoices.DisplayName}. Ovozlar: {string.Join(", ", S.VoiceProfiles.Select(v => v.Name))} (namuna audio VoiceStudio'dagi «{TtsVoices.FemaleRef}» / «{TtsVoices.MaleRef}» profillarida)";
         ClaudeMissing = !File.Exists(S.Claude.ExecutablePath);
         var modelDir = "models--" + S.VoiceStudio.WhisperModel.Replace("/", "--");
         WhisperMissing = string.IsNullOrWhiteSpace(S.VoiceStudio.HfCacheDir) || !Directory.Exists(Path.Combine(S.VoiceStudio.HfCacheDir, modelDir));
@@ -348,6 +313,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private void AddVoiceFromCatalog()
     {
         if (SelectedEngine is null) { Message = "Avval dvigatelni tanlang."; return; }
+        if (!string.Equals(SelectedEngine.Id, TtsVoices.Model, StringComparison.OrdinalIgnoreCase)) { Message = $"Faqat {TtsVoices.DisplayName} ishlatiladi."; return; }
         if (!SelectedEngine.Usable) { Message = $"'{SelectedEngine.DisplayName}' bu kompyuterda ishlatib bo'lmaydi: {SelectedEngine.Reason ?? "modeli o'rnatilmagan"}"; return; }
         var name = string.IsNullOrWhiteSpace(NewVoiceName) ? SelectedEngine.Id : NewVoiceName.Trim();
         if (Voices.Any(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase))) { Message = $"'{name}' nomli profil allaqachon bor."; return; }
@@ -416,7 +382,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         Message = $"Standart shablon: {t.Name}.";
     }
 
-    [RelayCommand] private void AddVoice() => Voices.Add(new VoiceProfile { Name = "Yangi ovoz", Model = "kittentts", Voice = "expr-voice-2-f", Language = "en" });
+    [RelayCommand] private void AddVoice() => Voices.Add(new VoiceProfile { Name = "Yangi ovoz", Model = TtsVoices.Model, Voice = TtsVoices.FemaleRef, Language = "en" });
     [RelayCommand] private void RemoveVoice(VoiceProfile? v) { if (v is null) return; Voices.Remove(v); Save(); }
 
     [RelayCommand]
