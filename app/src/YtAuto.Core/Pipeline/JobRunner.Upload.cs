@@ -75,14 +75,8 @@ public sealed partial class JobRunner
                 ? $"YouTube'ga darhol PUBLIC yuklandi: {c.Job.YouTubeUrl} ({sw.Elapsed.TotalSeconds:0}s)."
                 : $"YouTube'ga private yuklandi, publish vaqti {c.Job.PublishAtUtc:u}: {c.Job.YouTubeUrl} ({sw.Elapsed.TotalSeconds:0}s).", "Upload");
             if (!string.IsNullOrEmpty(req.ThumbnailPath) && File.Exists(req.ThumbnailPath))
-            {
-                try
-                {
-                    var ok = await _x.Uploader.SetThumbnailAsync(videoId, req.ThumbnailPath!, c.Ct).ConfigureAwait(false);
-                    c.Log.Info(ok ? "Thumbnail o'rnatildi." : "Thumbnail o'rnatilmadi (kanal tasdiqlanmagan bo'lishi mumkin).", "Upload");
-                }
-                catch (Exception e) { c.Log.Warn($"Thumbnail o'rnatilmadi: {e.Message}", "Upload"); }
-            }
+                await SetThumbnailAsync(c, videoId, req.ThumbnailPath!).ConfigureAwait(false);
+            else c.Log.Warn("Muqova (thumbnail) fayli yo'q — YouTube o'zi kadr tanlaydi.", "Upload");
         }
         catch (Exception ex)
         {

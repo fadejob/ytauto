@@ -217,6 +217,8 @@ public interface IMediaProbe
     Task<IReadOnlyList<BlackSegment>> BlackDetectAsync(string path, CancellationToken ct);
     Task<(double MaxVolumeDb, double? IntegratedLufs)> AudioLevelsAsync(string path, CancellationToken ct);
     Task ExtractFrameAsync(string video, double atSec, string outImage, int width, CancellationToken ct);
+    /// <summary>MP4 ichiga muqova rasmini (attached_pic) qo'shadi: video va audio qayta kodlanmaydi. Natija - yangi fayl.</summary>
+    Task EmbedCoverAsync(string mp4, string image, string outMp4, CancellationToken ct);
     Task<(double Mean, double Std)> FrameLumaAsync(string video, double atSec, CancellationToken ct);
     string Version { get; }
 }

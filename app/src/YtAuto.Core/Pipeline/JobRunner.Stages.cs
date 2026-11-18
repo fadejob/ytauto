@@ -454,10 +454,14 @@ public sealed partial class JobRunner
                 rep.Add("render_failed", QaSeverity.Error, $"`openfilm render` exit {render.ExitCode}: {Shorten(render.StderrTail, 1500)}");
                 throw new EditorFixableException("render_failed", "OpenFilm render xato bilan tugadi.", rep);
             }
+            await RenderCoverAsync(c, film).ConfigureAwait(false); // muqova: cover.html yoki loyiha kadri (subtitrsiz)
         } // OpenFilm Studio server va headless brauzerlar shu yerda yopiladi
         if (!File.Exists(c.FinalMp4) || new FileInfo(c.FinalMp4).Length < 10_000)
             throw PipelineException.Transient("render_no_output", "Render exit 0, lekin MP4 fayl yo'q yoki bo'sh.");
-        return new StageOutputs { Files = { FileOps.Describe(c.FinalMp4, "video") } };
+        await EnsureCoverFromVideoAsync(c).ConfigureAwait(false); // har videoda muqova bo'lishi uchun oxirgi chora
+        var outputs = new StageOutputs { Files = { FileOps.Describe(c.FinalMp4, "video") } };
+        if (File.Exists(c.CoverJpg)) outputs.Files.Add(FileOps.Describe(c.CoverJpg, "cover", hash: false));
+        return outputs;
     }
 
     // ---------------------------------------------------------------- QA
@@ -558,19 +562,25 @@ public sealed partial class JobRunner
         var needGb = (new FileInfo(c.FinalMp4).Length + new FileInfo(c.VoiceWav).Length) / 1e9 * 1.1 + 0.05;
         if (_x.Resources.FreeDiskGb(videoDir) < needGb) throw PipelineException.Transient("archive_disk_low", $"Arxiv diskida joy yetarli emas ({needGb:0.00} GB kerak): {videoDir}");
 
-        var video = await FileOps.CopyVerifiedAsync(c.FinalMp4, Path.Combine(videoDir, baseName + ".mp4"), "video", c.Ct).ConfigureAwait(false);
+        // Muqova: render bosqichida tayyorlangan (eski joblarda bo'lmasa - hozir videodan). Arxivdagi MP4 ichiga rasm bo'lib qo'shiladi:
+        // fayl ochilmaganda (galereya, Telegram, pleyer) shu rasm ko'rinadi; YouTube'ga thumbnail bo'lib ham yuklanadi.
+        await EnsureCoverFromVideoAsync(c).ConfigureAwait(false);
+        var source = c.FinalMp4;
+        if (File.Exists(c.CoverJpg))
+        {
+            var withCover = Path.Combine(c.RenderDir, "final.cover.mp4");
+            try { await _x.Media.EmbedCoverAsync(c.FinalMp4, c.CoverJpg, withCover, c.Ct).ConfigureAwait(false); source = withCover; c.Log.Info("Muqova video ichiga qo'shildi.", "Archive"); }
+            catch (Exception e) when (e is not OperationCanceledException) { c.Log.Warn($"Muqova video ichiga qo'shilmadi (video muqovasiz arxivlanadi): {e.Message}", "Archive"); }
+        }
+        var video = await FileOps.CopyVerifiedAsync(source, Path.Combine(videoDir, baseName + ".mp4"), "video", c.Ct).ConfigureAwait(false);
         var audio = await FileOps.CopyVerifiedAsync(c.VoiceWav, Path.Combine(audioDir, baseName + ".wav"), "audio", c.Ct).ConfigureAwait(false);
         var vstem = Path.Combine(Path.GetDirectoryName(video.Path)!, Path.GetFileNameWithoutExtension(video.Path));
         var srt = await FileOps.CopyVerifiedAsync(c.VoiceSrt, vstem + ".srt", "srt", c.Ct).ConfigureAwait(false);
         var vtt = await FileOps.CopyVerifiedAsync(c.VoiceVtt, vstem + ".vtt", "vtt", c.Ct).ConfigureAwait(false);
 
         var thumb = vstem + ".jpg";
-        try
-        {
-            var info = await _x.Media.ProbeAsync(video.Path, c.Ct).ConfigureAwait(false);
-            await _x.Media.ExtractFrameAsync(video.Path, Math.Min(info.Duration * 0.3, Math.Max(0, info.Duration - 0.5)), thumb, 1280, c.Ct).ConfigureAwait(false);
-        }
-        catch (Exception e) { c.Log.Warn($"Thumbnail yaratilmadi: {e.Message}", "Archive"); }
+        try { if (File.Exists(c.CoverJpg)) File.Copy(c.CoverJpg, thumb, true); }
+        catch (Exception e) { c.Log.Warn($"Thumbnail arxivga yozilmadi: {e.Message}", "Archive"); }
 
         var meta = new
         {

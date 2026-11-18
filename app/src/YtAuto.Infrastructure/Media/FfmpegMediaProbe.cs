@@ -148,6 +148,20 @@ public sealed class FfmpegMediaProbe : IMediaProbe
         if (r.ExitCode != 0 || !File.Exists(outImage)) throw PipelineException.Transient("ffmpeg_frame", $"Kadr ajratilmadi ({atSec:0.0}s): {err.Trim()}");
     }
 
+    /// <summary>
+    /// Muqova MP4 ichiga attached_pic oqimi bo'lib qo'shiladi (-c copy: video/audio qayta kodlanmaydi). Fayl menejeri, telefon galereyasi
+    /// va pleyerlar videoni ochmasdan shu rasmni ko'rsatadi. Probe/QA attached_pic oqimini hisobga olmaydi.
+    /// </summary>
+    public async Task EmbedCoverAsync(string mp4, string image, string outMp4, CancellationToken ct)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(outMp4)!);
+        var args = new[] { "-hide_banner", "-v", "error", "-i", mp4, "-i", image, "-map", "0", "-map", "1", "-c", "copy",
+            "-disposition:v:1", "attached_pic", "-movflags", "+faststart", "-y", outMp4 };
+        var (r, _, err) = await RunAsync(Ffmpeg, args, TimeSpan.FromMinutes(5), ct).ConfigureAwait(false);
+        if (r.ExitCode != 0 || !File.Exists(outMp4) || new FileInfo(outMp4).Length < new FileInfo(mp4).Length)
+            throw PipelineException.Transient("ffmpeg_cover", $"Muqova videoga qo'shilmadi: {err.Trim()}");
+    }
+
     public async Task<(double Mean, double Std)> FrameLumaAsync(string video, double atSec, CancellationToken ct)
     {
         var args = new[] { "-hide_banner", "-v", "error", "-ss", atSec.ToString("0.###", CultureInfo.InvariantCulture), "-i", video,

@@ -35,6 +35,10 @@ public sealed class JobContext
     public string QaFeedback => Path.Combine(EditDir, "qa_feedback.md");
     public string RenderDir => Path.Combine(Dir, "render");
     public string FinalMp4 => Path.Combine(RenderDir, "final.mp4");
+    /// <summary>Video muqovasi (cover): YouTube thumbnail va MP4 ichidagi rasm. Claude chizgan film/cover.html dan.</summary>
+    public string CoverJpg => Path.Combine(RenderDir, "cover.jpg");
+    /// <summary>Claude chizadigan muqova sahifasi (timeline'da emas).</summary>
+    public string CoverHtml => Path.Combine(FilmDir, "cover.html");
     public string QaDir => Path.Combine(Dir, "qa");
     public string QaReportJson => Path.Combine(QaDir, "qa_report.json");
     public string LogsDir => Path.Combine(Dir, "logs");

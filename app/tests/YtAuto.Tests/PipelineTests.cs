@@ -95,6 +95,8 @@ internal sealed class FakeAligner : IAligner
 internal sealed class FakeEditor : IEditorAgent
 {
     public int Calls; public int GappyCalls; public int TransientFailures; public Func<Task>? DuringRun; public string? LastInstructions;
+    /// <summary>Haqiqiy Claude kabi film/cover.html (muqova) ham yozadi.</summary>
+    public bool WriteCover = true;
     public string Version => "fake-claude";
     public async Task<EditorRunResult> RunAsync(string dir, string prompt, TimeSpan timeout, string prefix, IReadOnlyList<string> extra, IJobLog log, CancellationToken ct)
     {
@@ -119,6 +121,7 @@ internal sealed class FakeEditor : IEditorAgent
             html = $"<meta name=\"viewport\" content=\"{viewport}\"><section><iframe src=\"a.html#t=0,{(d / 2).ToString(inv)}\" at=\"0\"></iframe><iframe src=\"b.html#t=0,{(d / 2 + 0.2).ToString(inv)}\" at=\"{(d / 2).ToString(inv)}\"></iframe></section><section><audio src=\"assets/voice.wav\" at=\"0\"></audio></section>";
         File.WriteAllText(Path.Combine(dir, "film", "film.html"), html);
         File.WriteAllText(Path.Combine(dir, "film", "BUILD_NOTES.md"), "notes");
+        if (WriteCover) File.WriteAllText(Path.Combine(dir, "film", "cover.html"), $"<meta name=\"viewport\" content=\"{viewport}\"><h1>Cover</h1>");
         return new EditorRunResult { Run = new ToolRunResult { ExitCode = 0 }, ResultText = "DONE", SessionId = Guid.NewGuid().ToString() };
     }
 }
@@ -131,7 +134,18 @@ internal sealed class FakeFilm : IFilmTool, IFilmSession
     public Task<string> GetSkillTextAsync(string name, CancellationToken ct) => Task.FromResult("skill text");
     public string WriteShims(string dir) { Directory.CreateDirectory(dir); return dir; }
     public Task<IFilmSession> OpenSessionAsync(IJobLog log, CancellationToken ct) => Task.FromResult<IFilmSession>(this);
-    public Task<ToolRunResult> LookAsync(string filmDir, IReadOnlyList<string> args, string p, TimeSpan t, CancellationToken ct) { Looks++; return Task.FromResult(new ToolRunResult { ExitCode = 0 }); }
+    public readonly List<string> LookArgs = new();
+    /// <summary>Haqiqiy `openfilm look [what] t` kabi: bitta kadr so'ralsa .film/cache/look ga PNG yozib, yo'lini chiqaradi.</summary>
+    public Task<ToolRunResult> LookAsync(string filmDir, IReadOnlyList<string> args, string p, TimeSpan t, CancellationToken ct)
+    {
+        Looks++; LookArgs.Add(string.Join(' ', args));
+        if (args.Count == 0 || args[0].StartsWith("--")) return Task.FromResult(new ToolRunResult { ExitCode = 0 });
+        if (args[0].EndsWith(".html") && !File.Exists(Path.Combine(filmDir, args[0]))) return Task.FromResult(new ToolRunResult { ExitCode = 1, StderrTail = "no such page" });
+        var png = Path.Combine(filmDir, ".film", "cache", "look", $"frame {Looks}.png"); // yo'lda bo'sh joy: haqiqiy profil papkalari kabi
+        Directory.CreateDirectory(Path.GetDirectoryName(png)!);
+        File.WriteAllBytes(png, new byte[] { 137, 80, 78, 71 });
+        return Task.FromResult(new ToolRunResult { ExitCode = 0, StdoutTail = $"frame {args[^1]}s: {png}\n" });
+    }
     public Task<ToolRunResult> RenderAsync(string filmDir, string outMp4, RenderOptions o, CancellationToken ct)
     {
         Renders++;
@@ -155,7 +169,12 @@ internal sealed class FakeMedia : IMediaProbe
     public Task<(bool Ok, string Errors)> DecodeCheckAsync(string path, CancellationToken ct) => Task.FromResult((true, ""));
     public Task<IReadOnlyList<BlackSegment>> BlackDetectAsync(string path, CancellationToken ct) => Task.FromResult<IReadOnlyList<BlackSegment>>(Array.Empty<BlackSegment>());
     public Task<(double MaxVolumeDb, double? IntegratedLufs)> AudioLevelsAsync(string path, CancellationToken ct) => Task.FromResult((-1.5, (double?)-14.2));
-    public Task ExtractFrameAsync(string video, double at, string outImage, int width, CancellationToken ct) { File.WriteAllBytes(outImage, new byte[10]); return Task.CompletedTask; }
+    public Task ExtractFrameAsync(string video, double at, string outImage, int width, CancellationToken ct) { File.WriteAllBytes(outImage, new byte[10]); FrameSources.Add(video); return Task.CompletedTask; }
+    public readonly List<string> FrameSources = new();
+    public int Embeds;
+    /// <summary>Haqiqiy ffmpeg kabi: yangi fayl asl videodan katta (video baytlari + muqova).</summary>
+    public Task EmbedCoverAsync(string mp4, string image, string outMp4, CancellationToken ct)
+    { Embeds++; File.WriteAllBytes(outMp4, File.ReadAllBytes(mp4).Concat(File.ReadAllBytes(image)).ToArray()); return Task.CompletedTask; }
     public Task<(double Mean, double Std)> FrameLumaAsync(string video, double at, CancellationToken ct) => Task.FromResult((90.0, 40.0));
 }
 
@@ -187,7 +206,8 @@ internal sealed class FakeUploader : IVideoUploader
         : new YouTubeVideoStatus { VideoId = id, Exists = true, UploadStatus = "processed", PrivacyStatus = "private", ProcessingStatus = "succeeded", PublishAtUtc = DateTimeOffset.UtcNow.AddDays(2) });
     public Task MakePublicAsync(string id, CancellationToken ct) { MakePublicCalls++; Public.Add(id); return Task.CompletedTask; }
     public Task<string?> FindRecentUploadAsync(string title, DateTimeOffset since, CancellationToken ct) => Task.FromResult<string?>(null);
-    public Task<bool> SetThumbnailAsync(string id, string img, CancellationToken ct) => Task.FromResult(true);
+    public readonly List<string> Thumbnails = new();
+    public Task<bool> SetThumbnailAsync(string id, string img, CancellationToken ct) { Assert.True(File.Exists(img)); Thumbnails.Add(img); return Task.FromResult(true); }
 }
 
 // ------------------------------------------------------------------ harness
@@ -204,6 +224,7 @@ internal sealed class Harness : IDisposable
     public readonly FakeEditor Editor = new();
     public readonly FakeFilm Film = new();
     public readonly FakeUploader Uploader = new();
+    public readonly FakeMedia Media = new();
     public readonly NullLog Log = new();
     public readonly FakePaths Paths;
     public IAudioImporter? AudioImporter;
@@ -233,7 +254,7 @@ internal sealed class Harness : IDisposable
     public JobRunner Runner(bool stopBeforeUpload = false) => new(new PipelineServices
     {
         Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = Script, Tts = TtsOverride ?? Tts, AudioImporter = AudioImporter, Aligner = Aligner, Editor = Editor,
-        Film = Film, Media = new FakeMedia(), Uploader = Uploader, Resources = new FakeResources(), Paths = Paths, Clock = Clock,
+        Film = Film, Media = Media, Uploader = Uploader, Resources = new FakeResources(), Paths = Paths, Clock = Clock,
         JobLogFactory = _ => Log, RunLog = Log, PostUploadPoll = TimeSpan.Zero, StopBeforeUpload = stopBeforeUpload, OnPublished = OnPublished,
         OnVoiceCloneStatus = OnVoiceCloneStatus,
     });

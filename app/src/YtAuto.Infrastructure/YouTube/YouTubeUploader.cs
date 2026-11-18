@@ -310,6 +310,8 @@ public sealed class YouTubeUploader : IVideoUploader
             m.Content.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
             return m;
         }, ct).ConfigureAwait(false);
-        return resp.IsSuccessStatusCode;
+        // Sababi bilan xato (masalan 403 - kanal maxsus thumbnail'ga tasdiqlanmagan): chaqiruvchi logga yozadi.
+        if (!resp.IsSuccessStatusCode) throw await ApiError(resp, "Thumbnail", ct).ConfigureAwait(false);
+        return true;
     }
 }

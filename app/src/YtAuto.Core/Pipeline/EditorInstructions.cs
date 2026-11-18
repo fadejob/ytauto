@@ -75,7 +75,9 @@ internal static class EditorInstructions
         sb.AppendLine("5. Every page follows \"the picture depends only on t\". No external network resources (no CDN fonts or images); everything local.");
         sb.AppendLine("6. All text inside the safe area and readable on a phone. Nothing cut off at the edges.");
         sb.AppendLine("7. Leave `film/assets/voice.wav` and `film/assets/voice.vtt` untouched.");
+        sb.AppendLine("8. `film/cover.html`: the video cover (see below). It is NOT on the timeline.");
         sb.AppendLine();
+        AppendCover(sb, script, w, h);
         sb.AppendLine("## Check, then finish");
         sb.AppendLine();
         sb.AppendLine("- Run `openfilm look` in `film/` and open the contact sheet PNGs it prints. Use `openfilm look <t>` for single frames around each scene start.");
@@ -83,6 +85,24 @@ internal static class EditorInstructions
         sb.AppendLine("- Write `film/BUILD_NOTES.md`: the files you made, each scene's start/end, and for any scene that is black on purpose a line `intentionally black: <page>.html`.");
         sb.AppendLine("- Reply DONE.");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Video muqovasi (cover): YouTube thumbnail bo'ladi va MP4 ichiga rasm bo'lib qo'shiladi — video ochilmaganda ko'rinadigan rasm.
+    /// Worker uni `openfilm look cover.html` bilan rasmga aylantiradi; sahifa bo'lmasa videodan kadr olinadi (subtitrsiz).
+    /// </summary>
+    private static void AppendCover(StringBuilder sb, VideoScript script, int w, int h)
+    {
+        var title = string.IsNullOrWhiteSpace(script.YouTubeTitle) ? "" : script.YouTubeTitle.Trim();
+        sb.AppendLine("## Cover (required)");
+        sb.AppendLine();
+        sb.AppendLine("Make `film/cover.html`: one still picture that is shown before the video is opened (YouTube thumbnail and the cover inside the MP4).");
+        sb.AppendLine($"- Same stage: `<meta name=\"viewport\" content=\"width={w}, height={h}\">`, fills the stage edge to edge, uses the same shared style (`film/style.css`, colours, fonts) as the scenes.");
+        sb.AppendLine($"- A short, punchy headline of 2–5 words taken from the video title{(title.Length > 0 ? $" \"{title}\"" : "")} — huge (at least {(int)Math.Round(Math.Min(w, h) * 0.11)} px), bold, max 2 lines, near-white with a dark outline or shadow, one key word in the accent colour.");
+        sb.AppendLine("- One big focal visual that makes the topic obvious at a glance (object, diagram, contrast/comparison, big number). Strong contrast, readable at phone thumbnail size.");
+        sb.AppendLine($"- Keep the bottom-right corner (about {(int)Math.Round(w * 0.16)}x{(int)Math.Round(h * 0.12)} px) empty: YouTube draws the duration there. No subtitles, no small text, no logos, no URLs.");
+        sb.AppendLine("- The picture is complete at t=0 (no animation needed; it must not depend on time). Check it with `openfilm look cover.html 0` and fix anything cut off or unreadable.");
+        sb.AppendLine();
     }
 
     /// <summary>
