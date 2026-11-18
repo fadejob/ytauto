@@ -664,6 +664,8 @@ public sealed class SqliteSettingsStore : ISettingsStore
             }
             // Kanal konteksti (bot kanal tahlilidan yozadi) - hisob doirasida: mehmon vazifasiga mehmonning o'z kanali konteksti.
             s.ChannelContext = ReadChannelContext(_shared.GetSetting(ChannelContextKey));
+            // «Mening ovozim» namunasi - hisob doirasida (mehmon vazifasiga mehmonning o'z ovozi).
+            s.VoiceClone = ReadVoiceClone(_shared.GetSetting(VoiceCloneKey));
             // Faqat MOSS-TTS-Nano ishlatiladi: botdagi eski (KittenTTS va h.k.) profillar MOSS ayol/erkak bilan almashtiriladi
             // va bot ro'yxati ham bir marta tozalanadi (kompyuter egasi; mehmon sozlamalariga yozilmaydi).
             if (TtsVoices.Normalize(s) && !guest)
@@ -682,6 +684,37 @@ public sealed class SqliteSettingsStore : ISettingsStore
     public const string ChannelContextKey = "channel.context";
     /// <summary>Worker video chiqqanini belgilaydi: bot kanal kontekstini qayta o'rganadi.</summary>
     public const string ChannelStaleKey = "channel.context.stale";
+
+    /// <summary>Bot «Mening ovozim»: {version, profileName, url, status, …} yoki o'chirilgandan keyin {deleted:true, profileName}.</summary>
+    public const string VoiceCloneKey = "voice.clone";
+
+    internal static VoiceCloneSettings ReadVoiceClone(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try
+        {
+            var n = System.Text.Json.Nodes.JsonNode.Parse(json);
+            string Str(string k) => n?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var x) ? x : "";
+            var deleted = n?["deleted"] is System.Text.Json.Nodes.JsonValue d && d.TryGetValue<bool>(out var b) && b;
+            return new VoiceCloneSettings { ProfileName = Str("profileName"), Url = deleted ? "" : Str("url"), Version = deleted ? "" : Str("version"), Deleted = deleted };
+        }
+        catch { return new(); }
+    }
+
+    /// <summary>
+    /// Kompyuter natijasini bot holatiga yozadi (faqat shu versiya hali amalda bo'lsa: foydalanuvchi orada yangi namuna yuklagan
+    /// yoki o'chirgan bo'lsa, eski natija yozilmaydi). Joriy hisob doirasida.
+    /// </summary>
+    public static void WriteVoiceCloneStatus(IAppStore store, string version, string status, string message)
+    {
+        if (System.Text.Json.Nodes.JsonNode.Parse(store.GetSetting(VoiceCloneKey) ?? "null") is not System.Text.Json.Nodes.JsonObject o) return;
+        if (o["deleted"]?.GetValue<bool>() == true || o["version"]?.ToString() != version) return;
+        o["status"] = status;
+        o["message"] = message.Length > 400 ? message[..400] : message;
+        o["machine"] = Environment.MachineName;
+        if (status == "ready") o["readyAt"] = DateTimeOffset.UtcNow.ToString("o");
+        store.SetSetting(VoiceCloneKey, o.ToJsonString());
+    }
 
     internal static ChannelContextSettings ReadChannelContext(string? json)
     {

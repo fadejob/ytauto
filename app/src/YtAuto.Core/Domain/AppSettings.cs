@@ -22,6 +22,8 @@ public sealed class AppSettings
     public List<TemplateDefinition> Templates { get; set; } = new();
     /// <summary>Bot kanal tahlilidan tayyorlagan kontekst (online baza: shared_settings['channel.context']); job snapshot'iga tushadi.</summary>
     public ChannelContextSettings ChannelContext { get; set; } = new();
+    /// <summary>Hisobning o'z ovoz namunasi («Mening ovozim», bot: shared_settings['voice.clone']); job snapshot'iga tushadi.</summary>
+    public VoiceCloneSettings VoiceClone { get; set; } = new();
 
     public VoiceProfile? FindVoice(string name) =>
         VoiceProfiles.FirstOrDefault(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase))
@@ -66,6 +68,22 @@ public sealed class AppSettings
 /// Kanal konteksti: bot ulangan YouTube kanalining oxirgi 3 videosini (montaj, ovoz, subtitr, ssenariy) o'rganib yozgan ixcham matnlar.
 /// Script - Gemini ssenariy promptidagi {channel_context} o'rniga; Montage - Claude instructions.md dagi "Channel style" bo'limi.
 /// </summary>
+/// <summary>
+/// «Mening ovozim»: hisob yuklagan ovoz namunasi. Model (MOSS-TTS-Nano) bitta; VoiceStudio'da <see cref="ProfileName"/> nomli klon
+/// profil shu namuna bilan yaratiladi va shu nomli ovoz profilidagi vazifalar o'sha ovozda o'qiladi. Version - namuna almashganda o'zgaradi.
+/// Deleted - foydalanuvchi namunani o'chirgan: kompyuterdagi nusxalar tozalanadi.
+/// </summary>
+public sealed class VoiceCloneSettings
+{
+    public string ProfileName { get; set; } = "";
+    public string Url { get; set; } = "";
+    public string Version { get; set; } = "";
+    public bool Deleted { get; set; }
+
+    public bool Active => !Deleted && ProfileName.Length > 0 && Url.Length > 0 && Version.Length > 0;
+    public bool Matches(VoiceProfile? v) => Active && v is not null && string.Equals(v.Voice, ProfileName, StringComparison.OrdinalIgnoreCase);
+}
+
 public sealed class ChannelContextSettings
 {
     public bool Enabled { get; set; }

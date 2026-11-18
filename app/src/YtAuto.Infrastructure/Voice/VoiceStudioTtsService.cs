@@ -160,6 +160,65 @@ internal sealed class VoiceStudioSession : ITtsSession
         return ((int)r.StatusCode, await r.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false));
     }
 
+    // ---------------------------------------------------------------- klon ovoz profillari («Mening ovozim»)
+    // VoiceStudio 0.5.7: GET /profiles, POST /profiles (multipart: name, kind=clone, ref_audio), PUT /profiles/{id}/audio, DELETE /profiles/{id}.
+    // /v1/audio/speech "voice" profil nomi bilan topadi va uning namunasini MOSS'ga prompt audio sifatida beradi.
+
+    /// <summary>Profil id'si (nomi bo'yicha, katta-kichik harfsiz). Yo'q bo'lsa null.</summary>
+    internal async Task<string?> FindProfileIdAsync(string name, CancellationToken ct)
+    {
+        var json = await GetStringAsync("profiles", TimeSpan.FromSeconds(30), ct).ConfigureAwait(false)
+                   ?? throw PipelineException.Transient("voice_profiles", "VoiceStudio ovoz profillari ro'yxatini bermadi.");
+        var root = JsonNode.Parse(json);
+        var arr = root as JsonArray ?? root?["profiles"] as JsonArray ?? root?["items"] as JsonArray ?? new JsonArray();
+        var hit = arr.FirstOrDefault(p => string.Equals(p?["name"]?.ToString(), name, StringComparison.OrdinalIgnoreCase));
+        return hit?["id"]?.ToString();
+    }
+
+    public async Task EnsureCloneProfileAsync(string name, string refWav, string version, CancellationToken ct)
+    {
+        var marker = VoiceCloneCache.AppliedMarker(refWav);
+        var id = await FindProfileIdAsync(name, ct).ConfigureAwait(false);
+        if (id is not null && File.Exists(marker) && File.ReadAllText(marker).Trim() == version) return; // shu namuna allaqachon qo'shilgan
+
+        using var form = new MultipartFormDataContent();
+        var audio = new ByteArrayContent(await File.ReadAllBytesAsync(refWav, ct).ConfigureAwait(false));
+        audio.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+        form.Add(audio, "ref_audio", "sample.wav");
+        if (id is null) { form.Add(new StringContent(name), "name"); form.Add(new StringContent("clone"), "kind"); }
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct); cts.CancelAfter(TimeSpan.FromMinutes(2));
+        HttpResponseMessage r;
+        try { r = id is null ? await _http.PostAsync("profiles", form, cts.Token).ConfigureAwait(false) : await _http.PutAsync($"profiles/{Uri.EscapeDataString(id)}/audio", form, cts.Token).ConfigureAwait(false); }
+        catch (HttpRequestException e) { throw PipelineException.Transient("voice_clone_network", "VoiceStudio bilan aloqa uzildi: " + e.Message, e); }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw PipelineException.Transient("voice_clone_timeout", "VoiceStudio ovoz profilini 2 daqiqada saqlamadi."); }
+        using (r)
+        {
+            if (!r.IsSuccessStatusCode)
+            {
+                var body = await r.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (body.Length > 400) body = body[..400];
+                var code = (int)r.StatusCode;
+                if (code == 409) throw PipelineException.Config("voice_clone_conflict", $"VoiceStudio'da \"{name}\" nomli ikki profil bor - ortiqchasini VoiceStudio'da o'chiring.");
+                if (code is >= 400 and < 500) throw PipelineException.Config("voice_clone_rejected", $"VoiceStudio ovoz namunasini qabul qilmadi ({code}): {body}");
+                throw PipelineException.Transient("voice_clone_http", $"VoiceStudio HTTP {code}: {body}");
+            }
+        }
+        File.WriteAllText(marker, version);
+        _log.Info($"VoiceStudio: \"{name}\" ovoz profili {(id is null ? "yaratildi" : "yangi namuna bilan yangilandi")}.", "Voice");
+    }
+
+    public async Task DeleteCloneProfileAsync(string name, CancellationToken ct)
+    {
+        var id = await FindProfileIdAsync(name, ct).ConfigureAwait(false);
+        if (id is null) return;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct); cts.CancelAfter(TimeSpan.FromSeconds(30));
+        using var r = await _http.DeleteAsync($"profiles/{Uri.EscapeDataString(id)}", cts.Token).ConfigureAwait(false);
+        if (!r.IsSuccessStatusCode && (int)r.StatusCode != 404)
+            throw new InvalidOperationException($"VoiceStudio \"{name}\" profilini o'chirmadi (HTTP {(int)r.StatusCode}).");
+        _log.Info($"VoiceStudio: \"{name}\" ovoz profili o'chirildi (foydalanuvchi namunani o'chirgan).", "Voice");
+    }
+
     public async Task EnsureModelAvailableAsync(string model, CancellationToken ct)
     {
         try

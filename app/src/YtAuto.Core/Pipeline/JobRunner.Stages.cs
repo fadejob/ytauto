@@ -27,7 +27,9 @@ public sealed partial class JobRunner
         // Imzolangan havolaning token qismi (query) hash'ga kirmaydi: havola yangilansa ham ovoz qayta yuklanmaydi.
         if (c.Job.HasManualAudio) return Hashing.Sha256Text("voice-manual-v1", c.Job.ManualAudioUrl!.Split('?')[0]);
         var v = c.S.FindVoice(c.Job.VoiceProfileName);
-        return Hashing.Sha256Text("voice-v2", s.SubtitleText, v?.Model, v?.Voice, v?.Speed.ToString(), c.S.VoiceStudio.ChunkChars.ToString(), c.S.VoiceStudio.PauseBetweenChunksSec.ToString());
+        var h = Hashing.Sha256Text("voice-v2", s.SubtitleText, v?.Model, v?.Voice, v?.Speed.ToString(), c.S.VoiceStudio.ChunkChars.ToString(), c.S.VoiceStudio.PauseBetweenChunksSec.ToString());
+        // Klon ovoz namunasi almashsa ovoz qayta yaratiladi (boshqa ovozlar uchun hash o'zgarmaydi).
+        return c.S.VoiceClone.Matches(v) ? h + ":clone-" + c.S.VoiceClone.Version : h;
     }
 
     private string AlignInputHash(JobContext c, VideoScript s) =>
@@ -169,7 +171,8 @@ public sealed partial class JobRunner
         var chunks = TextChunker.Split(script.SubtitleText, Math.Max(150, c.S.VoiceStudio.ChunkChars));
         var manifestPath = Path.Combine(c.VoiceChunksDir, "chunks.json");
         var prevManifest = File.Exists(manifestPath) ? JsonSerializer.Deserialize<List<ChunkInfo>>(File.ReadAllText(manifestPath)) ?? new() : new();
-        var manifest = chunks.Select((t, i) => new ChunkInfo { Index = i, TextHash = Hashing.Sha256Text(t, voice.Model, voice.Voice, voice.Speed.ToString()), Chars = t.Length }).ToList();
+        var cloneTag = c.S.VoiceClone.Matches(voice) ? c.S.VoiceClone.Version : "";
+        var manifest = chunks.Select((t, i) => new ChunkInfo { Index = i, TextHash = Hashing.Sha256Text(t, voice.Model, voice.Voice, voice.Speed.ToString(), cloneTag), Chars = t.Length }).ToList();
         var paths = manifest.Select(m => Path.Combine(c.VoiceChunksDir, $"chunk_{m.Index:000}.wav")).ToList();
         var todo = new List<int>();
         for (int i = 0; i < chunks.Count; i++)
@@ -186,6 +189,7 @@ public sealed partial class JobRunner
             await using var session = await _x.Tts.OpenAsync(_x.Settings.Load().VoiceStudio, c.Log, c.Ct).ConfigureAwait(false);
             c.Snapshot.IntegrationVersions["voicestudio"] = session.Version;
             await session.EnsureModelAvailableAsync(voice.Model, c.Ct).ConfigureAwait(false);
+            if (c.S.VoiceClone.Matches(voice)) await PrepareVoiceCloneAsync(c, session).ConfigureAwait(false);
             foreach (var i in todo)
             {
                 var text = chunks[i];

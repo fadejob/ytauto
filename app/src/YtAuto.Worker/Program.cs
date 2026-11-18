@@ -392,6 +392,9 @@ public static class Program
         {
             using (EnterScope(svc, account))
             {
+                // O'chirilgan «Mening ovozim» namunasining shu kompyuterdagi nusxalari (kesh, VoiceStudio profili).
+                try { await Infrastructure.Voice.VoiceCloneCleanup.RunAsync(svc, ct); }
+                catch (Exception e) when (e is not OperationCanceledException) { svc.Log.Warn("Ovoz namunasi tozalanmadi: " + e.Message); }
                 try
                 {
                     if (!svc.Uploader.IsConnected) continue;

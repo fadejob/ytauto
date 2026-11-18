@@ -111,6 +111,13 @@ public interface ITtsSession : IAsyncDisposable
     /// <summary>Matnni WAV faylga sintez qiladi. Server yiqilsa, qayta ishga tushirishga harakat qiladi.</summary>
     Task SynthesizeAsync(string text, VoiceProfile voice, string outWav, CancellationToken ct);
     Dictionary<string, double> Metrics { get; }
+    /// <summary>
+    /// Klon ovoz: TTS serverda <paramref name="name"/> nomli profil <paramref name="refWav"/> namunasi (<paramref name="version"/>) bilan
+    /// bo'lishini ta'minlaydi (yo'q bo'lsa yaratadi, eski namuna bo'lsa almashtiradi). Klonlash bo'lmagan servislar uchun hech narsa qilmaydi.
+    /// </summary>
+    Task EnsureCloneProfileAsync(string name, string refWav, string version, CancellationToken ct) => Task.CompletedTask;
+    /// <summary>Foydalanuvchi namunani o'chirgan: TTS serverdagi profil ham o'chiriladi.</summary>
+    Task DeleteCloneProfileAsync(string name, CancellationToken ct) => Task.CompletedTask;
 }
 
 /// <summary>Botdan yuklangan tayyor ovozni (URL) yuklab olib, pipeline ishlatadigan WAV formatiga o'tkazadi.</summary>

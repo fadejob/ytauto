@@ -131,6 +131,8 @@ public sealed class AppServices
             PostUploadPoll = postUploadPoll ?? TimeSpan.FromMinutes(8),
             // Video public bo'ldi: bot kanal kontekstini (oxirgi 3 video) qayta o'rganadi. Joriy hisob doirasida yoziladi.
             OnPublished = _ => { if (IsOnline) Store.SetSetting(Data.SqliteSettingsStore.ChannelStaleKey, DateTimeOffset.UtcNow.ToString("o")); },
+            // «Mening ovozim» natijasi botga (joriy hisob - vazifa egasi doirasida).
+            OnVoiceCloneStatus = (version, status, message) => { if (IsOnline) Data.SqliteSettingsStore.WriteVoiceCloneStatus(Store, version, status, message); },
         };
     }
 }

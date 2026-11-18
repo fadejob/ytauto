@@ -226,12 +226,16 @@ internal sealed class Harness : IDisposable
     }
 
     public Action<VideoJob>? OnPublished;
+    public Action<string, string, string>? OnVoiceCloneStatus;
+    /// <summary>Berilsa FakeTts o'rniga ishlatiladi (masalan klon profil chaqiruvlarini yozib oluvchi TTS).</summary>
+    public ITtsService? TtsOverride;
 
     public JobRunner Runner(bool stopBeforeUpload = false) => new(new PipelineServices
     {
-        Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = Script, Tts = Tts, AudioImporter = AudioImporter, Aligner = Aligner, Editor = Editor,
+        Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = Script, Tts = TtsOverride ?? Tts, AudioImporter = AudioImporter, Aligner = Aligner, Editor = Editor,
         Film = Film, Media = new FakeMedia(), Uploader = Uploader, Resources = new FakeResources(), Paths = Paths, Clock = Clock,
         JobLogFactory = _ => Log, RunLog = Log, PostUploadPoll = TimeSpan.Zero, StopBeforeUpload = stopBeforeUpload, OnPublished = OnPublished,
+        OnVoiceCloneStatus = OnVoiceCloneStatus,
     });
 
     public VideoJob AddJob(string topic = "Boiling water", int minutesAgo = 10, int publishInDays = 3)
