@@ -27,6 +27,8 @@ Owner notes about the template: {notes}
 Write STYLE_GUIDE.md: a precise design system a motion designer will follow to build NEW videos (HTML/CSS/SVG pages, 1920x1080
 or 1080x1920) that look like they clearly belong to this channel. Describe the STYLE only, never the topic or content of these frames.
 Be concrete and measurable: hex colours, sizes as % of frame height, positions as % of frame, stroke widths, radii.
+Third-party logos, products or sponsors that merely appear in these frames are content, not the channel's branding: do not
+list them as brand elements or palette sources; describe only how such logos/images are framed and treated.
 
 Sections (use these headings):
 1. Palette: 5-8 hex codes, each with its role (background, surface/card, primary accent, secondary accent, text, muted text, highlight).
@@ -183,7 +185,19 @@ STYLE GUIDE:
             ["contents"] = new JsonArray(new JsonObject { ["role"] = "user", ["parts"] = parts }),
             ["generationConfig"] = generationConfig,
         };
-        var (json, _) = await _gen.CallAsync(_gen.KeysForCall(), Model, body, TimeSpan.FromSeconds(180), log, ct).ConfigureAwait(false);
-        return json;
+        // 503 (yuqori yuklama), tarmoq va vaqt tugashi - qisqa kutib qayta urinish; 429/kalit xatolari CallAsync ichida hal qilinadi.
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                var (json, _) = await _gen.CallAsync(_gen.KeysForCall(), Model, body, TimeSpan.FromSeconds(180), log, ct).ConfigureAwait(false);
+                return json;
+            }
+            catch (PipelineException e) when (attempt < 3 && e.Code is "gemini_server" or "gemini_network" or "gemini_timeout" or "gemini_empty")
+            {
+                log.Warn($"Gemini vision vaqtincha ishlamadi ({e.Message}); {attempt * 10} s dan keyin qayta urinadi.", "Edit");
+                await Task.Delay(TimeSpan.FromSeconds(attempt * 10), ct).ConfigureAwait(false);
+            }
+        }
     }
 }

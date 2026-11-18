@@ -107,9 +107,16 @@ public sealed class OpenMediaLibrary : IMediaLibrary
     private async Task<MediaAsset?> IconAsync(MediaPlanItem item, Dictionary<string, (string Spdx, string Title, string Url)>? sets, string dir, string name, string? preferredSet, CancellationToken ct)
     {
         var order = preferredSet is null ? PreferredIconSets : new[] { preferredSet }.Concat(PreferredIconSets.Where(p => p != preferredSet)).ToArray();
-        var json = await GetJsonAsync($"https://api.iconify.design/search?query={Uri.EscapeDataString(item.Query)}&prefixes={string.Join(",", order)}&limit=64", ct).ConfigureAwait(false);
-        var icons = (json?["icons"] as JsonArray)?.Select(x => x?.GetValue<string>() ?? "").Where(x => x.Contains(':')).ToList() ?? new();
-        var want = Slug(item.Query);
+        // Ko'p so'zli so'rov topilmasa ("warning duplicate") har so'z alohida sinaladi.
+        var attempts = new[] { item.Query }.Concat(item.Query.Split(' ', StringSplitOptions.RemoveEmptyEntries)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var icons = new List<string>(); var want = "";
+        foreach (var q in attempts)
+        {
+            var json = await GetJsonAsync($"https://api.iconify.design/search?query={Uri.EscapeDataString(q)}&prefixes={string.Join(",", order)}&limit=64", ct).ConfigureAwait(false);
+            icons = (json?["icons"] as JsonArray)?.Select(x => x?.GetValue<string>() ?? "").Where(x => x.Contains(':')).ToList() ?? new();
+            want = Slug(q);
+            if (icons.Count > 0) break;
+        }
         var best = icons
             .Select(i => (Id: i, Prefix: i.Split(':')[0], Name: i.Split(':')[1]))
             .Where(i => sets is null || (sets.TryGetValue(i.Prefix, out var s) && IconSetAllowed(s.Spdx)))
