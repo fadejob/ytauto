@@ -115,7 +115,8 @@ public interface ITtsSession : IAsyncDisposable
     /// Klon ovoz: TTS serverda <paramref name="name"/> nomli profil <paramref name="refWav"/> namunasi (<paramref name="version"/>) bilan
     /// bo'lishini ta'minlaydi (yo'q bo'lsa yaratadi, eski namuna bo'lsa almashtiradi). Klonlash bo'lmagan servislar uchun hech narsa qilmaydi.
     /// </summary>
-    Task EnsureCloneProfileAsync(string name, string refWav, string version, CancellationToken ct) => Task.CompletedTask;
+    /// <param name="refText">Namunada aytilgan matn (bo'sh bo'lishi mumkin) - model ovozni aniqroq ko'chiradi.</param>
+    Task EnsureCloneProfileAsync(string name, string refWav, string refText, string version, CancellationToken ct) => Task.CompletedTask;
     /// <summary>Foydalanuvchi namunani o'chirgan: TTS serverdagi profil ham o'chiriladi.</summary>
     Task DeleteCloneProfileAsync(string name, CancellationToken ct) => Task.CompletedTask;
 }

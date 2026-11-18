@@ -9,7 +9,7 @@ export const POST = handler(async (req, viewer) => {
   switch (b.action) {
     case "prepare": return prepareSampleUpload({ filename: String(b.filename ?? ""), size: Number(b.size) });
     case "save":
-      await saveSample({ path: String(b.path ?? ""), durationSec: Number(b.durationSec), consent: b.consent === true, makeDefault: b.makeDefault === true, by: viewer.name });
+      await saveSample({ path: String(b.path ?? ""), durationSec: Number(b.durationSec), passage: Number(b.passage), consent: b.consent === true, makeDefault: b.makeDefault === true, by: viewer.name });
       return getVoiceClone();
     case "delete": await deleteSample(); return null;
     default: throw new Error("Noma'lum amal.");

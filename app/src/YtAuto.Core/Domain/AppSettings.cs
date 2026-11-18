@@ -78,6 +78,8 @@ public sealed class VoiceCloneSettings
     public string ProfileName { get; set; } = "";
     public string Url { get; set; } = "";
     public string Version { get; set; } = "";
+    /// <summary>Namunada o'qilgan matn (botdagi tayyor matn): VoiceStudio profiliga ref_text bo'lib beriladi.</summary>
+    public string RefText { get; set; } = "";
     public bool Deleted { get; set; }
 
     public bool Active => !Deleted && ProfileName.Length > 0 && Url.Length > 0 && Version.Length > 0;

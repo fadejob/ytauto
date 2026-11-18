@@ -47,7 +47,7 @@ public sealed partial class JobRunner
                 foreach (var old in VoiceCloneCache.Files(_x.Paths, clone.ProfileName, wav)) { try { File.Delete(old); } catch { } }
                 c.Log.Info($"Ovoz namunasi yuklab olindi ({clone.ProfileName}, {Wav.ReadInfo(wav).Duration:0.0}s).", "Voice");
             }
-            await session.EnsureCloneProfileAsync(clone.ProfileName, wav, clone.Version, c.Ct).ConfigureAwait(false);
+            await session.EnsureCloneProfileAsync(clone.ProfileName, wav, clone.RefText, clone.Version, c.Ct).ConfigureAwait(false);
             c.Snapshot.IntegrationVersions["voice_clone"] = clone.Version;
             Report(clone.Version, "ready", $"Namuna VoiceStudio'ga qo'shildi — videolar shu ovozda o'qiladi.");
         }

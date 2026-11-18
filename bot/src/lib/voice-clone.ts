@@ -5,10 +5,12 @@ import { currentAccountId, sql } from "./db";
 import { isDemo } from "./demo";
 import { objectExists, removeObjects, signDownload, signUpload } from "./storage";
 import type { VoiceClone } from "./types";
+import { VOICE_PASSAGES } from "./voice-passages";
 
 /**
- * «Mening ovozim»: har hisob o'z ovoz namunasini (10–60 s toza nutq) yuklaydi. Model (MOSS-TTS-Nano) kompyuterda bitta;
- * namuna har so'rovda shu hisob vazifasi uchun beriladi (zero-shot klonlash, o'qitish yo'q).
+ * «Mening ovozim»: foydalanuvchi botdagi oson inglizcha matnni (15–20 s) o'qiydi, bot yozib oladi va shu yerga yuboradi.
+ * Model (MOSS-TTS-Nano) kompyuterda bitta; namuna va o'qilgan matn (ref_text) shu hisob vazifalari uchun beriladi
+ * (zero-shot klonlash, o'qitish yo'q).
  *
  * Saqlash: Storage `acc/<hisob>/voice/<id>/sample.<ext>` (hisobning o'z papkasi), holat shared_settings['voice.clone'] da (RLS).
  * Worker vazifa egasining namunasini `url` dan yuklab, VoiceStudio'da `profileName` nomli ovoz profilini yaratadi/yangilaydi
@@ -19,7 +21,7 @@ export const MODEL = "moss-tts-nano";
 export const PROFILE_LABEL = "Mening ovozim";
 export const SAMPLE_EXT = [".wav", ".mp3", ".m4a", ".ogg", ".opus", ".webm", ".flac", ".aac"];
 const MAX_BYTES = 15 * 1024 * 1024;
-const MIN_SEC = 5, MAX_SEC = 60;
+const MIN_SEC = 10, MAX_SEC = 45; // botdagi matn ~15–20 s o'qiladi (yozish 40 s da to'xtaydi)
 /** Kompyuter yuklab oladigan havola: namuna almashtirilmaguncha amal qiladi. */
 const DOWNLOAD_TTL_SEC = 365 * 24 * 3600;
 
@@ -71,11 +73,14 @@ export async function prepareSampleUpload(i: { filename: string; size: number })
 }
 
 /**
- * Yuklangan namunani saqlaydi: rozilik majburiy, davomiylik 5–60 s. Eski namuna Storage'dan o'chiriladi.
+ * Yuklangan namunani saqlaydi: rozilik majburiy, davomiylik 10–45 s, o'qilgan matn botdagi ro'yxatdan. Eski namuna Storage'dan o'chiriladi.
  * «Mening ovozim» profili bot ro'yxatiga qo'shiladi (xohlasa standart ovoz bo'ladi).
  */
-export async function saveSample(i: { path: string; durationSec: number; consent: boolean; makeDefault: boolean; by: string }): Promise<VoiceClone> {
+export async function saveSample(i: { path: string; durationSec: number; passage: number; consent: boolean; makeDefault: boolean; by: string }): Promise<VoiceClone> {
   if (!i.consent) throw new Error("Rozilikni belgilang: namuna sizning ovozingiz yoki egasi ruxsat bergan.");
+  // O'qilgan matn - botdagi ro'yxatdan (ixtiyoriy matn qabul qilinmaydi); VoiceStudio'ga ref_text bo'lib beriladi.
+  const refText = VOICE_PASSAGES[Number(i.passage)];
+  if (!refText) throw new Error("O'qilgan matn topilmadi — sahifani yangilab qayta yozing.");
   const dur = Number(i.durationSec);
   if (!Number.isFinite(dur) || dur < MIN_SEC || dur > MAX_SEC) throw new Error(`Namuna ${MIN_SEC}–${MAX_SEC} soniya bo'lsin (eng yaxshisi 10–30 s toza nutq).`);
   const accountId = isDemo() ? "00000000-0000-0000-0000-000000000000" : currentAccountId();
@@ -88,7 +93,7 @@ export async function saveSample(i: { path: string; durationSec: number; consent
   const s: Stored = {
     path: i.path, url: isDemo() ? `https://demo.supabase.co/${i.path}` : await signDownload(i.path, DOWNLOAD_TTL_SEC),
     version: crypto.randomBytes(6).toString("hex"), profileName: profileNameFor(accountId), model: MODEL,
-    durationSec: Math.round(dur * 10) / 10, uploadedAt: now, consentAt: now, consentBy: i.by.slice(0, 80),
+    durationSec: Math.round(dur * 10) / 10, refText, uploadedAt: now, consentAt: now, consentBy: i.by.slice(0, 80),
     status: "pending", message: "Kompyuter namunani VoiceStudio'ga qo'shadi (ilova ochiq bo'lsa ~1 daqiqa, aks holda keyingi ishda).", machine: null, readyAt: null,
   };
   await write(s);

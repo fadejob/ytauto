@@ -175,7 +175,7 @@ internal sealed class VoiceStudioSession : ITtsSession
         return hit?["id"]?.ToString();
     }
 
-    public async Task EnsureCloneProfileAsync(string name, string refWav, string version, CancellationToken ct)
+    public async Task EnsureCloneProfileAsync(string name, string refWav, string refText, string version, CancellationToken ct)
     {
         var marker = VoiceCloneCache.AppliedMarker(refWav);
         var id = await FindProfileIdAsync(name, ct).ConfigureAwait(false);
@@ -185,6 +185,8 @@ internal sealed class VoiceStudioSession : ITtsSession
         var audio = new ByteArrayContent(await File.ReadAllBytesAsync(refWav, ct).ConfigureAwait(false));
         audio.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
         form.Add(audio, "ref_audio", "sample.wav");
+        // Namunada aytilgan matn: model ovozni aniqroq ko'chiradi. Inglizcha matn - til ham aniq.
+        if (!string.IsNullOrWhiteSpace(refText)) { form.Add(new StringContent(refText.Trim()), "ref_text"); form.Add(new StringContent("English"), "language"); }
         if (id is null) { form.Add(new StringContent(name), "name"); form.Add(new StringContent("clone"), "kind"); }
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct); cts.CancelAfter(TimeSpan.FromMinutes(2));

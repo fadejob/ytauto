@@ -696,7 +696,7 @@ public sealed class SqliteSettingsStore : ISettingsStore
             var n = System.Text.Json.Nodes.JsonNode.Parse(json);
             string Str(string k) => n?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var x) ? x : "";
             var deleted = n?["deleted"] is System.Text.Json.Nodes.JsonValue d && d.TryGetValue<bool>(out var b) && b;
-            return new VoiceCloneSettings { ProfileName = Str("profileName"), Url = deleted ? "" : Str("url"), Version = deleted ? "" : Str("version"), Deleted = deleted };
+            return new VoiceCloneSettings { ProfileName = Str("profileName"), Url = deleted ? "" : Str("url"), Version = deleted ? "" : Str("version"), RefText = deleted ? "" : Str("refText"), Deleted = deleted };
         }
         catch { return new(); }
     }

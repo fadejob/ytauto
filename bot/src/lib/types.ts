@@ -151,6 +151,8 @@ export type ChannelState = {
  */
 export type VoiceClone = {
   version: string; profileName: string; model: string; durationSec: number;
+  /** Namunada o'qilgan matn (botdagi tayyor matnlardan): VoiceStudio'ga ref_text bo'lib beriladi. */
+  refText: string;
   uploadedAt: string; consentAt: string; consentBy: string;
   status: "pending" | "ready" | "error"; message: string; machine: string | null; readyAt: string | null;
 };

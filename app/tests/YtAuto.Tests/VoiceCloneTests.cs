@@ -7,7 +7,7 @@ namespace YtAuto.Tests;
 /// <summary>Klon profil chaqiruvlarini yozib oladi; sintez FakeTts kabi sintetik WAV.</summary>
 internal sealed class CloneTts : ITtsService
 {
-    public readonly List<(string Name, string Wav, string Version)> Ensured = new();
+    public readonly List<(string Name, string Wav, string RefText, string Version)> Ensured = new();
     public readonly List<string> Voices = new();
     public Exception? EnsureError;
     public Task<ITtsSession> OpenAsync(VoiceStudioSettings s, IJobLog log, CancellationToken ct) => Task.FromResult<ITtsSession>(new S(this));
@@ -17,11 +17,11 @@ internal sealed class CloneTts : ITtsService
         public bool StartedByUs => true; public string Version => "fake"; public Dictionary<string, double> Metrics { get; } = new();
         public Task EnsureModelAvailableAsync(string model, CancellationToken ct) => Task.CompletedTask;
         public Task SynthesizeAsync(string text, VoiceProfile v, string outWav, CancellationToken ct) { _o.Voices.Add(v.Voice); FakeTts.WriteSpeechLikeWav(outWav, text.Length / 15.0); return Task.CompletedTask; }
-        public Task EnsureCloneProfileAsync(string name, string refWav, string version, CancellationToken ct)
+        public Task EnsureCloneProfileAsync(string name, string refWav, string refText, string version, CancellationToken ct)
         {
             if (_o.EnsureError is not null) throw _o.EnsureError;
             Assert.True(File.Exists(refWav));
-            _o.Ensured.Add((name, refWav, version));
+            _o.Ensured.Add((name, refWav, refText, version));
             return Task.CompletedTask;
         }
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -39,7 +39,7 @@ public class VoiceCloneTests
         var tts = new CloneTts(); var imp = new FakeAudioImporter(); var reports = new List<(string, string, string)>();
         h.TtsOverride = tts; h.AudioImporter = imp; h.OnVoiceCloneStatus = (v, s, m) => reports.Add((v, s, m));
         h.Settings.S.VoiceProfiles.Add(new VoiceProfile { Name = "Mening ovozim", Model = TtsVoices.Model, Voice = Profile });
-        h.Settings.S.VoiceClone = new VoiceCloneSettings { ProfileName = Profile, Url = "https://x.supabase.co/sample.webm?token=1", Version = version };
+        h.Settings.S.VoiceClone = new VoiceCloneSettings { ProfileName = Profile, Url = "https://x.supabase.co/sample.webm?token=1", Version = version, RefText = "Hello! I am recording my voice." };
         return (h, tts, imp, reports);
     }
 
@@ -54,8 +54,9 @@ public class VoiceCloneTests
     [Fact]
     public void ReadVoiceClone_ActiveAndDeleted()
     {
-        var a = SqliteSettingsStore.ReadVoiceClone("""{"version":"v1","profileName":"YtAuto u-abcd1234","url":"https://x.supabase.co/s.wav","status":"pending"}""");
+        var a = SqliteSettingsStore.ReadVoiceClone("""{"version":"v1","profileName":"YtAuto u-abcd1234","url":"https://x.supabase.co/s.wav","refText":"Hello there.","status":"pending"}""");
         Assert.True(a.Active);
+        Assert.Equal("Hello there.", a.RefText);
         Assert.True(a.Matches(new VoiceProfile { Voice = "ytauto U-ABCD1234" }));
         var d = SqliteSettingsStore.ReadVoiceClone("""{"deleted":true,"profileName":"YtAuto u-abcd1234","deletedAt":"x"}""");
         Assert.True(d.Deleted);
@@ -73,7 +74,7 @@ public class VoiceCloneTests
         Assert.Equal(RunOutcome.Completed, r.Outcome);
         Assert.Equal(1, imp.Calls);
         var e = Assert.Single(tts.Ensured);
-        Assert.Equal((Profile, "v1"), (e.Name, e.Version));
+        Assert.Equal((Profile, "v1", "Hello! I am recording my voice."), (e.Name, e.Version, e.RefText));
         Assert.All(tts.Voices, v => Assert.Equal(Profile, v)); // har bo'lak shu foydalanuvchi ovozida
         Assert.Contains(reports, x => x.V == "v1" && x.S == "ready");
     }
