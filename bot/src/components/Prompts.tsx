@@ -6,8 +6,8 @@ import type { PromptKey, Prompts as PromptsT } from "@/lib/types";
 import type { Run, Toast } from "./App";
 
 const LABEL: Record<PromptKey, { title: string; hint: string }> = {
-  script: { title: "Ssenariy", hint: "Gemini: matn, subtitr va YouTube title. {topic} {notes} {language} … placeholder'larini saqlang." },
-  montage: { title: "Montaj", hint: "Claude Code + OpenFilm: sahnalar va dizayn bo'yicha ko'rsatmalar." },
+  script: { title: "Ssenariy", hint: "Gemini: matn, subtitr va YouTube title. {topic} {notes} {language} … placeholder'larini saqlang. {channel_context} — «Kanal» bo'limidagi kanal uslubi shu joyga qo'yiladi (yo'q bo'lsa prompt oxiriga qo'shiladi)." },
+  montage: { title: "Montaj", hint: "Claude Code + OpenFilm: sahnalar va dizayn bo'yicha ko'rsatmalar. Kanal tahlilidagi montaj uslubi avtomatik «Channel style» bo'limi bo'lib qo'shiladi." },
 };
 
 export default function Prompts({ run, toast }: { run: Run; toast: Toast }) {

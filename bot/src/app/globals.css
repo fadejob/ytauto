@@ -155,3 +155,12 @@ select.input { appearance: auto; }
 .chk { display: flex; align-items: center; gap: 10px; }
 .chk input { width: 18px; height: 18px; }
 .sect { font-size: 13px; font-weight: 700; margin: 6px 2px 0; }
+
+/* ---------- kanal konteksti */
+.ctx { display: grid; gap: 4px; font-size: 13px; line-height: 1.45; }
+.ctx b { color: var(--hint); font-weight: 600; }
+.ctx ul { margin: 2px 0 0; padding-left: 18px; display: grid; gap: 2px; }
+.ctx .quote { border-left: 3px solid var(--accent); padding-left: 8px; font-style: italic; }
+.pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: color-mix(in srgb, var(--hint) 8%, var(--card)); border-radius: 10px; padding: 10px; max-height: 340px; overflow: auto; }
+.pulse { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: 0.45; } }
