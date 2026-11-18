@@ -78,3 +78,34 @@ bilan kiradi va asosiy hisob kabi ishlaydi (o'z mavzulari, Gemini kalitlari, pro
 - Qo'shimcha token bilan YtAuto ilovasini (kompyuterni) ulab bo'lmaydi. Tokenni o'chirish shu hisob ma'lumotlarini ham o'chiradi.
 
 Yangilash: `npm run db:migrate` (sxema v2 → v3), so'ng botni deploy qiling va kompyuterlardagi YtAuto'ni yangilang.
+
+## Kanal konteksti (sxema v4)
+
+YouTube kanali ulangach bot kanalni o'zi o'rganadi (fonda, 1–3 daqiqa) va **«Kanal»** bo'limida ko'rsatadi:
+
+- **Nima o'rganiladi:** kanal nomi va tavsifi, so'nggi 30 ta sarlavha va **eng oxirgi 3 video**. Har video Gemini'ga YouTube
+  havolasi bilan beriladi: u montajni, ovozni, subtitrni va ssenariyni bevosita ko'rib chiqadi. Video ochiq bo'lmasa
+  (rejalashtirilgan/private), faqat sarlavha, tavsif va teglar ishlatiladi. Faqat `youtube.readonly` ruxsati kerak.
+- **Natija:** `ytauto.channel_profile` (to'liq tahlil) va `shared_settings['channel.context']`. Ikkinchisi promptlarga
+  qo'shiladigan ixcham bloklar va kanal ovoziga mos ovoz profili.
+- **Qayerda ishlatiladi:**
+  - Gemini ssenariy promptidagi `{channel_context}` o'rniga qo'yiladi; placeholder bo'lmasa, prompt oxiriga qo'shiladi.
+  - Claude `instructions.md`'ga «Channel style» bo'limi qo'shiladi.
+  - Yangi mavzuning ovozi tanlanmagan bo'lsa, tavsiya etilgan ovoz profili olinadi.
+  - AI yordamchi ham kontekstni ko'radi.
+  - Botda o'chirib qo'yish mumkin.
+- **Yangilanish:**
+  - Video YouTube'da public bo'lganda worker `channel.context.stale` belgisini qo'yadi. Bot keyingi ochilishda yoki kunlik
+    cron'da kanalni qayta o'rganadi.
+  - Bundan tashqari 12 soatda bir marta arzon tekshiruv bo'ladi: eng yangi video o'zgarmagan bo'lsa Gemini chaqirilmaydi.
+- **Kunlik tavsiyalar:** har kuni kontekstdan 5 ta yangi mavzu taklif qilinadi. «Navbatga qo'shish» uni oddiy mavzu sifatida
+  qo'shadi, rad etilganlari qayta taklif qilinmaydi.
+- **Cron:** `bot/vercel.json` → `/api/cron/daily` (har kuni 03:00 UTC). Vercel'da `CRON_SECRET` (kamida 16 belgi) kiritilishi shart.
+
+Yangilash tartibi:
+
+1. `npm run db:migrate` (sxema v3 → v4).
+2. Vercel'ga `CRON_SECRET` qo'shib, botni deploy qiling.
+3. Kompyuterlardagi YtAuto'ni yangilang.
+
+Ilova yangilanmaguncha kontekst faqat AI yordamchi va mavzu tavsiyalarida ishlatiladi.
