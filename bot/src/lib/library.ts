@@ -48,11 +48,10 @@ function demoVoice(): VoiceInfo[] {
   return [{
     machine: "AIBA", fetchedAtUtc: new Date().toISOString(), voiceStudioVersion: "0.5.8", updatedAtUtc: new Date().toISOString(),
     engines: [
-      { id: "kittentts", displayName: "KittenTTS (CPU)", available: true, usable: true, reason: null, voices: ["expr-voice-2-m", "expr-voice-2-f", "expr-voice-3-m", "expr-voice-3-f"], installedModels: ["KittenML/kitten-tts-mini-0.8"], knownModels: ["KittenML/kitten-tts-mini-0.8"], supportsCloning: false },
-      { id: "omnivoice", displayName: "OmniVoice (600+ til, klonlash)", available: true, usable: true, reason: null, voices: [], installedModels: ["k2-fsa/OmniVoice"], knownModels: ["k2-fsa/OmniVoice"], supportsCloning: true },
+      { id: "moss-tts-nano", displayName: "MOSS-TTS-Nano (20 til, CPU, klonlash)", available: true, usable: true, reason: null, voices: [], installedModels: [], knownModels: [], supportsCloning: true },
       { id: "mlx-audio", displayName: "MLX-Audio", available: false, usable: false, reason: "Bu dvigatel shu kompyuter platformasida ishlamaydi.", voices: [], installedModels: [], knownModels: [], supportsCloning: false },
     ],
-    profiles: [{ name: "Kitten EN ayol", model: "kittentts", voice: "expr-voice-2-f", language: "en", speed: 1 }, { name: "Kitten EN erkak", model: "kittentts", voice: "expr-voice-2-m", language: "en", speed: 1 }],
-    defaultProfile: "Kitten EN ayol",
+    profiles: [{ name: "MOSS ayol", model: "moss-tts-nano", voice: "YtAuto ayol", language: "en", speed: 1 }, { name: "MOSS erkak", model: "moss-tts-nano", voice: "YtAuto erkak", language: "en", speed: 1 }],
+    defaultProfile: "MOSS ayol",
   }];
 }

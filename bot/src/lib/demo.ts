@@ -10,7 +10,7 @@ export const isDemo = () => process.env.DEMO_MODE === "1";
 
 const TZ = "Asia/Tashkent";
 export const demoCatalog: Catalog = {
-  voiceProfiles: ["Kitten EN ayol", "Kitten EN erkak"], templates: [{ name: "Clean explainer", kind: "OpenFilmProject" }, { name: "Neon facts", kind: "Mp4Reference" }], defaults: { voiceProfile: "Kitten EN ayol", template: "", format: 0 },
+  voiceProfiles: ["MOSS ayol", "MOSS erkak"], templates: [{ name: "Clean explainer", kind: "OpenFilmProject" }, { name: "Neon facts", kind: "Mp4Reference" }], defaults: { voiceProfile: "MOSS ayol", template: "", format: 0 },
   youtube: { publishTime: "18:00", timeZone: TZ }, known: true,
 };
 
@@ -49,7 +49,7 @@ export function demoTopics(): Topic[] {
     canPublishNow: !r.publishNow && ![11, 14].includes(r.status),
     canUploadReady: !!r.archived && !r.yt && !r.claimed && !r.uploadRequested && !r.publishNow && ![11, 14].includes(r.status),
     uploadRequested: !!r.uploadRequested && !r.yt,
-    template: r.template ?? "", format: r.format ?? 0, voice: r.voice ?? "Kitten EN ayol",
+    template: r.template ?? "", format: r.format ?? 0, voice: r.voice ?? "MOSS ayol",
     manualScript: r.script || null, manualTitle: r.mtitle || null, hasAudio: !!r.audio,
     canRetry: !r.claimed && [12, 13].includes(r.status), canCancel: ![11, 14].includes(r.status),
     canReschedule: (r.made || r.claimed) && !r.claimed && ![11, 14].includes(r.status), canForceUpload: r.status === 13 && !r.yt && !!r.archived && !r.claimed,

@@ -28,7 +28,7 @@ function demoContext(): ChannelContext {
     scriptGuidelines: ["Open with an everyday moment framed as a question", "Explain the naive solution first, then why it fails", "Use one running example from start to end", "Keep sentences short; ~165 wpm", "End with a one-line recap and a soft CTA"],
     montageGuidelines: ["Flat 2D motion graphics on dark navy", "Change the visual every 2–3 seconds", "Show the key term as a bold on-screen callout", "Use simple code snippets, never full files"],
     subtitleGuidelines: ["Burned-in, bottom centre", "Word-by-word highlight in yellow"],
-    voice: { gender: "male", style: "Calm tech explainer", pace: "fast", recommendedProfile: "Kitten EN erkak" },
+    voice: { gender: "male", style: "Calm tech explainer", pace: "fast", recommendedProfile: "MOSS erkak" },
     doList: ["Concrete numbers and real app examples", "One idea per video"], avoidList: ["Long intros", "Jargon without an analogy"],
     videos: [vid(1, "Double Click Pay? Idempotency Prevents Duplicate Charges", 5400), vid(2, "How Your Phone Knows Where You Are", 3100), vid(3, "Why Databases Need Indexes", 1900, "metadata")],
     recentTitles: ["Double Click Pay? Idempotency Prevents Duplicate Charges", "How Your Phone Knows Where You Are", "Why Databases Need Indexes", "Caching Explained in 5 Minutes"],

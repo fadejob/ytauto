@@ -14,7 +14,8 @@ export default function VoiceProfiles({ profiles, settings, defaultProfile, info
 }) {
   // Ishlatsa bo'ladigan dvigatellar (barcha kompyuterlar birlashmasi, takrorsiz).
   const engines = new Map<string, { id: string; displayName: string; voices: string[] }>();
-  for (const v of info) for (const e of v.engines) if (e.usable && !engines.has(e.id)) engines.set(e.id, { id: e.id, displayName: e.displayName, voices: e.voices });
+  // Faqat MOSS-TTS-Nano ishlatiladi (worker boshqa modelli profilni rad etadi).
+  for (const v of info) for (const e of v.engines) if (e.usable && e.id === "moss-tts-nano" && !engines.has(e.id)) engines.set(e.id, { id: e.id, displayName: e.displayName, voices: e.voices });
   const [engineId, setEngineId] = useState("");
   const eng = engines.get(engineId) ?? [...engines.values()][0];
   const [voice, setVoice] = useState("");
@@ -68,7 +69,7 @@ export default function VoiceProfiles({ profiles, settings, defaultProfile, info
                   <select className="input" value={voiceValue} onChange={(e) => setVoice(e.target.value)}>{eng.voices.map((v) => <option key={v} value={v}>{v}</option>)}</select>
                 ) : <input className="input" value={voice} placeholder="(ixtiyoriy)" onChange={(e) => setVoice(e.target.value)} />}
               </div>
-              <div className="field"><label>Profil nomi</label><input className="input" value={name} placeholder="Masalan: Kitten EN erkak" onChange={(e) => setName(e.target.value)} /></div>
+              <div className="field"><label>Profil nomi</label><input className="input" value={name} placeholder="Masalan: MOSS erkak" onChange={(e) => setName(e.target.value)} /></div>
               <div className="field"><label>Til</label><input className="input" value={lang} onChange={(e) => setLang(e.target.value)} /></div>
             </div>
             <button className="btn block" onClick={add}>Qo&apos;shish</button>
