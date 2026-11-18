@@ -50,9 +50,9 @@ internal static class TestScript
 
 internal sealed class FakeScript : IScriptGenerator
 {
-    public int Calls;
+    public int Calls; public ScriptRequest? Last;
     public Task<ScriptResult> GenerateAsync(ScriptRequest r, IJobLog log, CancellationToken ct)
-    { Calls++; var s = TestScript.Make(); return Task.FromResult(new ScriptResult { Script = s, RawModelOutput = s.ToJson(), ModelUsed = "fake" }); }
+    { Calls++; Last = r; var s = TestScript.Make(); return Task.FromResult(new ScriptResult { Script = s, RawModelOutput = s.ToJson(), ModelUsed = "fake" }); }
 }
 
 internal sealed class FakeTts : ITtsService
@@ -94,11 +94,13 @@ internal sealed class FakeAligner : IAligner
 
 internal sealed class FakeEditor : IEditorAgent
 {
-    public int Calls; public int GappyCalls; public int TransientFailures; public Func<Task>? DuringRun;
+    public int Calls; public int GappyCalls; public int TransientFailures; public Func<Task>? DuringRun; public string? LastInstructions;
     public string Version => "fake-claude";
     public async Task<EditorRunResult> RunAsync(string dir, string prompt, TimeSpan timeout, string prefix, IReadOnlyList<string> extra, IJobLog log, CancellationToken ct)
     {
         Calls++;
+        var ins = Path.Combine(dir, "instructions.md");
+        if (File.Exists(ins)) LastInstructions = File.ReadAllText(ins);
         if (DuringRun is not null) await DuringRun();
         if (TransientFailures > 0) { TransientFailures--; return new EditorRunResult { Run = new ToolRunResult { ExitCode = 1, StderrTail = "network glitch" }, IsError = true }; }
         Assert.True(File.Exists(Path.Combine(dir, "instructions.md")));
@@ -223,11 +225,13 @@ internal sealed class Harness : IDisposable
         Settings.S = s;
     }
 
+    public Action<VideoJob>? OnPublished;
+
     public JobRunner Runner(bool stopBeforeUpload = false) => new(new PipelineServices
     {
         Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = Script, Tts = Tts, AudioImporter = AudioImporter, Aligner = Aligner, Editor = Editor,
         Film = Film, Media = new FakeMedia(), Uploader = Uploader, Resources = new FakeResources(), Paths = Paths, Clock = Clock,
-        JobLogFactory = _ => Log, RunLog = Log, PostUploadPoll = TimeSpan.Zero, StopBeforeUpload = stopBeforeUpload,
+        JobLogFactory = _ => Log, RunLog = Log, PostUploadPoll = TimeSpan.Zero, StopBeforeUpload = stopBeforeUpload, OnPublished = OnPublished,
     });
 
     public VideoJob AddJob(string topic = "Boiling water", int minutesAgo = 10, int publishInDays = 3)

@@ -25,6 +25,8 @@ public sealed class PipelineServices
     public required Func<long, IJobLog> JobLogFactory { get; init; }
     public required IJobLog RunLog { get; init; }
     public string AppVersion { get; init; } = "1.0.0";
+    /// <summary>Video YouTube'da public bo'lganda (bir marta): bot kanal kontekstini yangilashi uchun belgi qo'yiladi.</summary>
+    public Action<VideoJob>? OnPublished { get; init; }
     /// <summary>Upload'dan keyin YouTube qayta ishlashini kutish (0 - kutmaslik).</summary>
     public TimeSpan PostUploadPoll { get; init; } = TimeSpan.FromMinutes(8);
     /// <summary>Faqat lokal bosqichlarni bajarish (self-test): Archive'dan keyin to'xtaydi.</summary>

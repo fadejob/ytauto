@@ -20,6 +20,8 @@ public sealed class AppSettings
     public LimitSettings Limits { get; set; } = new();
     public List<VoiceProfile> VoiceProfiles { get; set; } = new();
     public List<TemplateDefinition> Templates { get; set; } = new();
+    /// <summary>Bot kanal tahlilidan tayyorlagan kontekst (online baza: shared_settings['channel.context']); job snapshot'iga tushadi.</summary>
+    public ChannelContextSettings ChannelContext { get; set; } = new();
 
     public VoiceProfile? FindVoice(string name) =>
         VoiceProfiles.FirstOrDefault(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase))
@@ -57,6 +59,22 @@ public sealed class AppSettings
         s.Claude.MontagePrompt = DefaultPrompts.Montage;
         return s;
     }
+}
+
+/// <summary>
+/// Kanal konteksti: bot ulangan YouTube kanalining oxirgi 3 videosini (montaj, ovoz, subtitr, ssenariy) o'rganib yozgan ixcham matnlar.
+/// Script - Gemini ssenariy promptidagi {channel_context} o'rniga; Montage - Claude instructions.md dagi "Channel style" bo'limi.
+/// </summary>
+public sealed class ChannelContextSettings
+{
+    public bool Enabled { get; set; }
+    public string Script { get; set; } = "";
+    public string Montage { get; set; } = "";
+    public string VoiceProfile { get; set; } = "";
+    public string UpdatedAt { get; set; } = "";
+
+    public string ScriptBlock => Enabled ? Script.Trim() : "";
+    public string MontageBlock => Enabled ? Montage.Trim() : "";
 }
 
 public sealed class ScheduleSettings

@@ -16,7 +16,11 @@ public sealed partial class JobRunner
     private static string ScriptInputHash(JobContext c) => c.Job.HasManualScript
         ? Hashing.Sha256Text("script-manual-v1", c.Job.ManualTitle, c.Job.ManualScript)
         : Hashing.Sha256Text("script-v2", c.Job.Topic, c.Job.Notes, c.Job.Language,
-            c.Job.TargetDurationSec.ToString(), c.S.Gemini.ScriptPrompt, c.S.Gemini.Model, c.S.Gemini.UseSearchGrounding.ToString());
+            c.Job.TargetDurationSec.ToString(), c.S.Gemini.ScriptPrompt, c.S.Gemini.Model, c.S.Gemini.UseSearchGrounding.ToString())
+          + ChannelHashSuffix(c.S.ChannelContext.ScriptBlock);
+
+    /// <summary>Kanal konteksti bo'lmasa hash o'zgarmaydi (oldingi joblar qayta bajarilmaydi); bo'lsa uning o'zgarishi bosqichni qayta ishlatadi.</summary>
+    private static string ChannelHashSuffix(string block) => block.Length == 0 ? "" : ":" + Hashing.Sha256Text("channel-v1", block);
 
     private string VoiceInputHash(JobContext c, VideoScript s)
     {
@@ -31,7 +35,8 @@ public sealed partial class JobRunner
 
     private string EditInputHash(JobContext c, VideoScript s) => Hashing.Sha256Text("edit-v2",
         OutputSha(c, StageKind.Voice, "voice"), OutputSha(c, StageKind.Align, "vtt"),
-        s.SubtitleText, c.S.Claude.MontagePrompt, c.Snapshot.TemplateVersion, c.Job.Format.ToString(), c.Job.QaFixCycles.ToString());
+        s.SubtitleText, c.S.Claude.MontagePrompt, c.Snapshot.TemplateVersion, c.Job.Format.ToString(), c.Job.QaFixCycles.ToString())
+        + ChannelHashSuffix(c.S.ChannelContext.MontageBlock);
 
     private string RenderInputHash(JobContext c) => Hashing.Sha256Text("render-v1",
         StageValue(c, StageKind.Edit, "film_manifest"), c.S.OpenFilm.Fps.ToString(), c.S.OpenFilm.LoudnessLufs.ToString(), c.S.OpenFilm.BurnSubtitles.ToString(), c.Job.QaFixCycles.ToString());
@@ -56,7 +61,7 @@ public sealed partial class JobRunner
         {
             Topic = c.Job.Topic, Notes = c.Job.Notes, Language = c.Job.Language, TargetDurationSec = c.Job.TargetDurationSec,
             Format = c.Job.Format switch { VideoFormat.Shorts9x16 => "vertical 9:16 short", VideoFormat.Square1x1 => "square 1:1", _ => "horizontal 16:9" },
-            PromptTemplate = string.IsNullOrWhiteSpace(c.S.Gemini.ScriptPrompt) ? DefaultPrompts.Script : c.S.Gemini.ScriptPrompt,
+            PromptTemplate = ChannelPrompt.ApplyToScript(string.IsNullOrWhiteSpace(c.S.Gemini.ScriptPrompt) ? DefaultPrompts.Script : c.S.Gemini.ScriptPrompt, c.S.ChannelContext),
             FactSheetPromptTemplate = DefaultPrompts.FactSheet,
             UseSearchGrounding = c.S.Gemini.UseSearchGrounding, Model = c.S.Gemini.Model, Temperature = c.S.Gemini.Temperature,
         };

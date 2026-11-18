@@ -164,7 +164,8 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
             .Replace("{length_rule}", lengthRule)
             .Replace("{duration_sec}", r.TargetDurationSec > 0 ? r.TargetDurationSec.ToString() : "as many as the topic needs")
             .Replace("{target_words}", "as many as needed")
-            .Replace("{format}", r.Format).Replace("{fact_sheet}", factSheet);
+            .Replace("{format}", r.Format).Replace("{fact_sheet}", factSheet)
+            .Replace(Core.Pipeline.ChannelPrompt.Placeholder, ""); // kontekst JobRunner'da qo'yiladi; qolib ketgan placeholder modelga bormaydi
     }
 
     /// <summary>

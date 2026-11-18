@@ -11,6 +11,9 @@ namespace YtAuto.Core.Pipeline;
 /// </summary>
 internal static class EditorInstructions
 {
+    /// <summary>Kanal tahlilidan (bot) montaj uslubi: shablon/brief bilan birga Claude'ga beriladi.</summary>
+    public const string MontageHeading = "## Channel style (learned from this channel's latest videos; keep new videos consistent with it)";
+
     public static string Build(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues, double audioSec,
         TemplateDefinition? tpl, IReadOnlyList<string> refFrames)
     {
@@ -26,6 +29,13 @@ internal static class EditorInstructions
         sb.AppendLine();
         sb.AppendLine(string.IsNullOrWhiteSpace(c.S.Claude.MontagePrompt) ? DefaultPrompts.Montage : c.S.Claude.MontagePrompt.Trim());
         sb.AppendLine();
+        if (c.S.ChannelContext?.MontageBlock is { Length: > 0 } channel)
+        {
+            sb.AppendLine(MontageHeading);
+            sb.AppendLine();
+            sb.AppendLine(channel);
+            sb.AppendLine();
+        }
         sb.AppendLine("## Read first");
         sb.AppendLine();
         sb.AppendLine("- `openfilm-edit-skill.md`: OpenFilm's own rules for film.html and pages. Read it whole before writing anything.");

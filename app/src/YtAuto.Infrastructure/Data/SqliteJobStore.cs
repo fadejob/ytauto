@@ -662,12 +662,34 @@ public sealed class SqliteSettingsStore : ISettingsStore
             {
                 try { s.Schedule = System.Text.Json.JsonSerializer.Deserialize<ScheduleSettings>(sch, AppSettings.Json) ?? s.Schedule; } catch { }
             }
+            // Kanal konteksti (bot kanal tahlilidan yozadi) - hisob doirasida: mehmon vazifasiga mehmonning o'z kanali konteksti.
+            s.ChannelContext = ReadChannelContext(_shared.GetSetting(ChannelContextKey));
         }
         return s;
     }
 
     /// <summary>Bot boshqaradigan umumiy sozlamalar (JSON): gemini, limits, defaults. Bo'lmagan maydonlar o'zgarmaydi.</summary>
     public const string ConfigKey = "config";
+    /// <summary>Bot kanal tahlilidan yozadigan kontekst: {enabled, script, montage, voiceProfile, updatedAt}.</summary>
+    public const string ChannelContextKey = "channel.context";
+    /// <summary>Worker video chiqqanini belgilaydi: bot kanal kontekstini qayta o'rganadi.</summary>
+    public const string ChannelStaleKey = "channel.context.stale";
+
+    internal static ChannelContextSettings ReadChannelContext(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try
+        {
+            var n = System.Text.Json.Nodes.JsonNode.Parse(json);
+            string Str(string k) => n?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var x) ? x : "";
+            return new ChannelContextSettings
+            {
+                Enabled = n?["enabled"] is System.Text.Json.Nodes.JsonValue e && e.TryGetValue<bool>(out var b) && b,
+                Script = Str("script"), Montage = Str("montage"), VoiceProfile = Str("voiceProfile"), UpdatedAt = Str("updatedAt"),
+            };
+        }
+        catch { return new(); }
+    }
 
     private static void ApplyBotConfig(AppSettings s, string? json)
     {

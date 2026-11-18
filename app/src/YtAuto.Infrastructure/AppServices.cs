@@ -129,6 +129,8 @@ public sealed class AppServices
             RunLog = Log, AppVersion = typeof(AppServices).Assembly.GetName().Version?.ToString() ?? "1.0.0",
             StopBeforeUpload = stopBeforeUpload,
             PostUploadPoll = postUploadPoll ?? TimeSpan.FromMinutes(8),
+            // Video public bo'ldi: bot kanal kontekstini (oxirgi 3 video) qayta o'rganadi. Joriy hisob doirasida yoziladi.
+            OnPublished = _ => { if (IsOnline) Store.SetSetting(Data.SqliteSettingsStore.ChannelStaleKey, DateTimeOffset.UtcNow.ToString("o")); },
         };
     }
 }

@@ -151,6 +151,11 @@ public sealed partial class JobRunner
         }
         _x.Store.Update(fresh);
         if (before != fresh.Status) log.Info($"YouTube holati: {before} → {fresh.Status} (privacy={st.PrivacyStatus}, upload={st.UploadStatus}, processing={st.ProcessingStatus}).", "YouTube");
+        if (before != JobStatus.Published && fresh.Status == JobStatus.Published && _x.OnPublished is { } onPublished)
+        {
+            try { onPublished(fresh); }
+            catch (Exception e) { log.Warn("Kanal kontekstini yangilash belgisi qo'yilmadi: " + e.Message, "YouTube"); }
+        }
         if (fresh.Status is JobStatus.Scheduled or JobStatus.Published) CleanupWorkDir(fresh, log);
         return fresh.Status;
     }
