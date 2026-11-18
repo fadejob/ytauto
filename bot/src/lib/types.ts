@@ -145,6 +145,16 @@ export type ChannelState = {
   suggestionsPending: boolean;
 };
 
+/**
+ * «Mening ovozim» (shared_settings['voice.clone']): hisobning ovoz namunasi. status: pending - kompyuter hali VoiceStudio'ga
+ * qo'shmagan; ready - qo'shildi (shu ovozda o'qiladi); error - qo'shib bo'lmadi (message). Worker status/message/machine/readyAt ni yozadi.
+ */
+export type VoiceClone = {
+  version: string; profileName: string; model: string; durationSec: number;
+  uploadedAt: string; consentAt: string; consentBy: string;
+  status: "pending" | "ready" | "error"; message: string; machine: string | null; readyAt: string | null;
+};
+
 /** Asosiy hisob yaratgan qo'shimcha token (mehmon videolari ko'rsatilmaydi). */
 export type GuestToken = { id: string; label: string; createdAt: string; telegramUsers: number };
 

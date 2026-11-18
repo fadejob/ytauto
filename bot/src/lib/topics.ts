@@ -24,7 +24,9 @@ async function pickTemplateFormat(cat: Catalog, template?: string, format?: numb
   const vc = voice !== undefined && voice !== "" ? voice : cfg.defaults.voiceProfile || channelVoice || cat.defaults.voiceProfile || cat.voiceProfiles[0] || "";
   if (![0, 1, 2].includes(fmt)) return { error: "Format noto'g'ri (0 = 16:9, 1 = Shorts 9:16, 2 = 1:1)." };
   if (tpl && cat.known && cat.templates.length > 0 && !cat.templates.some((t) => t.name === tpl)) return { error: `Shablon topilmadi: "${tpl}".` };
-  if (vc && cat.known && cat.voiceProfiles.length > 0 && !cat.voiceProfiles.includes(vc)) return { error: `Ovoz profili topilmadi: "${vc}".` };
+  // Bot ro'yxatidagi profil (masalan yangi «Mening ovozim») kompyuter katalogi yangilanmaguncha ham tanlanadi.
+  if (vc && cat.known && cat.voiceProfiles.length > 0 && !cat.voiceProfiles.includes(vc) && !cfg.voice.profiles.some((p) => p.name === vc))
+    return { error: `Ovoz profili topilmadi: "${vc}".` };
   return { template: tpl, format: fmt, voice: vc };
 }
 

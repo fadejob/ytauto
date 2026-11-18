@@ -5,6 +5,7 @@ import { api, cache, confirmBox, openExternal } from "@/lib/client";
 import { FormatText, type BotConfig, type BotConfigInput, type Catalog, type VoiceInfo } from "@/lib/types";
 import type { Toast } from "./App";
 import VoiceProfiles from "./VoiceProfiles";
+import VoiceClone from "./VoiceClone";
 import Library from "./Library";
 import Guests from "./Guests";
 
@@ -178,6 +179,12 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
               </div>
             </div>
             </> : null}
+
+            <VoiceClone toast={toast} onChanged={() => {
+              // Klon profili server tomonda qo'shildi/olib tashlandi: qoralama yangilanadi (saqlanmagan o'zgarishlar bo'lmasa).
+              if (!cfgDirty) api<BotConfig>("/api/config").then((c) => { setCfgSaved(c); setCfg(toDraft(c)); }).catch(() => {});
+              onSaved?.();
+            }} />
 
             <VoiceProfiles
               profiles={cfg.voice.profiles} settings={cfg.voice.settings} defaultProfile={cfg.defaults.voiceProfile} info={voiceInfo}

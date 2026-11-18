@@ -90,6 +90,33 @@ function view(s: Stored): BotConfig {
 
 export async function getConfig(): Promise<BotConfig> { return view(await readStored()); }
 
+/** «Mening ovozim» klon profili (VoiceStudio profil nomi "YtAuto u-<hisob>"): faqat voice-clone.ts boshqaradi. */
+const isCloneProfile = (p: { voice?: string }) => /^YtAuto u-[0-9a-f]{8}$/.test(p.voice ?? "");
+
+async function writeStored(next: Stored) {
+  const json = JSON.stringify(next);
+  await sql()`
+    INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${KEY}, ${json}, now())
+    ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
+}
+
+/**
+ * Klon profilini bot ro'yxatiga qo'yadi (null - olib tashlaydi). makeDefault - yangi mavzular standart ovozi shu bo'ladi.
+ * Olib tashlanganda standart ovoz shu profil bo'lsa, standart bo'shatiladi (kompyuter o'z standartini ishlatadi).
+ */
+export async function setCloneProfile(p: { name: string; model: string; voice: string } | null, makeDefault: boolean): Promise<void> {
+  const cur = await readStored();
+  const old = (cur.voice?.profiles ?? []).find(isCloneProfile);
+  const profiles = (cur.voice?.profiles ?? []).filter((x) => !isCloneProfile(x) && (!p || x.name !== p.name));
+  if (p) profiles.push({ name: p.name, model: p.model, voice: p.voice, language: "en", speed: 1 });
+  const defaults = { ...(cur.defaults ?? {}) };
+  if (p && makeDefault) defaults.voiceProfile = p.name;
+  else if (!p && old && defaults.voiceProfile === old.name) defaults.voiceProfile = "";
+  const next: Stored = { ...cur, voice: { ...(cur.voice ?? {}), profiles }, defaults };
+  if (isDemo()) { demoStored = next; return; }
+  await writeStored(next);
+}
+
 /** Faqat server ichida: OAuth client (YouTube ulash uchun). Brauzerga qaytarilmaydi. */
 export async function getYouTubeClient(): Promise<{ clientId: string; clientSecret: string }> {
   const s = await readStored();
@@ -137,7 +164,9 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
       profiles: (input.voice?.profiles ?? []).map((p) => ({
         name: String(p.name).trim().slice(0, 60), model: String(p.model).trim(), voice: String(p.voice ?? "").trim(),
         language: String(p.language || "en").trim(), speed: num(p.speed ?? 1, 0.5, 2, "Ovoz tezligi"),
-      })).filter((p) => p.name && p.model),
+      })).filter((p) => p.name && p.model && !isCloneProfile(p))
+        // «Mening ovozim» faqat namuna bo'limidan boshqariladi: oddiy saqlashda yo'qolib qolmaydi va qo'lda yasab bo'lmaydi.
+        .concat((cur.voice?.profiles ?? []).filter(isCloneProfile)),
       settings: (() => {
         const v = input.voice?.settings ?? DEF.voice.settings;
         if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/i.test(v.baseUrl.trim())) throw new Error("VoiceStudio manzili faqat lokal bo'lsin (http://127.0.0.1:3900).");
@@ -170,9 +199,6 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
     },
   };
   if (isDemo()) { demoStored = next; return view(next); }
-  const json = JSON.stringify(next);
-  await sql()`
-    INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${KEY}, ${json}, now())
-    ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
+  await writeStored(next);
   return view(next);
 }
