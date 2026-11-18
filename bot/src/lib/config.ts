@@ -20,6 +20,7 @@ type Stored = {
   openFilm?: Partial<BotConfig["openFilm"]>;
   claude?: Partial<BotConfig["claude"]>;
   voice?: { profiles?: BotConfig["voice"]["profiles"]; settings?: Partial<BotConfig["voice"]["settings"]> };
+  visuals?: Partial<BotConfig["visuals"]>;
 };
 
 const DEF: BotConfig = {
@@ -37,6 +38,7 @@ const DEF: BotConfig = {
     notifySubscribers: true, setRecordingDate: false, locationDescription: "", defaultTags: "", defaultDescription: "", minLeadMinutes: 30,
   },
   openFilm: { renderWorkers: 1, fps: 30, loudnessLufs: -14, burnSubtitles: true, lookFullAfterRender: true, renderTimeoutMinutes: 90 },
+  visuals: { realMedia: true, maxMedia: 16, templateStyleGuide: true, styleReview: true, minStyleScore: 6.5 },
 };
 
 let demoStored: Stored = {};
@@ -83,6 +85,7 @@ function view(s: Stored): BotConfig {
     defaults: { ...DEF.defaults, ...(s.defaults ?? {}) },
     youtube: { ...DEF.youtube, ...y, clientSecretSet: !!clientSecret },
     openFilm: { ...DEF.openFilm, ...(s.openFilm ?? {}) },
+    visuals: { ...DEF.visuals, ...(s.visuals ?? {}) },
     claude: { ...DEF.claude, ...(s.claude ?? {}) },
     voice: { profiles: s.voice?.profiles ?? [], settings: { ...DEF.voice.settings, ...(s.voice?.settings ?? {}) } },
   };
@@ -197,6 +200,11 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
       loudnessLufs: num(input.openFilm.loudnessLufs, -40, 0, "Loudness (LUFS)"), burnSubtitles: !!input.openFilm.burnSubtitles,
       lookFullAfterRender: !!input.openFilm.lookFullAfterRender, renderTimeoutMinutes: Math.round(num(input.openFilm.renderTimeoutMinutes, 5, 600, "Render timeout")),
     },
+    visuals: input.visuals ? {
+      realMedia: !!input.visuals.realMedia, maxMedia: Math.round(num(input.visuals.maxMedia, 0, 40, "Rasmlar soni")),
+      templateStyleGuide: !!input.visuals.templateStyleGuide, styleReview: !!input.visuals.styleReview,
+      minStyleScore: num(input.visuals.minStyleScore, 0, 10, "Shablonga moslik bali"),
+    } : cur.visuals,
   };
   if (isDemo()) { demoStored = next; return view(next); }
   await writeStored(next);

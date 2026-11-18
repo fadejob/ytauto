@@ -76,6 +76,8 @@ export type BotConfig = {
     notifySubscribers: boolean; setRecordingDate: boolean; locationDescription: string; defaultTags: string; defaultDescription: string; minLeadMinutes: number;
   };
   openFilm: { renderWorkers: number; fps: number; loudnessLufs: number; burnSubtitles: boolean; lookFullAfterRender: boolean; renderTimeoutMinutes: number };
+  /** Video sifati: ochiq manbalardan real rasm/logo/ikonlar, shablon uslub qo'llanmasi va shablonga moslik tekshiruvi. */
+  visuals: { realMedia: boolean; maxMedia: number; templateStyleGuide: boolean; styleReview: boolean; minStyleScore: number };
 };
 export type GeminiKeyInfo = { id: string; hint: string };
 /**
@@ -90,6 +92,7 @@ export type BotConfigInput = {
   openFilm: BotConfig["openFilm"];
   claude: BotConfig["claude"];
   voice: BotConfig["voice"];
+  visuals: BotConfig["visuals"];
 };
 
 export type Catalog = {

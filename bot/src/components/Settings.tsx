@@ -18,6 +18,7 @@ const toDraft = (c: BotConfig): Draft => ({
   defaults: { ...c.defaults },
   youtube: { ...c.youtube, clientSecret: "" },
   openFilm: { ...c.openFilm },
+  visuals: { ...c.visuals },
   claude: { ...c.claude },
   voice: { profiles: c.voice.profiles.map((p) => ({ ...p })), settings: { ...c.voice.settings } },
 });
@@ -107,6 +108,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
   const D = (p: Partial<Draft["defaults"]>) => setCfg((c) => c && { ...c, defaults: { ...c.defaults, ...p } });
   const Y = (p: Partial<Draft["youtube"]>) => setCfg((c) => c && { ...c, youtube: { ...c.youtube, ...p } });
   const O = (p: Partial<Draft["openFilm"]>) => setCfg((c) => c && { ...c, openFilm: { ...c.openFilm, ...p } });
+  const V = (p: Partial<Draft["visuals"]>) => setCfg((c) => c && { ...c, visuals: { ...c.visuals, ...p } });
   const C = (p: Partial<Draft["claude"]>) => setCfg((c) => c && { ...c, claude: { ...c.claude, ...p } });
   const num = (v: string) => (v === "" ? 0 : Number(v));
 
@@ -245,6 +247,18 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
               <label className="chk"><input type="checkbox" checked={cfg.openFilm.lookFullAfterRender} onChange={(e) => O({ lookFullAfterRender: e.target.checked })} /><span>Renderdan keyin to&apos;liq ko&apos;rik (look --full)</span></label>
             </div>
             </> : null}
+
+            <div className="sect">Video sifati</div>
+            <div className="card formcard">
+              <label className="chk"><input type="checkbox" checked={cfg.visuals.realMedia} onChange={(e) => V({ realMedia: e.target.checked })} /><span>Real rasm, logo va ikonlar (Iconify, Openverse, Wikimedia — faqat CC0, Public domain, CC BY)</span></label>
+              <label className="chk"><input type="checkbox" checked={cfg.visuals.templateStyleGuide} onChange={(e) => V({ templateStyleGuide: e.target.checked })} /><span>Shablon uslubini tahlil qilish (ranglar, shrift, kompozitsiya — Gemini)</span></label>
+              <label className="chk"><input type="checkbox" checked={cfg.visuals.styleReview} onChange={(e) => V({ styleReview: e.target.checked })} /><span>Tayyor videoni shablon bilan solishtirish va mos kelmasa tuzattirish</span></label>
+              <div className="grid2">
+                <div className="field"><label>Bitta videoga rasmlar (0–40)</label><input className="input" inputMode="numeric" value={cfg.visuals.maxMedia} onChange={(e) => V({ maxMedia: num(e.target.value) })} /></div>
+                <div className="field"><label>Shablonga moslik bali (0–10)</label><input className="input" inputMode="decimal" value={cfg.visuals.minStyleScore} onChange={(e) => V({ minStyleScore: num(e.target.value) })} /></div>
+              </div>
+              <div className="hint">CC BY rasmlar mualliflari video tavsifiga avtomatik yoziladi.</div>
+            </div>
 
             <div className="sect">YouTube</div>
             <div className="card formcard">
