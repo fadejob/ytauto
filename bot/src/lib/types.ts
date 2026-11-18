@@ -108,6 +108,43 @@ export type State = {
   account: { guest: boolean; hostLabel: string | null };
 };
 
+// ------------------------------------------------------------------ kanal konteksti
+/** Bitta video tahlili. source: "video" - Gemini videoni ko'rib chiqdi; "metadata" - video ochiq emas, faqat sarlavha/tavsif/matn. */
+export type VideoInsight = {
+  videoId: string; title: string; publishedAt: string; durationSec: number; views: number; likes: number; comments: number; isShort: boolean;
+  source: "video" | "metadata";
+  summary: string;
+  script: { hook: string; structure: string; tone: string; pacing: string; cta: string; transcriptExcerpt: string };
+  voice: { gender: string; style: string; pace: string; energy: string };
+  montage: { visualStyle: string; editingPace: string; onScreenText: string; transitions: string; music: string };
+  subtitles: { present: boolean; style: string };
+};
+
+export type ChannelContext = {
+  channel: { id: string; title: string; description: string; subscribers: number; videoCount: number; url: string };
+  summary: string; niche: string; audience: string; tone: string;
+  titlePatterns: string[]; recurringTopics: string[];
+  scriptGuidelines: string[]; montageGuidelines: string[]; subtitleGuidelines: string[];
+  voice: { gender: "female" | "male" | "unknown"; style: string; pace: string; recommendedProfile: string };
+  doList: string[]; avoidList: string[];
+  videos: VideoInsight[];
+  recentTitles: string[];
+};
+
+export type Suggestion = { id: number; forDate: string; topic: string; notes: string; reason: string; status: "new" | "accepted" | "dismissed" };
+
+/** Botdagi «Kanal» sahifasi. status "none" - hali tahlil qilinmagan. */
+export type ChannelState = {
+  connected: boolean; channelTitle: string;
+  status: "none" | "idle" | "running" | "failed"; error: string | null; enabled: boolean;
+  analyzedAt: string | null; startedAt: string | null;
+  context: ChannelContext | null;
+  /** Promptlarga qo'shiladigan ixcham matnlar (worker shuni ishlatadi). */
+  blocks: { script: string; montage: string; voiceProfile: string } | null;
+  suggestions: Suggestion[];
+  suggestionsPending: boolean;
+};
+
 /** Asosiy hisob yaratgan qo'shimcha token (mehmon videolari ko'rsatilmaydi). */
 export type GuestToken = { id: string; label: string; createdAt: string; telegramUsers: number };
 

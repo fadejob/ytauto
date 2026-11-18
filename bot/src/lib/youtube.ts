@@ -107,6 +107,26 @@ async function writeStored(s: Stored | null) {
 
 export const disconnectYouTube = () => writeStored(null);
 
+/** Faqat server ichida (hisob konteksti): fon ishi tranzaksiyadan tashqarida token olishi uchun. Ulanmagan bo'lsa null. */
+export async function youtubeCredentials(): Promise<{ refreshToken: string; clientId: string; clientSecret: string; channelTitle: string } | null> {
+  const [s, c] = await Promise.all([readStored(), getYouTubeClient()]);
+  if (!s?.refreshToken || !c.clientId || !c.clientSecret) return null;
+  return { refreshToken: s.refreshToken, clientId: c.clientId, clientSecret: c.clientSecret, channelTitle: s.channelTitle };
+}
+
+/** Refresh token → access token (tarmoq; bazaga tegmaydi). */
+export async function youtubeAccessToken(c: { refreshToken: string; clientId: string; clientSecret: string }): Promise<string> {
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: c.clientId, client_secret: c.clientSecret, refresh_token: c.refreshToken, grant_type: "refresh_token" }),
+    signal: AbortSignal.timeout(20_000),
+  });
+  const j = (await res.json().catch(() => ({}))) as { access_token?: string; error?: string; error_description?: string };
+  if (!res.ok || !j.access_token)
+    throw new Error(j.error === "invalid_grant" ? "YouTube ruxsati bekor qilingan yoki muddati tugagan — kanalni qayta ulang." : `YouTube token yangilanmadi: ${j.error_description ?? j.error ?? res.status}`);
+  return j.access_token;
+}
+
 /**
  * Ulanishni HAQIQATAN tekshiradi (faqat bazadagi belgiga ishonmaydi): saqlangan refresh token bilan Google'dan access token oladi va
  * kanal nomini so'raydi. Token bekor qilingan/muddati o'tgan (masalan Google "Testing" rejimida 7 kundan keyin) bo'lsa sababini aytadi.

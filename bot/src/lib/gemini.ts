@@ -19,10 +19,13 @@ function errorMessage(raw: string): string {
  * Gemini generateContent: botda saqlangan kalitlarni navbat bilan sinaydi. 429 (limit tugadi) yoki kalit yaroqsiz bo'lsa
  * keyingi kalitga o'tadi; hammasi limitda bo'lsa xato bilan to'xtaydi.
  */
-export async function geminiGenerate(body: Record<string, unknown>, opts: { model?: string; timeoutMs?: number } = {}): Promise<{ data: GeminiResponse; model: string }> {
-  const { keys, model: cfgModel } = await getGeminiKeys();
+export async function geminiGenerate(
+  body: Record<string, unknown>,
+  opts: { model?: string; timeoutMs?: number; /** Tranzaksiyadan tashqarida (fon ishi): kalitlar oldindan o'qilgan. */ keys?: { keys: string[]; model: string } } = {},
+): Promise<{ data: GeminiResponse; model: string }> {
+  const { keys, model: cfgModel } = opts.keys ?? (await getGeminiKeys());
   if (!keys.length) throw new Error("Gemini API kaliti kiritilmagan (Sozlamalar → Gemini).");
-  const model = opts.model || process.env.GEMINI_CHAT_MODEL?.trim() || cfgModel;
+  const model = opts.model || (opts.keys ? cfgModel : process.env.GEMINI_CHAT_MODEL?.trim() || cfgModel);
   const start = Math.min(active, keys.length - 1);
   let limited = 0;
   let lastError = "";
@@ -67,3 +70,15 @@ export type GeminiResponse = {
   candidates?: { content?: GeminiContent; finishReason?: string }[];
   promptFeedback?: { blockReason?: string };
 };
+
+/** Javobning matn qismlari (fikrlash qismlarisiz). */
+export const responseText = (d: GeminiResponse) =>
+  (d.candidates?.[0]?.content?.parts ?? []).filter((p) => !p.thought && typeof p.text === "string").map((p) => p.text).join("").trim();
+
+/** responseMimeType=application/json javobini o'qiydi (ba'zan ```json bilan o'ralgan bo'ladi). */
+export function responseJson<T>(d: GeminiResponse): T {
+  if (d.promptFeedback?.blockReason) throw new Error(`Gemini so'rovni blokladi: ${d.promptFeedback.blockReason}`);
+  const raw = responseText(d).replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+  if (!raw) throw new Error(`Gemini bo'sh javob qaytardi (${d.candidates?.[0]?.finishReason ?? "sabab noma'lum"}).`);
+  try { return JSON.parse(raw) as T; } catch { throw new Error("Gemini JSON o'rniga boshqa matn qaytardi."); }
+}
