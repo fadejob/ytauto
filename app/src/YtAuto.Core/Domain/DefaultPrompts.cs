@@ -8,7 +8,22 @@ namespace YtAuto.Core.Domain;
 public static class DefaultPrompts
 {
     /// <summary>Eski promptlardagi qat'iy uzunlik qatori (avtomatik dinamik qoidaga almashtiriladi).</summary>
-    public const string LegacyLengthLine = "Target length: about {duration_sec} seconds of narration, which is about {target_words} spoken words.";
+    /// <summary>
+    /// Oldingi standart promptdagi tavsif/tag qatorlari va ularning yangisi: saqlangan (o'zgartirilgan bo'lsa ham) promptda shu qatorlar
+    /// almashtiriladi - tavsif va aynan 5 ta tag har videoda ssenariy bilan birga yoziladi.
+    /// </summary>
+    public static readonly (string Old, string New)[] ScriptLineUpdates =
+    {
+        ("- youtube_description (optional): 2 short paragraphs summarising the video. Mention sources only if they are in the fact sheet.",
+         "- youtube_description: 2 short paragraphs summarising the video. Mention sources only if they are in the fact sheet."),
+        ("- tags (optional): up to 15 short search tags.",
+         "- tags: exactly 5 short search tags for this video (1-3 words each, no # sign), most specific first."),
+    };
+
+    /// <summary>Bitta videoga ssenariy bilan yoziladigan tag soni.</summary>
+    public const int TagsPerVideo = 5;
+
+    public const string LegacyLengthLine ="Target length: about {duration_sec} seconds of narration, which is about {target_words} spoken words.";
 
     public const string DynamicLengthRule =
         "Length: there is no fixed duration. Use as many words as this topic needs to be explained clearly and completely, and no more: " +
@@ -100,8 +115,8 @@ Video format: {format}
 Return JSON with:
 - subtitle_text: the full text of the video. It is read aloud by a text-to-speech voice AND shown as subtitles, word for word.
 - youtube_title: the YouTube title. It is saved and used when the video is published.
-- youtube_description (optional): 2 short paragraphs summarising the video. Mention sources only if they are in the fact sheet.
-- tags (optional): up to 15 short search tags.
+- youtube_description: 2 short paragraphs summarising the video. Mention sources only if they are in the fact sheet.
+- tags: exactly 5 short search tags for this video (1-3 words each, no # sign), most specific first.
 - sources (optional): only URLs from the fact sheet that you actually used. Empty if the fact sheet is empty.
 
 Rules for subtitle_text:

@@ -853,12 +853,15 @@ public sealed class SqliteSettingsStore : ISettingsStore
         catch { /* buzilgan JSON: lokal qiymatlar ishlatiladi */ }
     }
 
-    private static string MigratePrompt(string p, bool script)
+    internal static string MigratePrompt(string p, bool script)
     {
         if (script)
         {
             var old = new[] { DefaultPrompts.ScriptPrevious, DefaultPrompts.ScriptPrevious.Replace("{length_rule}", DefaultPrompts.LegacyLengthLine) };
-            return string.IsNullOrWhiteSpace(p) || old.Any(o => Same(o, p)) ? DefaultPrompts.Script : p;
+            if (string.IsNullOrWhiteSpace(p) || old.Any(o => Same(o, p))) return DefaultPrompts.Script;
+            // Tavsif va 5 ta tag: eski qatorlar (foydalanuvchi promptni o'zgartirgan bo'lsa ham) yangisiga almashtiriladi.
+            foreach (var (o, n) in DefaultPrompts.ScriptLineUpdates) p = p.Replace(o, n);
+            return p;
         }
         return string.IsNullOrWhiteSpace(p) || Same(DefaultPrompts.MontagePrevious, p) ? DefaultPrompts.Montage : p;
     }

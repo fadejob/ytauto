@@ -34,7 +34,7 @@ const DEF: BotConfig = {
   defaults: { language: "en", format: 0, template: "", voiceProfile: "" },
   youtube: {
     clientId: "", clientSecretSet: false, publishTime: "18:00", timeZoneId: "Asia/Tashkent", categoryId: "27", regionCode: "UZ",
-    madeForKids: false, containsSyntheticMedia: true, license: "youtube", embeddable: true, publicStatsViewable: true,
+    madeForKids: false, containsSyntheticMedia: false, license: "youtube", embeddable: true, publicStatsViewable: true,
     notifySubscribers: true, setRecordingDate: false, locationDescription: "", defaultTags: "", defaultDescription: "", minLeadMinutes: 30,
   },
   openFilm: { renderWorkers: 1, fps: 30, loudnessLufs: -14, burnSubtitles: true, lookFullAfterRender: true, renderTimeoutMinutes: 90 },

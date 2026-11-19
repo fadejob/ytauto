@@ -48,11 +48,12 @@ public sealed partial class JobRunner
         rec.State = StageState.Running; rec.Attempts++; rec.StartedAtUtc = _x.Clock.UtcNow; rec.ErrorCode = null; rec.ErrorMessage = null;
         _x.Store.SaveStage(rec);
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var tags = script.Tags.Concat(c.S.YouTube.DefaultTags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            .Distinct(StringComparer.OrdinalIgnoreCase).Take(30).ToList();
+        var tags = ComposeTags(script.Tags, c.S.YouTube.DefaultTags);
+        var description = ComposeDescription(c.Job.Description, MediaCreditsBlock(c), c.S.YouTube.DefaultDescription);
+        c.Log.Info(DescribeMetadataSources(ScriptValidator.CleanTags(script.Tags, DefaultPrompts.TagsPerVideo).Count, !string.IsNullOrWhiteSpace(c.Job.Description), c.S.YouTube.DefaultTags, c.S.YouTube.DefaultDescription), "Upload");
         var req = new UploadRequest
         {
-            VideoPath = c.Job.VideoArchivePath!, Title = Trunc(c.Job.DisplayTitle, 100), Description = ComposeDescription(c.Job.Description, MediaCreditsBlock(c), c.S.YouTube.DefaultDescription),
+            VideoPath = c.Job.VideoArchivePath!, Title = Trunc(c.Job.DisplayTitle, 100), Description = description,
             Tags = tags, CategoryId = c.S.YouTube.CategoryId, Language = c.Job.Language, PublishAtUtc = c.Job.PublishAtUtc, PublishNow = c.PublishNow,
             MadeForKids = c.S.YouTube.MadeForKids, ContainsSyntheticMedia = c.S.YouTube.ContainsSyntheticMedia, ThumbnailPath = c.Job.ThumbnailPath,
             License = c.S.YouTube.License == "creativeCommon" ? "creativeCommon" : "youtube", Embeddable = c.S.YouTube.Embeddable,
@@ -267,15 +268,45 @@ public sealed partial class JobRunner
         }
     }
 
+    /// <summary>YouTube barcha taglar uchun 500 belgi chegarasi (bo'sh joyli taglar qo'shtirnoq bilan hisoblanadi).</summary>
+    private const int MaxTagChars = 500;
+
     /// <summary>
-    /// YouTube tavsifi (5000 belgi): video tavsifi + rasm mualliflari (CC BY talabi) + kanal standart matni.
-    /// Joy yetmasa video tavsifi qisqartiriladi; mualliflar bloki kesilmaydi.
+    /// Taglar: kanalda standart taglar bo'lsa (Sozlamalar → YouTube, vergul bilan) - FAQAT ular; bo'lmasa - ssenariy bilan Gemini yozgan
+    /// 5 ta tag. Takrorlar olib tashlanadi; YouTube 500 belgi chegarasidan oshganlari tashlanadi.
+    /// </summary>
+    internal static List<string> ComposeTags(IEnumerable<string>? scriptTags, string? channelDefaults)
+    {
+        var defaults = ScriptValidator.CleanTags((channelDefaults ?? "").Split(','), 100);
+        var source = defaults.Count > 0 ? defaults : ScriptValidator.CleanTags(scriptTags, DefaultPrompts.TagsPerVideo);
+        var list = new List<string>(); var used = 0;
+        foreach (var t in source)
+        {
+            var cost = t.Length + (t.Contains(' ') ? 2 : 0) + (list.Count > 0 ? 1 : 0);
+            if (used + cost > MaxTagChars) continue;
+            list.Add(t); used += cost;
+        }
+        return list;
+    }
+
+    /// <summary>Logda: tavsif va taglar qayerdan olindi (kanal standarti yoki Gemini).</summary>
+    internal static string DescribeMetadataSources(int scriptTags, bool scriptDescription, string? defaultTags, string? defaultDescription)
+    {
+        var defTags = ScriptValidator.CleanTags((defaultTags ?? "").Split(','), 100).Count;
+        var tags = defTags > 0 ? $"kanal standarti ({defTags} ta)" : scriptTags > 0 ? $"Gemini yozgan ({scriptTags} ta)" : "yo'q";
+        var desc = !string.IsNullOrWhiteSpace(defaultDescription) ? "kanal standarti" : scriptDescription ? "Gemini yozgan" : "yo'q";
+        return $"Taglar: {tags}; tavsif: {desc}.";
+    }
+
+    /// <summary>
+    /// YouTube tavsifi (5000 belgi): kanalda standart tavsif bo'lsa - FAQAT u (Gemini yozgani olinmaydi), bo'lmasa - Gemini yozgan tavsif.
+    /// Rasm mualliflari bloki (CC BY litsenziya talabi) har doim qo'shiladi va kesilmaydi; joy yetmasa video tavsifi qisqartiriladi.
     /// </summary>
     internal static string ComposeDescription(string? description, string credits, string? channelDefault)
     {
         const int Max = 5000;
         var tail = string.Join("\n\n", new[] { credits?.Trim(), channelDefault?.Trim() }.Where(s => !string.IsNullOrWhiteSpace(s)));
-        var main = description?.Trim() ?? "";
+        var main = string.IsNullOrWhiteSpace(channelDefault) ? description?.Trim() ?? "" : "";
         if (tail.Length == 0) return Trunc(main, Max);
         var room = Max - tail.Length - 2;
         if (room <= 0) return Trunc(tail, Max);

@@ -34,11 +34,13 @@ public class FlowTests
     }
 
     [Fact]
-    public void GeminiSchemaRequiresOnlySubtitleAndTitle()
+    public void GeminiSchemaRequiresTextTitleDescriptionAndFiveTags()
     {
         var schema = GeminiScriptGenerator.ScriptSchema();
         var required = schema["required"]!.AsArray().Select(n => n!.GetValue<string>()).ToList();
-        Assert.Equal(new[] { "subtitle_text", "youtube_title" }, required);
+        Assert.Equal(new[] { "subtitle_text", "youtube_title", "youtube_description", "tags" }, required);
+        Assert.Equal(5, schema["properties"]!["tags"]!["minItems"]!.GetValue<int>());
+        Assert.Equal(5, schema["properties"]!["tags"]!["maxItems"]!.GetValue<int>());
         Assert.Null(schema["properties"]!["scenes"]);
     }
 
