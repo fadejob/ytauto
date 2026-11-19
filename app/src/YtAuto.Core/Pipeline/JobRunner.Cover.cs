@@ -19,6 +19,17 @@ public sealed partial class JobRunner
     private async Task RenderCoverAsync(JobContext c, IFilmSession film)
     {
         if (File.Exists(c.CoverJpg)) File.Delete(c.CoverJpg);
+        if (File.Exists(c.CoverHtml))
+        {
+            // `openfilm look` sahifada window.film.frame() ni kutadi (10 s, keyin rad etadi). Muqova harakatsiz bo'lgani uchun
+            // Claude ko'pincha skriptsiz statik sahifa yozadi - shunda bo'sh frame() qo'shiladi.
+            try
+            {
+                var html = await File.ReadAllTextAsync(c.CoverHtml, c.Ct).ConfigureAwait(false);
+                if (WithFilmHook(html) is { } fixedHtml) await File.WriteAllTextAsync(c.CoverHtml, fixedHtml, c.Ct).ConfigureAwait(false);
+            }
+            catch (IOException e) { c.Log.Warn("cover.html o'qilmadi: " + e.Message, "Render"); }
+        }
         if (File.Exists(c.CoverHtml) && await TryLookCoverAsync(c, film, new[] { "cover.html", "0" }, "look-cover").ConfigureAwait(false))
         {
             c.Log.Info("Muqova (cover.html) tayyor.", "Render");
@@ -29,6 +40,18 @@ public sealed partial class JobRunner
         var dur = c.Job.AudioDurationSec ?? 10;
         var t = Math.Clamp(dur * 0.08, 0.8, 3.0).ToString("0.0", CultureInfo.InvariantCulture);
         if (await TryLookCoverAsync(c, film, new[] { t }, "look-cover-frame").ConfigureAwait(false)) c.Log.Info($"Muqova loyiha kadridan ({t}s) olindi.", "Render");
+    }
+
+    /// <summary>
+    /// Statik muqova sahifasiga `window.film` (bo'sh frame) qo'shadi; sahifada allaqachon bo'lsa null (o'zgartirilmaydi).
+    /// </summary>
+    internal static string? WithFilmHook(string html)
+    {
+        if (html.Contains("window.film", StringComparison.Ordinal)) return null;
+        const string hook = "<script>window.film={duration:1,frame(){}}</script>";
+        var at = html.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
+        if (at < 0) at = html.LastIndexOf("</html>", StringComparison.OrdinalIgnoreCase);
+        return at < 0 ? html + "\n" + hook + "\n" : html[..at] + hook + "\n" + html[at..];
     }
 
     /// <summary>`openfilm look ...` chiqargan PNG'ni topib cover.jpg ga aylantiradi. Bo'sh (bir xil rangli) rasm qabul qilinmaydi.</summary>

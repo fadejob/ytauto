@@ -311,7 +311,7 @@ internal static class EditorInstructions
         sb.AppendLine($"- A short, punchy headline of 2–5 words taken from the video title{(title.Length > 0 ? $" \"{title}\"" : "")} — huge (at least {(int)Math.Round(Math.Min(w, h) * 0.11)} px), bold, max 2 lines, near-white with a dark outline or shadow, one key word in the accent colour.");
         sb.AppendLine("- One big focal visual that makes the topic obvious at a glance (object, diagram, contrast/comparison, big number). Strong contrast, readable at phone thumbnail size.");
         sb.AppendLine($"- Keep the bottom-right corner (about {(int)Math.Round(w * 0.16)}x{(int)Math.Round(h * 0.12)} px) empty: YouTube draws the duration there. No subtitles, no small text, no logos, no URLs.");
-        sb.AppendLine("- The picture is complete at t=0 (no animation needed; it must not depend on time). Check it with `openfilm look cover.html 0` and fix anything cut off or unreadable.");
+        sb.AppendLine("- The picture is complete at t=0 (no animation needed; it must not depend on time), but the page still needs `<script>window.film={duration:1,frame(){}}</script>` — `openfilm look` refuses a page without it. Check it with `openfilm look cover.html 0` and fix anything cut off or unreadable.");
         sb.AppendLine();
     }
 

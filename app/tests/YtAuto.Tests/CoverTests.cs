@@ -50,4 +50,16 @@ public class CoverTests
         // Chiqishda yo'l bo'lmasa - keshdagi eng yangi PNG.
         Assert.Equal(png, JobRunner.LookPng(film, new ToolRunResult { StdoutTail = "done" }));
     }
+
+    [Fact]
+    public void WithFilmHook_AddsFrameToStaticCoverOnly()
+    {
+        // Skriptsiz statik muqova: openfilm look "window.film ... did not appear" deb rad etardi.
+        var fixedHtml = JobRunner.WithFilmHook("<html><body><div>Cover</div></body></html>");
+        Assert.NotNull(fixedHtml);
+        Assert.Contains("<script>window.film={duration:1,frame(){}}</script>\n</body>", fixedHtml);
+        Assert.Null(JobRunner.WithFilmHook(fixedHtml!));
+        Assert.Null(JobRunner.WithFilmHook("<body><script>window.film={duration:2,frame(t){}}</script></body>"));
+        Assert.EndsWith("</script>\n", JobRunner.WithFilmHook("<div>no body tag</div>"));
+    }
 }
