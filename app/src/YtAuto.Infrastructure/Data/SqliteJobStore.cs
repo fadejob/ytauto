@@ -788,6 +788,11 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 if (vis["templateMotion"] is System.Text.Json.Nodes.JsonValue tm && tm.TryGetValue<bool>(out var tmv)) s.Visuals.TemplateMotionGuide = tmv;
                 if (vis["styleReview"] is System.Text.Json.Nodes.JsonValue sr && sr.TryGetValue<bool>(out var srv)) s.Visuals.StyleReview = srv;
                 if (vis["minStyleScore"] is System.Text.Json.Nodes.JsonValue ms && ms.TryGetValue<double>(out var msv)) s.Visuals.MinStyleScore = Math.Clamp(msv, 0, 10);
+                // Stok video/rasm nomzodlari (OpenFilm qidiradi, Claude tanlaydi).
+                if (vis["openFilmStock"] is System.Text.Json.Nodes.JsonValue os && os.TryGetValue<bool>(out var osv)) s.Visuals.OpenFilmStock = osv;
+                if (vis["stockImages"] is System.Text.Json.Nodes.JsonValue si && si.TryGetValue<int>(out var siv)) s.Visuals.StockImagesPerScene = Math.Clamp(siv, 1, 8);
+                if (vis["stockClips"] is System.Text.Json.Nodes.JsonValue sc && sc.TryGetValue<int>(out var scv)) s.Visuals.StockClipsPerScene = Math.Clamp(scv, 0, 4);
+                if (vis["stockScenes"] is System.Text.Json.Nodes.JsonValue ss && ss.TryGetValue<int>(out var ssv)) s.Visuals.MaxStockScenes = Math.Clamp(ssv, 0, 20);
                 // Sifatli stok foto manbalari (bepul kalitlar): bo'lmasa Openverse/Wikimedia ishlatiladi.
                 s.Visuals.PexelsApiKey = vis["pexelsApiKey"] is System.Text.Json.Nodes.JsonValue pk && pk.TryGetValue<string>(out var pkv) ? pkv.Trim() : "";
                 s.Visuals.PixabayApiKey = vis["pixabayApiKey"] is System.Text.Json.Nodes.JsonValue xk && xk.TryGetValue<string>(out var xkv) ? xkv.Trim() : "";

@@ -80,7 +80,9 @@ export type BotConfig = {
    * Video sifati: bepul manbalardan real rasm/logo/ikonlar, shablon uslub qo'llanmasi va shablonga moslik tekshiruvi.
    * pexelsKeySet/pixabayKeySet - sifatli stok foto kalitlari saqlanganmi (kalitning o'zi qaytarilmaydi).
    */
-  visuals: { realMedia: boolean; maxMedia: number; templateStyleGuide: boolean; templateMotion: boolean; styleReview: boolean; minStyleScore: number; pexelsKeySet: boolean; pixabayKeySet: boolean };
+  visuals: { realMedia: boolean; maxMedia: number; templateStyleGuide: boolean; templateMotion: boolean; styleReview: boolean; minStyleScore: number; pexelsKeySet: boolean; pixabayKeySet: boolean;
+    /** OpenFilm stok qidiruvi: har sahnaga rasm/video nomzodlari, tanlovni Claude qiladi. */
+    openFilmStock: boolean; stockImages: number; stockClips: number; stockScenes: number };
 };
 export type GeminiKeyInfo = { id: string; hint: string };
 /**

@@ -208,6 +208,19 @@ public class StockMediaTests
         Assert.Contains(h.Log.Lines, l => l.StartsWith("W ") && l.Contains("media_selection.json yozmadi"));
     }
 
+    [Fact]
+    public void BotConfig_ReadsStockSettings_ClampedToOpenFilmLimits()
+    {
+        using var t = new TempDir();
+        var db = new YtAuto.Infrastructure.Data.SqliteJobStore(Path.Combine(t.Path, "db.sqlite"));
+        db.SetSetting(YtAuto.Infrastructure.Data.SqliteSettingsStore.ConfigKey,
+            """{"visuals":{"openFilmStock":false,"stockImages":12,"stockClips":2,"stockScenes":6,"pexelsApiKey":" pk "}}""");
+        var v = new YtAuto.Infrastructure.Data.SqliteSettingsStore(db, () => new AppSettings(), db).Load().Visuals;
+        Assert.Equal((false, 8, 2, 6, "pk"), (v.OpenFilmStock, v.StockImagesPerScene, v.StockClipsPerScene, v.MaxStockScenes, v.PexelsApiKey));
+        var d = new AppSettings().Visuals;
+        Assert.Equal((true, 5, 3, 8), (d.OpenFilmStock, d.StockImagesPerScene, d.StockClipsPerScene, d.MaxStockScenes));
+    }
+
     // ------------------------------------------------------------ OpenFilm javobi va yordamchilar
 
     [Fact]

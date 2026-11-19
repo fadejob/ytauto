@@ -270,7 +270,13 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
                     {cfg.visuals.pixabayKeySet ? <button className="btn danger" type="button" onClick={() => V({ pixabayKeySet: false, pixabayApiKey: "" })}>O&apos;chirish</button> : null}
                   </div></div>
               </div>
-              <div className="hint">Fotolar sifat tartibida olinadi: Pexels → Pixabay (kalit kiritilgan bo&apos;lsa) → Openverse → Wikimedia Commons. Ikon va logolar — Iconify. Faqat bepul litsenziyalar (Pexels/Pixabay License, CC0, Public domain, CC BY); CC BY mualliflari video tavsifiga avtomatik yoziladi.</div>
+              <label className="chk"><input type="checkbox" checked={cfg.visuals.openFilmStock} onChange={(e) => V({ openFilmStock: e.target.checked })} /><span>Stok video va rasmlarni OpenFilm qidirsin, Claude eng sifatli va mosini tanlasin (Pexels/Pixabay kaliti kerak)</span></label>
+              {cfg.visuals.openFilmStock ? <div className="grid3">
+                <div className="field"><label>Sahnaga rasm (1–8)</label><input className="input" inputMode="numeric" value={cfg.visuals.stockImages} onChange={(e) => V({ stockImages: num(e.target.value) })} /></div>
+                <div className="field"><label>Sahnaga video (0–4)</label><input className="input" inputMode="numeric" value={cfg.visuals.stockClips} onChange={(e) => V({ stockClips: num(e.target.value) })} /></div>
+                <div className="field"><label>Sahnalar (0–20)</label><input className="input" inputMode="numeric" value={cfg.visuals.stockScenes} onChange={(e) => V({ stockScenes: num(e.target.value) })} /></div>
+              </div> : null}
+              <div className="hint">Kalit kiritilgan bo&apos;lsa OpenFilm har sahna uchun Pexels → Pixabay&apos;dan bir nechta rasm va qisqa video parcha yuklaydi; Claude ularni mavzuga mosligi, sifati (xiralik, o&apos;lcham), suv belgisi va matn bo&apos;yicha tekshirib, yaroqlilari bilan animatsiyali dizayn qiladi. Video parchalar katta (har biri ~5–30 MB). Kalit bo&apos;lmasa yoki hech narsa topilmasa fotolar Openverse/Wikimedia&apos;dan olinadi. Ikon va logolar — Iconify. Faqat bepul litsenziyalar (Pexels/Pixabay License, CC0, Public domain, CC BY); CC BY mualliflari video tavsifiga avtomatik yoziladi.</div>
             </div>
 
             <div className="sect">YouTube</div>
