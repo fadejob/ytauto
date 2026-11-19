@@ -109,3 +109,42 @@ Yangilash tartibi:
 3. Kompyuterlardagi YtAuto'ni yangilang.
 
 Ilova yangilanmaguncha kontekst faqat AI yordamchi va mavzu tavsiyalarida ishlatiladi.
+
+## Claude Code orqali demo video — MCP (sxema v5)
+
+Bot MCP server ham: **`/api/mcp`** (Streamable HTTP, holatsiz). Claude Code foydalanuvchi loyihasini o'rganadi, screenshot va qisqa
+action videolarni oladi va YtAuto'ga yuboradi. Ssenariy, ovoz, subtitr, montaj va render — **YtAuto ichida** (mavjud pipeline).
+
+**Ulash** (token — YtAuto ilovasidagi yoki botdagi qo'shimcha token):
+
+```bash
+claude mcp add --transport http ytauto https://ytauto-kappa.vercel.app/api/mcp --header "Authorization: Bearer yt_..."
+```
+
+So'ng Claude Code'ga: *«Shu loyihaning demo videosini YtAuto orqali yarat»* (chiqarish kerak bo'lsa — aniq ayting).
+
+| Tool | Vazifasi |
+|---|---|
+| `request_media_upload` | Har screenshot/video uchun bir martalik Storage havolasi (PUT, 2 soat). Katta fayllar MCP orqali o'tmaydi. Screenshot ≤ 25 MB, video ≤ 500 MB, ko'pi bilan 30 ta. |
+| `create_demo_video` | Loyiha konteksti + materiallar (har birida nima ko'rinishi, zoom joyi) + talablar (til, davomiylik, auditoriya, ohang, format). Darhol `job_id` qaytaradi — ish asinxron. |
+| `get_video_status` | Bosqichlar (script → voice → align → edit → render → validate → archive), foiz, navbatdagi o'rni, kompyuter online'mi, oxirgi loglar. |
+| `get_video_result` | Title, tavsif, davomiylik, MP4 / muqova / SRT uchun 24 soatlik havolalar, kompyuterdagi arxiv yo'li, YouTube havolasi. |
+| `publish_video` | Faqat foydalanuvchi aniq buyurganda (`confirm: true`) — **faqat asosiy hisob YouTube kanaliga**. Tayyor fayl yuklanadi (qayta render qilinmaydi). |
+
+Qanday ishlaydi:
+
+1. `create_demo_video` → `ytauto.jobs` da `kind = 'demo'` vazifa (`demo_spec`: loyiha, materiallarning imzolangan havolalari, talablar).
+   Ovoz — botda tanlangan profil (bo'lmasa standart), shablon — bot standarti.
+2. Kompyuterdagi worker (`--poll`, ~10 daqiqada) demo navbatini jadvalni kutmasdan, **bittadan** bajaradi; disk/RAM yetmasa navbatda kutadi.
+   Navbat bazada — kompyuter o'chib-yonsa ham yo'qolmaydi, uzilgan vazifa tayyor bosqichidan davom etadi.
+3. Ssenariy — Gemini, 2 bosqich: (1) materiallarni ko'rib (vision) sahnalar qoralamasi; (2) faqat ovozda aytiladigan matn — sahna
+   ko'rsatmalari, takrorlar va ortiqcha gaplar olib tashlanadi. Sahnalar (qaysi materialda nima aytiladi, zoom joyi) alohida metadata.
+4. Ovoz (VoiceStudio) → subtitr vaqtlari (faster-whisper) → montaj (Claude + OpenFilm: screenshot/videolar sahna vaqtlari bilan, zoom/pan,
+   o'tishlar, fon musiqasi, SFX) → render → sifat tekshiruvi → arxiv.
+5. Natija (MP4, muqova, SRT) bot orqali Storage'ga (`acc/<hisob>/demo-result/`) yuboriladi, vazifa **«Tayyor»** (holat 15) bo'ladi.
+   Chiqarish so'ralgan bo'lsa — asosiy kanalga yuklanadi; mehmon (qo'shimcha token) hisoblari uchun MCP orqali chiqarish yo'q.
+
+Xavfsizlik: har MCP chaqiruvi token hisobi kontekstida (RLS); noto'g'ri token IP bo'yicha cheklanadi; Storage yo'llari faqat
+server tomonida, hisob papkasida quriladi. Worker natijani o'z tokeni bilan `/api/device/demo-result` orqali yuklaydi.
+
+Yangilash: `npm run db:migrate` (v4 → v5), botni deploy qiling, kompyuterlardagi YtAuto'ni yangilang.

@@ -15,7 +15,8 @@ namespace YtAuto.Worker;
 /// --manual: bitta vazifa. Har rejimda "Hozir chiqarish" so'rovlari birinchi bajariladi.
 /// Exit kodlar: 0 - muvaffaqiyatli yoki navbat bo'sh, 1 - xato (keyingi safar qayta uriniladi), 2 - e'tibor kerak,
 /// 3 - boshqa worker ishlamoqda, 4 - kutilmagan xato.
-/// Argumentlar: --scheduled | --poll | --manual | --selftest-local [--data DIR] | --check | --refresh | --console
+/// Argumentlar: --scheduled | --poll | --manual | --selftest-local [--data DIR [--online]] | --check | --refresh | --console
+/// (--online: alohida --data papkasi bilan ham online bazaga ulanadi - integratsiya sinovi; jadval va heartbeat ishlamaydi).
 /// </summary>
 public static class Program
 {
@@ -46,7 +47,7 @@ public static class Program
         // --poll har 10 daqiqada ishga tushadi: boshqa worker ishlayotgan bo'lsa (u "hozir chiqarish"ni ham tekshiradi) jim chiqamiz.
         if (!owned && (poll || batchNow)) return 3;
         AppServices svc;
-        try { svc = new AppServices(dataRoot is null ? "worker" : "worker-selftest", dataRoot, console); }
+        try { svc = new AppServices(dataRoot is null ? "worker" : "worker-selftest", dataRoot, console, online: dataRoot is not null && args.Contains("--online")); }
         catch (Exception e) { Console.Error.WriteLine("Ishga tushmadi: " + e); return 4; }
         if (!owned && scheduled)
         {

@@ -148,7 +148,9 @@ avtomatik ko'chiriladi. Supabase'ning `db.*.supabase.co` manzili faqat IPv6 — 
   Supabase SQL misoli: `update ytauto.jobs set publish_now = true where id = 42;`
 - Vazifa boshlanganda sozlamalar, promptlar va shablon versiyasi **snapshot** qilinadi; keyingi sozlama o'zgarishlari unga ta'sir qilmaydi
   (tafsilotlarda "Joriy sozlamalar bilan qayta" tugmasi snapshot'ni yangilaydi). Tashqi dastur yo'llari esa joriy sozlamadan olinadi.
-- Holatlar: `Queued, Scripting, GeneratingVoice, Aligning, Editing, Rendering, Validating, Archived, Uploading, Processing, Scheduled, Published, Failed, NeedsAttention, Cancelled`.
+- Holatlar: `Queued, Scripting, GeneratingVoice, Aligning, Editing, Rendering, Validating, Archived, Uploading, Processing, Scheduled, Published, Failed, NeedsAttention, Cancelled, Ready`.
+  `Ready` — Claude Code (MCP) so'ragan demo video tayyor, YouTube'ga chiqarish alohida buyruq bilan ([bot/README.md](../bot/README.md)).
+  `--poll` demo navbatini jadvalni kutmasdan, bittadan va resurs tekshiruvi bilan bajaradi.
 - Xatolar:
   - vaqtinchalik (tarmoq, API limit, ilova yiqilishi) — bosqich ichida cheklangan backoff, so'ng `Failed`; keyingi ishga tushishda qayta uriniladi;
   - urinishlar limiti (standart 3) tugasa — `NeedsAttention`, navbat keyingi vazifaga o'tadi;
@@ -196,6 +198,7 @@ YtAuto.Worker.exe --manual             # qo'lda: bitta vazifa
 YtAuto.Worker.exe --refresh            # faqat YouTube holatlarini yangilash
 YtAuto.Worker.exe --check [--deep]     # integratsiyalar tekshiruvi -> %LOCALAPPDATA%\YtAuto\logs\last-check.txt
 YtAuto.Worker.exe --selftest-local     # lokal zanjir sinovi (alohida papkada, Gemini/YouTube'siz)
+YtAuto.Worker.exe --poll --data DIR --online   # integratsiya sinovi: alohida papka + o'sha papkadagi qurilma hisobi (jadval/heartbeat yo'q)
 ```
 
 Exit kodlari: `0` — muvaffaqiyatli yoki navbat bo'sh, `1` — xato (qayta uriniladi), `2` — e'tibor kerak, `3` — boshqa worker ishlamoqda, `4` — kutilmagan xato.

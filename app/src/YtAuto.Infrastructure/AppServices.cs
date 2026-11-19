@@ -32,7 +32,11 @@ public sealed class AppServices
     public RunLog Log { get; }
     public string RunId { get; }
 
-    public AppServices(string component, string? dataRoot = null, bool console = false)
+    /// <param name="online">
+    /// Alohida <paramref name="dataRoot"/> bilan ham online bazaga ulanish (shu papkadagi qurilma ulanish satri bilan) - integratsiya
+    /// sinovlari uchun: haqiqiy %LOCALAPPDATA%\YtAuto, Task Scheduler va ish papkalariga tegmaydi.
+    /// </param>
+    public AppServices(string component, string? dataRoot = null, bool console = false, bool online = false)
     {
         Paths = new AppPaths(dataRoot);
         var machine = new string(Environment.MachineName.Where(char.IsLetterOrDigit).ToArray());
@@ -43,7 +47,7 @@ public sealed class AppServices
         // Online baza: shu kompyuterning o'z hisobi (qurilma roli) - baza unga faqat o'z ma'lumotlarini ko'rsatadi.
         // Sozlash (hisob yaratish) hali qilinmagan bo'lsa - lokal SQLite; ilova sozlash oynasini, worker esa hech narsa qilmaydi.
         // Self-test (alohida dataRoot) online bazani ishlatmaydi.
-        var pg = dataRoot is null ? Secrets.Get(SecretNames.DeviceConnection) : null;
+        var pg = dataRoot is null || online ? Secrets.Get(SecretNames.DeviceConnection) : null;
         if (!string.IsNullOrWhiteSpace(pg))
         {
             try
