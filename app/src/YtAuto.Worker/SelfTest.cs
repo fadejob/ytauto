@@ -10,6 +10,7 @@ namespace YtAuto.Worker;
 /// <summary>
 /// Lokal zanjir sinovi (alohida ma'lumotlar papkasida, foydalanuvchi navbatiga tegmaydi):
 /// tayyor ssenariy → VoiceStudio TTS → alignment → Claude montaji → OpenFilm render → QA → arxiv. Gemini va YouTube chaqirilmaydi.
+/// `--topic "..." [--notes "..."] [--template NOM]` - haqiqiy mavzu: ssenariy va vizual rejani Gemini yozadi (YouTube'ga baribir yuklanmaydi).
 /// Qayta ishga tushirilsa, tugallanmagan vazifani davom ettiradi (resume sinovi). `--new` - yangi vazifa.
 /// </summary>
 internal static class SelfTest
@@ -47,16 +48,30 @@ internal static class SelfTest
     public static async Task<int> RunAsync(AppServices svc, CancellationToken ct)
     {
         var live = AppServices.DefaultSettings();
+        // --topic "..." [--notes "..."]: haqiqiy mavzu bilan to'liq zanjir - ssenariyni Gemini yozadi (YouTube baribir chaqirilmaydi).
+        var args = Environment.GetCommandLineArgs();
+        string? Arg(string name) => args.SkipWhile(a => a != name).Skip(1).FirstOrDefault();
+        var topic = Arg("--topic");
         // Foydalanuvchining asosiy sozlamalaridan tashqi dastur yo'llarini olamiz (agar mavjud bo'lsa).
         var mainSettings = new Infrastructure.Data.SqliteSettingsStore(new Infrastructure.Data.SqliteJobStore(new AppPaths(null).DatabasePath), AppServices.DefaultSettings).Load();
         var s = svc.Settings.Load();
+        if (topic is not null)
+        {
+            // Haqiqiy mavzu: bot sozlamalari (Gemini kalitlari, shablonlar, kanal konteksti) asosiy hisobdan - worker --poll kabi
+            // online bazadan faqat o'qiladi. Vazifa va natijalar esa shu alohida papkadagi lokal bazada qoladi.
+            var main = new AppServices("selftest-main");
+            mainSettings = main.Settings.Load();
+            var key = mainSettings.Gemini.RemoteApiKeys.FirstOrDefault() ?? main.Secrets.Get(SecretNames.GeminiApiKey);
+            if (!string.IsNullOrWhiteSpace(key)) svc.Secrets.Set(SecretNames.GeminiApiKey, key);
+            s.Paths.WorkDir = live.Paths.WorkDir; // quyida asosiy sozlamalar bilan qayta to'ldiriladi
+        }
         if (s.Paths.WorkDir == live.Paths.WorkDir || !s.Paths.WorkDir.StartsWith(svc.Paths.DataRoot, StringComparison.OrdinalIgnoreCase))
         {
             s = mainSettings.Clone();
             s.Paths.WorkDir = Path.Combine(svc.Paths.DataRoot, "jobs");
             s.Paths.VideoArchiveDir = Path.Combine(svc.Paths.DataRoot, "archive", "video");
             s.Paths.AudioArchiveDir = Path.Combine(svc.Paths.DataRoot, "archive", "audio");
-            s.Gemini.UseSearchGrounding = false;
+            if (topic is null) s.Gemini.UseSearchGrounding = false;
             if (s.VoiceProfiles.Count == 0) s.VoiceProfiles = live.VoiceProfiles;
             s.Defaults.Language = "en";
             s.Templates.RemoveAll(t => t.Name == "selftest");
@@ -66,7 +81,7 @@ internal static class SelfTest
         var all = svc.Store.ListByStatus(Enum.GetValues<JobStatus>());
         var pending = all.LastOrDefault(j => j.Status is not (JobStatus.Archived or JobStatus.Cancelled or JobStatus.Published));
         VideoJob job;
-        if (pending is not null && !Environment.GetCommandLineArgs().Contains("--new"))
+        if (pending is not null && !args.Contains("--new"))
         {
             job = pending;
             if (job.Status is JobStatus.Failed or JobStatus.NeedsAttention) svc.Store.Requeue(job.Id, resetAttempts: true);
@@ -76,9 +91,9 @@ internal static class SelfTest
         {
             job = new VideoJob
             {
-                Topic = "Self-test: night worker", Notes = "local chain test", Language = "en", TargetDurationSec = 0,
+                Topic = topic ?? "Self-test: night worker", Notes = Arg("--notes") ?? (topic is null ? "local chain test" : ""), Language = "en", TargetDurationSec = 0,
                 Format = VideoFormat.Landscape16x9, VoiceProfileName = s.Defaults.VoiceProfile,
-                TemplateName = Environment.GetCommandLineArgs().SkipWhile(a => a != "--template").Skip(1).FirstOrDefault() ?? "",
+                TemplateName = Arg("--template") ?? "",
                 PublishAtUtc = DateTimeOffset.UtcNow.AddDays(2), Status = JobStatus.Queued, CreatedAtUtc = DateTimeOffset.UtcNow,
             };
             svc.Store.Insert(job);
@@ -95,7 +110,9 @@ internal static class SelfTest
         var sw = System.Diagnostics.Stopwatch.StartNew();
         using var self = System.Diagnostics.Process.GetCurrentProcess();
         svc.Store.StartRun(svc.RunId, Environment.ProcessId, self.StartTime.ToUniversalTime(), "selftest");
-        var runner = new JobRunner(svc.Pipeline(stopBeforeUpload: true, scriptOverride: new StaticScriptGenerator()));
+        var gemini = job.Topic != "Self-test: night worker";
+        if (gemini && !svc.HasGeminiKey()) { Console.Error.WriteLine("--topic uchun Gemini kaliti kerak (asosiy sozlamalarda topilmadi)."); return 2; }
+        var runner = new JobRunner(svc.Pipeline(stopBeforeUpload: true, scriptOverride: gemini ? null : new StaticScriptGenerator()));
         var result = await runner.RunOnceAsync(svc.RunId, ct);
         svc.Store.FinishRun(svc.RunId, result.Outcome.ToString(), result.JobId, result.Message);
         await Task.Delay(2000, CancellationToken.None);
