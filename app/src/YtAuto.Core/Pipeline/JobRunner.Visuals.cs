@@ -169,9 +169,9 @@ public sealed partial class JobRunner
         var v = c.S.Visuals;
         if (!v.RealMedia || v.MaxMedia <= 0 || _x.Visuals is null) return new(null, null);
         var useStock = StockEnabled(c);
-        if (_x.MediaLibrary is null && !useStock) return new(null, null);
         if (v.OpenFilmStock && !useStock && _x.Stock is not null)
             c.Log.Info("Stok video/rasm nomzodlari o'chiq: botda (Sozlamalar → Video sifati) Pexels yoki Pixabay kalitini kiriting - OpenFilm ular orqali qidiradi.", "Media");
+        if (_x.MediaLibrary is null && !useStock) return new(null, null);
         var inv = CultureInfo.InvariantCulture;
         var cacheDir = MediaCacheDir(c);
         var stockDir = StockCacheDir(c);

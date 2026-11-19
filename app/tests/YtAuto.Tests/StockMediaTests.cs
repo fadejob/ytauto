@@ -248,6 +248,20 @@ public class StockMediaTests
         Assert.Equal(refused, OpenFilmStockSearch.IsProviderRefusal(msg));
 
     [Fact]
+    public void IsConfigured_ChecksInstalledArchiveNotPathInsideIt()
+    {
+        using var t = new TempDir();
+        var exe = Path.Combine(t.Path, "OpenFilm.exe"); File.WriteAllText(exe, "x");
+        var tool = new OpenFilmTool(() => new OpenFilmSettings { ExePath = exe });
+        var src = new OpenFilmStockSearch(tool, () => new StockPhotoKeys("k", ""), Path.Combine(t.Path, "home"));
+        Assert.False(src.IsConfigured); // app.asar yo'q
+        Directory.CreateDirectory(Path.Combine(t.Path, "resources"));
+        File.WriteAllText(Path.Combine(t.Path, "resources", "app.asar"), "asar"); // CLI skripti arxiv ichida - alohida fayl emas
+        Assert.True(src.IsConfigured);
+        Assert.False(new OpenFilmStockSearch(tool, () => StockPhotoKeys.None, Path.Combine(t.Path, "home")).IsConfigured);
+    }
+
+    [Fact]
     public void Providers_PexelsFirst_OnlyWithKeys()
     {
         Assert.Equal(new[] { "pexels", "pixabay" }, OpenFilmStockSearch.Providers(new StockPhotoKeys("a", "b")));

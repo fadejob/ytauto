@@ -36,7 +36,8 @@ public sealed class OpenFilmStockSearch : IStockMediaSource
         get
         {
             var k = Keys();
-            return File.Exists(_tool.ExePath) && File.Exists(_tool.CliScript) && (!string.IsNullOrWhiteSpace(k.Pexels) || !string.IsNullOrWhiteSpace(k.Pixabay));
+            // CLI skripti app.asar arxivi ichida (Windows uchun u fayl emas): arxivning o'zi tekshiriladi.
+            return File.Exists(_tool.ExePath) && File.Exists(_tool.AsarPath) && (!string.IsNullOrWhiteSpace(k.Pexels) || !string.IsNullOrWhiteSpace(k.Pixabay));
         }
     }
 
