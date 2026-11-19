@@ -137,6 +137,8 @@ Kinds:
 - "photo": a real-world object, place, device, animal, process or everyday scene (query = 2-4 concrete English nouns,
   e.g. "credit card terminal", "server room", "honey bee flower"). No identifiable private people, no celebrities,
   no news events, nothing violent or sensitive. Prefer objects and places.
+  The same query also searches stock VIDEO footage (Pexels/Pixabay), so name something that can be filmed and looks good in
+  motion: a concrete subject, place or action ("barista pouring latte", "city traffic at night"), not an abstract idea.
 - "icon": an abstract concept that a simple icon shows well (query = 1-2 English words, e.g. "lock", "refresh", "warning").
 
 Rules:

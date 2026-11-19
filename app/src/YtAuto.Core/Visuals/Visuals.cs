@@ -138,3 +138,128 @@ public interface IMediaLibrary
     /// <summary>Rejadagi har so'rov uchun mos rasmni <paramref name="mediaDir"/> ga yuklaydi. Topilmasa - Skipped. Xato ishni to'xtatmaydi.</summary>
     Task<MediaManifest> FetchAsync(MediaPlan plan, string mediaDir, IJobLog log, CancellationToken ct);
 }
+
+// ------------------------------------------------------------------ stok nomzodlar (OpenFilm qidiradi, Claude tanlaydi)
+
+/// <summary>Stok nomzod turi.</summary>
+public static class StockTypes
+{
+    public const string Image = "image";
+    public const string Video = "video";
+}
+
+/// <summary>Bitta sahna uchun stok qidiruv so'rovi (Gemini rasm rejasidagi "photo" bandidan).</summary>
+public sealed record StockRequest(string Id, string Query, string Purpose, double At);
+
+/// <summary>Har sahnaga nechta nomzod va qaysi yo'nalishda (landscape/portrait).</summary>
+public sealed record StockOptions(int Images, int Clips, string Orientation);
+
+/// <summary>Bitta nomzod: OpenFilm internetdan topib yuklagan rasm yoki qisqa video parcha.</summary>
+public sealed class StockCandidate
+{
+    /// <summary>Sahna ichidagi belgi: I1..I5 (rasm), V1..V3 (video). Kontakt varaqda shu yozuv bilan ko'rinadi.</summary>
+    public string Label { get; set; } = "";
+    public string Type { get; set; } = StockTypes.Image;
+    /// <summary>Manba chiqishida - mutlaq yo'l; film ichiga ko'chirilgach - film/ ga nisbiy yo'l (assets/stock/s01/img1.jpg).</summary>
+    public string File { get; set; } = "";
+    public int Width { get; set; }
+    public int Height { get; set; }
+    /// <summary>Video davomiyligi (s); rasm uchun 0.</summary>
+    public double Duration { get; set; }
+    public long Bytes { get; set; }
+    /// <summary>pexels | pixabay</summary>
+    public string Provider { get; set; } = "";
+    /// <summary>"Photo by X on Pexels" - OpenFilm bergan muallif qatori.</summary>
+    public string Credit { get; set; } = "";
+    /// <summary>Asl sahifa.</summary>
+    public string Page { get; set; } = "";
+}
+
+/// <summary>Bitta sahna: so'rov va unga topilgan nomzodlar.</summary>
+public sealed class StockScene
+{
+    /// <summary>s01, s02, ...</summary>
+    public string Id { get; set; } = "";
+    public string Query { get; set; } = "";
+    public string Purpose { get; set; } = "";
+    public double At { get; set; }
+    public List<StockCandidate> Candidates { get; set; } = new();
+    /// <summary>Kontakt varaq (edit/ ga nisbiy yo'l), bo'lmasa "".</summary>
+    public string Sheet { get; set; } = "";
+    /// <summary>Qidiruvda nima bo'lmadi (topilmadi, manba rad etdi...).</summary>
+    public List<string> Notes { get; set; } = new();
+    public int Images => Candidates.Count(c => c.Type == StockTypes.Image);
+    public int Clips => Candidates.Count(c => c.Type == StockTypes.Video);
+}
+
+/// <summary>Video uchun barcha stok nomzodlar (edit/stock_cache/stock.json va record/stock.json).</summary>
+public sealed class StockCandidates
+{
+    public string PlanHash { get; set; } = "";
+    public List<StockScene> Scenes { get; set; } = new();
+
+    public int Total => Scenes.Sum(s => s.Candidates.Count);
+    public string ToJson() => JsonSerializer.Serialize(this, MediaManifest.Json);
+    public static StockCandidates FromJson(string json) => JsonSerializer.Deserialize<StockCandidates>(json, MediaManifest.Json) ?? new();
+}
+
+/// <summary>
+/// Claude'ning tanlovi (film/media_selection.json): har sahna uchun qaysi nomzodlar olindi va qaysilari nima uchun rad etildi.
+/// Format erkin o'qiladi: faqat "file" maydonlari muhim.
+/// </summary>
+public sealed class StockSelection
+{
+    public sealed class Pick
+    {
+        [JsonPropertyName("file")] public string File { get; set; } = "";
+        [JsonPropertyName("reason")] public string Reason { get; set; } = "";
+    }
+    public sealed class Scene
+    {
+        [JsonPropertyName("scene")] public string Id { get; set; } = "";
+        [JsonPropertyName("chosen")] public List<Pick> Chosen { get; set; } = new();
+        [JsonPropertyName("rejected")] public List<Pick> Rejected { get; set; } = new();
+    }
+    [JsonPropertyName("scenes")] public List<Scene> Scenes { get; set; } = new();
+
+    public IEnumerable<string> ChosenFiles => Scenes.SelectMany(s => s.Chosen).Select(p => Norm(p.File)).Where(f => f.Length > 0);
+    public IEnumerable<string> RejectedFiles => Scenes.SelectMany(s => s.Rejected).Select(p => Norm(p.File)).Where(f => f.Length > 0);
+
+    /// <summary>"./assets/stock/s01/img1.jpg", "film/assets/..." va "\\" ko'rinishlari bir xil yo'lga keltiriladi.</summary>
+    public static string Norm(string? f)
+    {
+        var s = (f ?? "").Trim().Replace('\\', '/');
+        while (s.StartsWith("./")) s = s[2..];
+        if (s.StartsWith("film/", StringComparison.OrdinalIgnoreCase)) s = s[5..];
+        return s;
+    }
+
+    /// <summary>Buzilgan yoki bo'sh JSON - null (xato emas: tanlov ixtiyoriy hujjat).</summary>
+    public static StockSelection? TryParse(string json)
+    {
+        try
+        {
+            var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true, ReadCommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+            return JsonSerializer.Deserialize<StockSelection>(json, opts);
+        }
+        catch (JsonException) { return null; }
+    }
+}
+
+/// <summary>
+/// Internetdan stok rasm va qisqa video parchalarini qidirib yuklaydigan manba (OpenFilm `get image-search` / `get video-search`).
+/// Har sahna uchun bir nechta nomzod olib keladi; qaysi biri yaroqli ekanini Claude hal qiladi.
+/// </summary>
+public interface IStockMediaSource
+{
+    /// <summary>Qidirish mumkinmi (OpenFilm o'rnatilgan va kamida bitta manba kaliti bor).</summary>
+    bool IsConfigured { get; }
+    /// <summary>
+    /// Har so'rov uchun nomzodlarni <paramref name="workDir"/> ga yuklaydi (File - mutlaq yo'l). Bitta sahnadagi xato boshqalarini to'xtatmaydi:
+    /// u sahna Notes'ga yoziladi. Hech narsa topilmasa ham xato emas (Candidates bo'sh).
+    /// </summary>
+    Task<StockCandidates> FetchAsync(IReadOnlyList<StockRequest> scenes, string workDir, StockOptions options, IJobLog log, CancellationToken ct);
+}
+
+/// <summary>Kontakt varaqdagi bitta katak: rasm fayli, ustidagi yozuv va o'rni (qator, ustun).</summary>
+public sealed record SheetTile(string Path, string Label, int Row, int Col);

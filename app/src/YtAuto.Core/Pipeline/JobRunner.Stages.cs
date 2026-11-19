@@ -344,7 +344,7 @@ public sealed partial class JobRunner
         var stale = Path.Combine(c.EditDir, "script.json");
         if (File.Exists(stale)) File.Delete(stale);
         File.WriteAllText(Path.Combine(c.EditDir, "instructions.md"),
-            EditorInstructions.Build(c, script, cues, duration, tpl, style.Frames, style.Guide.Length > 0, media, style.Motion.Length > 0), new UTF8Encoding(false));
+            EditorInstructions.Build(c, script, cues, duration, tpl, style.Frames, style.Guide.Length > 0, media.Media, style.Motion.Length > 0, media.Stock), new UTF8Encoding(false));
         File.Copy(Path.Combine(c.EditDir, "instructions.md"), Path.Combine(c.RecordDir, "instructions.md"), true);
 
         var shimDir = _x.Film.WriteShims(Path.Combine(_x.Paths.ToolsDir, "openfilm-shim"));
@@ -385,6 +385,7 @@ public sealed partial class JobRunner
         }
         File.Copy(c.VoiceVtt, Path.Combine(assets, "voice.vtt"), true);
         CopyIfExists(Path.Combine(c.FilmDir, "BUILD_NOTES.md"), Path.Combine(c.RecordDir, "BUILD_NOTES.md"));
+        if (media.Stock is { Total: > 0 } stock) ReviewStockSelection(c, stock);
         CopyIfExists(c.FilmHtml, Path.Combine(c.RecordDir, "film.html"));
 
         var manifest = Hashing.DirectoryManifest(c.FilmDir, f => !f.Contains(Path.DirectorySeparatorChar + ".film" + Path.DirectorySeparatorChar) && !f.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase));

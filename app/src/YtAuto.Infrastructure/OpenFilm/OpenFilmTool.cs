@@ -19,6 +19,7 @@ public sealed class OpenFilmTool : IFilmTool
     public OpenFilmTool(Func<OpenFilmSettings> settings, IJobStore? store = null, string runId = "")
     { _settings = settings; _store = store; _runId = runId; }
 
+    public string ExePath => _settings().ExePath;
     public string InstallDir => Path.GetDirectoryName(_settings().ExePath) ?? "";
     public string CliScript => Path.Combine(InstallDir, "resources", "app.asar", "node_modules", "openfilm", "bin", "openfilm.mjs");
     public string FfmpegDir => Path.Combine(InstallDir, "resources", "runtime", "ffmpeg");

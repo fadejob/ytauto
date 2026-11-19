@@ -127,6 +127,9 @@ public sealed class AppServices
             // Video sifati: Gemini vision (shablon uslubi, rasm rejasi, moslik) va ochiq manbalardan real rasmlar.
             Visuals = new Gemini.GeminiVisualDirector(Gemini, () => Settings.Load().Gemini.Model),
             MediaLibrary = new Media.OpenMediaLibrary(keys: () => { var v = Settings.Load().Visuals; return new Media.StockPhotoKeys(v.PexelsApiKey, v.PixabayApiKey); }),
+            // Stok rasm va video parchalari: OpenFilm o'zi qidiradi (alohida OPENFILM_HOME'li Studio, kalitlar faqat uning muhitida).
+            Stock = new OpenFilm.OpenFilmStockSearch(film, () => { var v = Settings.Load().Visuals; return new Media.StockPhotoKeys(v.PexelsApiKey, v.PixabayApiKey); },
+                Path.Combine(Paths.ToolsDir, "openfilm-stock-home")),
             Uploader = Uploader, Resources = Resources, Paths = Paths, Clock = new SystemClock(),
             JobLogFactory = id => new JobLog(id, Paths.RecordDirFor(id), Store, Log),
             RunLog = Log, AppVersion = typeof(AppServices).Assembly.GetName().Version?.ToString() ?? "1.0.0",
