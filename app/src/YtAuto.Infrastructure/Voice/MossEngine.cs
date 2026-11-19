@@ -78,6 +78,76 @@ public static class MossEngine
         }
     }
 
+    // ---------------------------------------------------------------- VoiceStudio sidecar mosligi
+    // VoiceStudio 0.5.8 MOSS sidecar'i (backend\engines\moss_tts_nano_subprocess\main.py) transformers 5 uchun
+    // _keys_to_ignore_on_load_unexpected ro'yxatini har doim set'ga aylantiradi. MOSS venv'ida esa transformers==4.57.1
+    // (MOSS-TTS-Nano requirements.txt), u yerda bu maydon ro'yxat bilan qo'shiladi: set + list → TypeError va har sintez
+    // "unsupported operand type(s) for +: 'set' and 'list'" (HTTP 500) bilan tushadi. Tuzatish: set'ga aylantirish faqat
+    // transformers >= 5 da. VoiceStudio har ishga tushganda resources\backend'ni runtime\project\backend'ga ko'chiradi,
+    // shuning uchun ikkala nusxa ham tuzatiladi (VoiceStudio o'zi tuzatsa - qidirilgan satr topilmaydi, hech narsa qilinmaydi).
+    internal const string SidecarPatchMarker = "YtAuto: transformers 4";
+    private const string SidecarAnchor = "original = getattr(PreTrainedModel, \"_adjust_missing_and_unexpected_keys\", None)";
+
+    /// <summary>Tuzatilishi kerak bo'lgan sidecar main.py nusxalari (o'rnatish papkasidagi manba va ishlab turgan runtime nusxasi).</summary>
+    public static IEnumerable<string> SidecarMainFiles(VoiceStudioSettings s)
+    {
+        const string rel = @"backend\engines\moss_tts_nano_subprocess\main.py";
+        var exeDir = string.IsNullOrWhiteSpace(s.ExePath) ? null : Path.GetDirectoryName(s.ExePath);
+        if (!string.IsNullOrEmpty(exeDir)) yield return Path.Combine(exeDir, "resources", rel);
+        yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "VoiceStudio", "runtime", "project", rel);
+    }
+
+    /// <summary>Matnga tuzatishni qo'llaydi. O'zgarmasa (allaqachon tuzatilgan yoki boshqa versiya) null qaytaradi.</summary>
+    public static string? PatchSidecarSource(string src)
+    {
+        if (src.Contains(SidecarPatchMarker, StringComparison.Ordinal)) return null;
+        var at = src.IndexOf(SidecarAnchor, StringComparison.Ordinal);
+        if (at < 0) return null;
+        // Bu blok faqat ro'yxatni set'ga aylantiruvchi o'ram ichida bo'lishi kerak (boshqa kodga tegmaymiz).
+        var fn = src.LastIndexOf("def _accept_list_ignore_patterns", at, StringComparison.Ordinal);
+        if (fn < 0 || src.IndexOf("set(patterns)", at, StringComparison.Ordinal) < 0) return null;
+        var lineStart = src.LastIndexOf('\n', at) + 1;
+        var indent = src[lineStart..at];
+        if (indent.Trim().Length > 0) return null;
+        var nl = src.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var insert =
+            $"{indent}# {SidecarPatchMarker}.x ro'yxatlarni qo'shadi (set + list = TypeError): o'ram faqat transformers 5 uchun.{nl}" +
+            $"{indent}import transformers as _ytauto_tf  # noqa: PLC0415{nl}" +
+            $"{indent}if int(str(getattr(_ytauto_tf, \"__version__\", \"0\")).split(\".\")[0] or 0) < 5:{nl}" +
+            $"{indent}    return{nl}";
+        return src[..lineStart] + insert + src[lineStart..];
+    }
+
+    /// <summary>
+    /// Sidecar fayllarini tuzatadi. Ishlab turgan runtime nusxasi o'zgargan bo'lsa true (yuklangan sidecar eski kodni
+    /// xotirada saqlaydi - chaqiruvchi uni VoiceStudio'da qayta yuklashi kerak). Xatolar logga yoziladi, sintezni to'xtatmaydi.
+    /// </summary>
+    public static bool EnsureSidecarCompat(VoiceStudioSettings s, IJobLog log)
+    {
+        var runtimeChanged = false;
+        foreach (var file in SidecarMainFiles(s))
+        {
+            try
+            {
+                if (!File.Exists(file)) continue;
+                var src = File.ReadAllText(file);
+                var patched = PatchSidecarSource(src);
+                if (patched is null) continue;
+                File.WriteAllText(file, patched, new System.Text.UTF8Encoding(false));
+                var pycache = Path.Combine(Path.GetDirectoryName(file)!, "__pycache__");
+                foreach (var pyc in Directory.Exists(pycache) ? Directory.GetFiles(pycache, "main.*.pyc") : Array.Empty<string>())
+                    try { File.Delete(pyc); } catch { }
+                log.Info($"{TtsVoices.DisplayName}: VoiceStudio sidecar transformers 4 bilan mos qilindi ({file}).", "Voice");
+                if (file.Contains(Path.Combine("runtime", "project"), StringComparison.OrdinalIgnoreCase)) runtimeChanged = true;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                log.Warn($"{TtsVoices.DisplayName}: VoiceStudio sidecar fayli tuzatilmadi ({file}): {e.Message}", "Voice");
+            }
+        }
+        return runtimeChanged;
+    }
+
     private static string Detail(string body)
     {
         try { return JsonNode.Parse(body)?["detail"]?.ToString() ?? body; } catch { return body; }

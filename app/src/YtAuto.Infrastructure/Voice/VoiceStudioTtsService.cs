@@ -83,6 +83,7 @@ internal sealed class VoiceStudioSession : ITtsSession
         if (await HealthyAsync(ct).ConfigureAwait(false))
         {
             _log.Info($"VoiceStudio allaqachon ishlayapti (v{Version}) - foydalanuvchiniki, worker uni yopmaydi.", "Voice");
+            await EnsureMossCompatAsync(ct).ConfigureAwait(false);
             return;
         }
         var existing = ProcessSnapshot.Under(OwnedDirs);
@@ -90,16 +91,40 @@ internal sealed class VoiceStudioSession : ITtsSession
         {
             // Foydalanuvchi ochgan, lekin API hali tayyor emas: o'zimiz ikkinchi nusxa ochmaymiz, faqat kutamiz.
             _log.Warn($"VoiceStudio jarayonlari bor ({existing.Count} ta), lekin API javob bermayapti. Tayyor bo'lishi kutiladi; ular yopilmaydi.", "Voice");
-            if (await WaitHealthyAsync(TimeSpan.FromSeconds(_s.StartupTimeoutSec), ct).ConfigureAwait(false)) return;
+            if (await WaitHealthyAsync(TimeSpan.FromSeconds(_s.StartupTimeoutSec), ct).ConfigureAwait(false))
+            {
+                await EnsureMossCompatAsync(ct).ConfigureAwait(false);
+                return;
+            }
             throw PipelineException.Transient("voicestudio_unresponsive", "Ochiq VoiceStudio API'si javob bermadi. Worker foydalanuvchi ochgan dasturni yopmaydi.");
         }
         await StartOursAsync(ct).ConfigureAwait(false);
+        await EnsureMossCompatAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// MOSS sidecar kodini o'rnatilgan transformers bilan mos qiladi (<see cref="MossEngine.EnsureSidecarCompat"/>). Ishlab turgan
+    /// nusxa o'zgargan bo'lsa, eski kod bilan yuklangan sidecar VoiceStudio'da bo'shatiladi - keyingi sintez yangisini ochadi.
+    /// </summary>
+    private async Task EnsureMossCompatAsync(CancellationToken ct)
+    {
+        if (!MossEngine.EnsureSidecarCompat(_s, _log)) return;
+        try
+        {
+            var (code, body) = await PostAsync("model/unload/sidecars", TimeSpan.FromSeconds(60), ct).ConfigureAwait(false);
+            if (code >= 400) _log.Warn($"VoiceStudio sidecar'larni bo'shatmadi (HTTP {code}): {body}", "Voice");
+        }
+        catch (Exception e) when (e is HttpRequestException or OperationCanceledException && !ct.IsCancellationRequested)
+        {
+            _log.Warn("VoiceStudio sidecar'larni bo'shatishda xato: " + e.Message, "Voice");
+        }
     }
 
     private async Task StartOursAsync(CancellationToken ct)
     {
         if (!File.Exists(_s.ExePath))
             throw PipelineException.Config("voicestudio_missing", $"VoiceStudio topilmadi: {_s.ExePath}");
+        MossEngine.EnsureSidecarCompat(_s, _log); // manba nusxasi: VoiceStudio ishga tushishda uni runtime'ga ko'chiradi
         _preExisting = ProcessSnapshot.Under(OwnedDirs).Select(p => (p.Pid, p.StartUtc)).ToHashSet();
         _job?.Dispose();
         _job = new JobObject("voicestudio");
