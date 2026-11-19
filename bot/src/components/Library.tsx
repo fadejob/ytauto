@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, confirmBox } from "@/lib/client";
-import type { TemplateItem, VoiceInfo } from "@/lib/types";
+import type { TemplateItem } from "@/lib/types";
 import type { Toast } from "./App";
 import TemplateUpload from "./TemplateUpload";
 import Music from "./Music";
@@ -17,11 +17,10 @@ const day = (iso: string | null) => { if (!iso) return "—"; const d = new Date
 /** canUpload=false - qo'shimcha token: shablon kompyuter egasi tomonidan yuklanadi (mehmon faqat tanlaydi). */
 export default function Library({ toast, canUpload = true }: { toast: Toast; canUpload?: boolean }) {
   const [templates, setTemplates] = useState<TemplateItem[] | null>(null);
-  const [voice, setVoice] = useState<VoiceInfo[] | null>(null);
 
   useEffect(() => {
-    api<{ templates: TemplateItem[]; voice: VoiceInfo[] }>("/api/library")
-      .then((d) => { setTemplates(d.templates); setVoice(d.voice); })
+    api<{ templates: TemplateItem[] }>("/api/library")
+      .then((d) => setTemplates(d.templates))
       .catch((e) => toast(e instanceof Error ? e.message : String(e), true));
   }, [toast]);
 
@@ -64,35 +63,6 @@ export default function Library({ toast, canUpload = true }: { toast: Toast; can
       {canUpload ? <TemplateUpload toast={toast} /> : null}
 
       <Music toast={toast} />
-
-      <div className="sect">Ovoz</div>
-      {!voice ? <div className="card formcard"><div className="skeleton" /></div> : voice.length === 0 ? (
-        <div className="card formcard"><div className="hint">Ovoz ma&apos;lumoti hali yo&apos;q: kompyuterdagi YtAuto ilovasi VoiceStudio modellarini o&apos;qigach shu yerda ko&apos;rinadi.</div></div>
-      ) : voice.map((v) => (
-        <div key={v.machine} className="card formcard">
-          <div className="logline"><b>💻 {v.machine}</b> · VoiceStudio {v.voiceStudioVersion ? `v${v.voiceStudioVersion}` : "—"}</div>
-          <div className="hint">Ovoz profillari (mavzu yaratishda tanlanadi):</div>
-          {v.profiles.length === 0 ? <div className="hint">Profil yo&apos;q — ilovada «Ayol/Erkak ovozi» ni yuklab qo&apos;shing.</div> : v.profiles.map((p) => (
-            <div key={p.name} className="logline">
-              <b>{p.name}</b>{p.name === v.defaultProfile ? " ★ standart" : ""}
-              <div className="hint">{p.model} · {p.voice || "—"} · {p.language} · tezlik {p.speed}</div>
-            </div>
-          ))}
-          <div className="hint">Dvigatellar ({v.engines.filter((e) => e.usable).length} ta ishlatish mumkin / {v.engines.length}):</div>
-          {v.engines.filter((e) => e.usable).map((e) => (
-            <div key={e.id} className="logline">
-              <b>{e.displayName}</b> <span className="chip ok">ishlaydi</span>
-              <div className="hint">Modellar: {e.installedModels.length ? e.installedModels.join(", ") : "—"} · ovozlar: {e.voices.length ? e.voices.join(", ") : e.supportsCloning ? "klonlash" : "—"}</div>
-            </div>
-          ))}
-          <details>
-            <summary className="hint">Ishlatib bo&apos;lmaydigan dvigatellar ({v.engines.filter((e) => !e.usable).length})</summary>
-            {v.engines.filter((e) => !e.usable).map((e) => (
-              <div key={e.id} className="logline"><b>{e.displayName}</b><div className="hint">{e.reason ?? "Model o'rnatilmagan"}</div></div>
-            ))}
-          </details>
-        </div>
-      ))}
     </>
   );
 }

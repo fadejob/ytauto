@@ -201,6 +201,9 @@ internal sealed class FakeMedia : IMediaProbe
     public readonly List<(double Start, double Duration, int Width)> Clips = new();
     public Task MakeAnalysisClipAsync(string video, double startSec, double durationSec, string outMp4, int width, CancellationToken ct)
     { Clips.Add((startSec, durationSec, width)); File.WriteAllBytes(outMp4, new byte[64]); return Task.CompletedTask; }
+    public readonly List<IReadOnlyList<YtAuto.Core.Visuals.SheetTile>> Sheets = new();
+    public Task ContactSheetAsync(IReadOnlyList<YtAuto.Core.Visuals.SheetTile> tiles, int w, int h, string outJpg, CancellationToken ct)
+    { Sheets.Add(tiles); File.WriteAllBytes(outJpg, new byte[16]); return Task.CompletedTask; }
 }
 
 internal sealed class FakeUploader : IVideoUploader
@@ -283,7 +286,7 @@ internal sealed class Harness : IDisposable
         Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = Script, Tts = TtsOverride ?? Tts, AudioImporter = AudioImporter, Aligner = Aligner, Editor = Editor,
         Film = Film, Media = Media, Uploader = Uploader, Resources = new FakeResources(), Paths = Paths, Clock = Clock,
         JobLogFactory = _ => Log, RunLog = Log, PostUploadPoll = TimeSpan.Zero, StopBeforeUpload = stopBeforeUpload, OnPublished = OnPublished,
-        OnVoiceCloneStatus = OnVoiceCloneStatus, Visuals = Visuals, MediaLibrary = MediaLib, Music = MusicCache,
+        OnVoiceCloneStatus = OnVoiceCloneStatus, Visuals = Visuals, MediaLibrary = MediaLib, Stock = Stock, Music = MusicCache,
         DemoWriter = DemoWriter, DemoMedia = DemoMedia, DemoResults = DemoResults, PublishAllowed = PublishAllowed,
     });
     public YtAuto.Core.Demo.IDemoScriptWriter? DemoWriter;
@@ -292,6 +295,7 @@ internal sealed class Harness : IDisposable
     public Func<bool>? PublishAllowed;
     public YtAuto.Core.Visuals.IVisualDirector? Visuals;
     public YtAuto.Core.Visuals.IMediaLibrary? MediaLib;
+    public YtAuto.Core.Visuals.IStockMediaSource? Stock;
     public IMusicCache? MusicCache;
 
     public VideoJob AddJob(string topic = "Boiling water", int minutesAgo = 10, int publishInDays = 3)

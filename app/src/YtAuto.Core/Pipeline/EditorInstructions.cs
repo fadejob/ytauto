@@ -18,10 +18,18 @@ internal static class EditorInstructions
 {
     /// <summary>Kanal tahlilidan (bot) montaj uslubi: shablon/brief bilan birga Claude'ga beriladi.</summary>
     public const string MontageHeading = "## Channel style (learned from this channel's latest videos; keep new videos consistent with it)";
+    /// <summary>
+    /// Video uchun shablon tanlangan bo'lsa kanalning oldingi videolaridan olingan uslub ikkinchi darajali: foydalanuvchi yuklagan shablon ustun.
+    /// </summary>
+    public const string MontageHeadingBelowTemplate = "## Channel habits (from this channel's latest videos) - LOWER priority than the template";
+    public const string TemplatePriorityRule =
+        "The template chosen for this video outranks this section. Use this section only for what the template does not decide " +
+        "(how the topic is framed, how much information a scene carries, how explanations are paced). Wherever the two differ - colours, fonts, " +
+        "layout, recurring brand elements, image treatment, motion, transitions - follow the template and ignore this section.";
 
     public static string Build(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues, double audioSec,
         TemplateDefinition? tpl, IReadOnlyList<string> refFrames, bool hasStyleGuide = false, MediaManifest? media = null, bool hasMotionGuide = false,
-        MusicPick? music = null, DemoBrief? demo = null)
+        StockCandidates? stock = null, MusicPick? music = null, DemoBrief? demo = null)
     {
         var (w, h) = c.StageSize;
         var inv = CultureInfo.InvariantCulture;
@@ -37,8 +45,10 @@ internal static class EditorInstructions
         sb.AppendLine();
         if (c.S.ChannelContext?.MontageBlock is { Length: > 0 } channel)
         {
-            sb.AppendLine(MontageHeading);
+            // Shablon bor bo'lsa - kanal odatlari shablondan past: foydalanuvchi yuklagan shablon har doim ustun.
+            sb.AppendLine(tpl is null ? MontageHeading : MontageHeadingBelowTemplate);
             sb.AppendLine();
+            if (tpl is not null) { sb.AppendLine(TemplatePriorityRule); sb.AppendLine(); }
             sb.AppendLine(channel);
             sb.AppendLine();
         }
@@ -81,6 +91,7 @@ internal static class EditorInstructions
         sb.AppendLine("Group these lines into scenes by meaning (one idea per scene). Make one page per scene and cut them end to end on one track.");
         sb.AppendLine();
         if (refFrames.Count > 0 || hasStyleGuide || hasMotionGuide) AppendTemplateFidelity(sb, hasMotionGuide);
+        if (stock is { Total: > 0 }) AppendStock(sb, stock, w, h, audioSec, inv);
         if (media is { Assets.Count: > 0 }) AppendMedia(sb, media, inv);
         if (demo is not null) AppendDemo(sb, demo, inv, w, h);
         AppendDesignBar(sb, w, h, tpl is not null || refFrames.Count > 0, hasMotionGuide);
@@ -106,7 +117,7 @@ internal static class EditorInstructions
             sb.AppendLine("   Sound effects: `assets/sfx/*.wav` on a THIRD audio track, each clip at its moment, volume 0.15–0.3, never on the voice or music track.");
         sb.AppendLine("4. No subtitles drawn in pages (they are burned in from voice.vtt). Keep the lower 22% of the frame free of key text.");
         sb.AppendLine("5. Every page follows \"the picture depends only on t\". No external network resources (no CDN fonts or images); everything local" +
-            (media is { Assets.Count: > 0 } ? " (the real images are already in `film/assets/media/`; do not download others)."
+            (media is { Assets.Count: > 0 } || stock is { Total: > 0 } ? " (the real images and clips are already in `film/assets/media/` and `film/assets/stock/`; do not download others)."
              : demo is not null ? " (the product screenshots and recordings are already in `film/assets/demo/`; do not download or invent other product images)." : "."));
         sb.AppendLine("6. All text inside the safe area and readable on a phone. Nothing cut off at the edges.");
         sb.AppendLine("7. Leave `film/assets/voice.wav` and `film/assets/voice.vtt` untouched.");
@@ -128,6 +139,7 @@ internal static class EditorInstructions
         sb.AppendLine("## Template fidelity (the most important design goal)");
         sb.AppendLine();
         sb.AppendLine("A viewer of this channel must recognise the video as the channel's own at first glance. After rendering, frames are compared with the template frames and the style guide; a mismatch sends the video back to you.");
+        sb.AppendLine("- Priority for every design decision: the template (its project files, frames, STYLE_GUIDE.md, MOTION_GUIDE.md) first, then the channel habits section, then the generic rules in this file. Never let the channel's older videos override the template.");
         sb.AppendLine("- Before writing pages, put the template's design tokens in `film/style.css` as CSS variables (palette hex codes, font stacks, headline/label sizes, radius, stroke width, shadow, spacing) and use only those variables in every page.");
         sb.AppendLine("- Rebuild the template's recurring elements as reusable parts: background treatment, card/panel style, headline placement and highlight style, labels, lower-third or watermark position, progress or counter elements.");
         sb.AppendLine("- Match the template's density and pacing: as much text per scene, the same balance of text vs picture, similar entrance motion and transitions.");
@@ -138,6 +150,85 @@ internal static class EditorInstructions
             sb.AppendLine("  use the same entrance types for text, shapes and images, the same scene transition type and length, and a similar scene length and rhythm.");
             sb.AppendLine("  Do not add motion styles the template does not use. Keep OpenFilm's rules: the picture depends only on t, and frame 0 of each page is already readable.");
         }
+        sb.AppendLine();
+    }
+
+    /// <summary>
+    /// OpenFilm topgan stok nomzodlar: Claude avval har birini kontekst va sifat bo'yicha tekshiradi, tanlovini film/media_selection.json ga
+    /// yozadi, so'ng faqat tanlanganlari bilan animatsiyali dizayn qiladi.
+    /// </summary>
+    /// <summary>Bitta sahnada ko'pi bilan shuncha stok rasm va video ishlatiladi (mos va sifatlilari - sahna uzunligiga qarab).</summary>
+    internal const int MaxStockPhotosPerScene = 5, MaxStockClipsPerScene = 3;
+    /// <summary>Har kadr ekranda taxminan shuncha turadi: sahna uzunligi / shu = nechta rasm/video sig'adi.</summary>
+    internal const double SecondsPerStockShot = 2.5;
+
+    /// <summary>
+    /// Sahnaga taxminan nechta stok kadr sig'adi: hikoyaning shu qismi uzunligi (keyingi stok sahnagacha yoki ovoz oxirigacha) /
+    /// <see cref="SecondsPerStockShot"/>, 1 dan 8 gacha (5 rasm + 3 video).
+    /// </summary>
+    internal static IReadOnlyDictionary<string, (double Span, int Shots)> StockRoom(StockCandidates stock, double audioSec)
+    {
+        var ordered = stock.Scenes.Where(s => s.Candidates.Count > 0).OrderBy(s => s.At).ToList();
+        var d = new Dictionary<string, (double, int)>();
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            var end = i + 1 < ordered.Count ? ordered[i + 1].At : audioSec;
+            var span = Math.Max(1, end - ordered[i].At);
+            d[ordered[i].Id] = (span, Math.Clamp((int)Math.Round(span / SecondsPerStockShot), 1, MaxStockPhotosPerScene + MaxStockClipsPerScene));
+        }
+        return d;
+    }
+
+    private static void AppendStock(StringBuilder sb, StockCandidates stock, int w, int h, double audioSec, CultureInfo inv)
+    {
+        var room = StockRoom(stock, audioSec);
+        var minLong = (int)Math.Round(Math.Max(w, h) * 2 / 3.0);
+        var maxImg = stock.Scenes.Max(s => s.Images);
+        var maxClip = stock.Scenes.Max(s => s.Clips);
+        sb.AppendLine("## Stock footage and photos (found by OpenFilm on Pexels/Pixabay; YOU decide which are good)");
+        sb.AppendLine();
+        sb.AppendLine($"OpenFilm searched the web for the scenes below and downloaded several candidates for each: up to {maxImg} photos (I1, I2, ...) and up to {maxClip} short video clips (V1, V2, ...).");
+        sb.AppendLine("They are NOT all good. You are the art director: review every candidate, choose the best ones, and only then design with them.");
+        sb.AppendLine();
+        foreach (var s in stock.Scenes.Where(s => s.Candidates.Count > 0).OrderBy(s => s.At))
+        {
+            sb.AppendLine($"### {s.Id} ~{s.At.ToString("0.0", inv)} s: {(string.IsNullOrWhiteSpace(s.Purpose) ? s.Query : s.Purpose)} (search: \"{s.Query}\")");
+            var (span, shots) = room[s.Id];
+            sb.AppendLine($"- This part of the narration lasts about {span.ToString("0.0", inv)} s: room for about {shots} shot{(shots == 1 ? "" : "s")} (one every ~{SecondsPerStockShot.ToString("0.0", inv)} s).");
+            if (s.Sheet.Length > 0) sb.AppendLine($"- Contact sheet: `{s.Sheet}`");
+            foreach (var x in s.Candidates)
+            {
+                var len = x.Type == StockTypes.Video ? $", {x.Duration.ToString("0.0", inv)} s" : "";
+                var mb = x.Bytes > 0 ? $", {(x.Bytes / 1048576.0).ToString("0.0", inv)} MB" : "";
+                sb.AppendLine($"- {x.Label} `film/{x.File}` ({x.Type}, {x.Width}x{x.Height}{len}{mb}, {x.Provider})");
+            }
+            sb.AppendLine();
+        }
+        sb.AppendLine("Step 1 - review (before writing any page):");
+        sb.AppendLine("- Open each scene's contact sheet with the Read tool. Row 1 = the photos; each further row = one clip shown as three frames (start, middle, end) with its length and size.");
+        sb.AppendLine("  When a tile is too small to judge, open the photo file itself, or run `openfilm look assets/stock/<scene>/<clip>.mp4` inside `film/` to see a clip closer.");
+        sb.AppendLine("- Accept a candidate only if ALL of these hold:");
+        sb.AppendLine("  1. Context: it clearly shows what the narration says at that moment (the scene line above) - same subject, place and era, or an obvious visual metaphor. Reject loosely related generic stock clichés (handshakes, people smiling at laptops, random office scenes) unless the narration is about exactly that.");
+        sb.AppendLine($"  2. Quality: sharp and well exposed, no blur, motion smear, heavy noise, banding or compression blocks. At least {minLong} px on the long side to fill the frame (smaller ones only inside a card). Clips: steady, no jump cuts or shaky handheld in the part you use, not a slideshow of stills.");
+        sb.AppendLine("  3. Clean: no watermark or stock-site stamp, no burned-in text, captions or subtitles, no visible brand logos or app UI unless that brand is the topic, no recognisable celebrity, nothing violent or sensitive.");
+        sb.AppendLine($"  4. Fit: its colours and mood can sit inside the template style; its orientation works on the {w}x{h} stage (cropping with `object-fit: cover` is fine if the subject stays in frame).");
+        sb.AppendLine($"- How many to use: there is NO fixed number - use every candidate that passes, as many as the scene's length allows (the \"room for\" line above), up to {MaxStockPhotosPerScene} photos and up to {MaxStockClipsPerScene} clips per scene.");
+        sb.AppendLine("  A long scene should show several pictures in turn (the picture changes every 2-3 s, cut on the narration's phrases) instead of one still for the whole scene; a short scene needs only one or two. Never pad with a candidate that failed a check just to fill the room: then hold the good ones longer.");
+        sb.AppendLine("  Each photo stays on screen at least 2 s, each clip at least 2.5 s. Prefer good clips over photos (real motion keeps the video alive). If only one passes, use one; if nothing passes, choose nothing there and design that scene with drawn graphics.");
+        sb.AppendLine();
+        sb.AppendLine($"Step 2 - write `film/{JobRunner.StockSelectionFile}` (the worker reads it) before building the pages. List EVERY candidate once, chosen or rejected, with a short concrete reason:");
+        sb.AppendLine("```json");
+        sb.AppendLine("{\"scenes\":[{\"scene\":\"s01\",\"chosen\":[{\"file\":\"assets/stock/s01/clip2.mp4\",\"reason\":\"steady close-up of the exact device, sharp\"},");
+        sb.AppendLine("  {\"file\":\"assets/stock/s01/img3.jpg\",\"reason\":\"same device in use, clean and sharp\"}],");
+        sb.AppendLine("  \"rejected\":[{\"file\":\"assets/stock/s01/img1.jpg\",\"reason\":\"watermark bottom-right\"}]}]}");
+        sb.AppendLine("```");
+        sb.AppendLine();
+        sb.AppendLine("Step 3 - design with the chosen media only (never a rejected one, never other images from the internet):");
+        sb.AppendLine("- Clips go straight on the film.html timeline as `<video src=\"assets/stock/s01/clip2.mp4#t=IN,OUT\" at=\"...\" muted style=\"object-fit: cover\">` on a footage track BELOW the page track; the scene page on the track above paints the headline, labels and overlays (what a page does not paint is transparent). Always `muted`. Choose the best stretch with `#t=IN,OUT`; if the clip is shorter than the scene use `speed` 0.5-0.8 for slow motion, or cut to a second chosen candidate. Never play a clip past its length.");
+        sb.AppendLine("- Photos: as an `<img>` clip on the footage track, or inside a scene page (`assets/stock/...` from a page in `film/`). Never stretch them.");
+        sb.AppendLine("- Several chosen media in one scene: cut them one after another on the footage track (each starting where the previous ends, timed to the words), or show two side by side / as a framed sequence in the page when they compare things. Keep the scene's headline and overlay steady across the cuts.");
+        sb.AppendLine("- Make it look designed and animated, not pasted: a gradient or colour overlay in the template palette so text stays readable over footage; a slow Ken Burns push or pan on photos (scale 1.00 to 1.08 over the scene); framed or masked reveals of the picture timed to the words; animated headline and labels over the footage; the template's transition (or a short cross-dissolve) between scenes. Every frame depends only on t.");
+        sb.AppendLine("- Do not write credits or watermarks on screen.");
         sb.AppendLine();
     }
 

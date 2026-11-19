@@ -1,16 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import type { BotConfig, VoiceInfo, VoiceProfileCfg } from "@/lib/types";
+import type { VoiceInfo, VoiceProfileCfg } from "@/lib/types";
 
-type VSettings = BotConfig["voice"]["settings"];
-
-/** Ovoz profillari (qo'shish, tezlik/til, standart, o'chirish) va VoiceStudio sozlamalari. Ro'yxat botda asosiy manba. */
-export default function VoiceProfiles({ profiles, settings, defaultProfile, info, onProfiles, onSettings, onDefault, machineSettings = true }: {
-  profiles: VoiceProfileCfg[]; settings: VSettings; defaultProfile: string; info: VoiceInfo[];
-  onProfiles: (p: VoiceProfileCfg[]) => void; onSettings: (s: VSettings) => void; onDefault: (name: string) => void;
-  /** false - qo'shimcha token: VoiceStudio (kompyuter) sozlamalari kompyuter egasida, ko'rsatilmaydi. */
-  machineSettings?: boolean;
+/**
+ * Ovoz profillari (qo'shish, tezlik/til, standart, o'chirish). Ro'yxat botda asosiy manba.
+ * VoiceStudio texnik sozlamalari botda ko'rsatilmaydi: saqlangan qiymatlar o'zgarmaydi.
+ */
+export default function VoiceProfiles({ profiles, defaultProfile, info, onProfiles, onDefault }: {
+  profiles: VoiceProfileCfg[]; defaultProfile: string; info: VoiceInfo[];
+  onProfiles: (p: VoiceProfileCfg[]) => void; onDefault: (name: string) => void;
 }) {
   // Ishlatsa bo'ladigan dvigatellar (barcha kompyuterlar birlashmasi, takrorsiz).
   const engines = new Map<string, { id: string; displayName: string; voices: string[] }>();
@@ -21,8 +20,6 @@ export default function VoiceProfiles({ profiles, settings, defaultProfile, info
   const [voice, setVoice] = useState("");
   const [name, setName] = useState("");
   const [lang, setLang] = useState("en");
-  const set = (k: keyof VSettings, v: string | number) => onSettings({ ...settings, [k]: v } as VSettings);
-  const num = (v: string) => (v === "" ? 0 : Number(v));
 
   const localProfiles = info[0]?.profiles ?? [];
   const voiceValue = eng && eng.voices.length ? (eng.voices.includes(voice) ? voice : eng.voices[0]) : voice;
@@ -77,20 +74,6 @@ export default function VoiceProfiles({ profiles, settings, defaultProfile, info
         )}
       </div>
 
-      {machineSettings ? <>
-      <div className="sect">VoiceStudio sozlamalari</div>
-      <div className="card formcard">
-        <div className="field"><label>Lokal API manzili</label><input className="input" value={settings.baseUrl} onChange={(e) => set("baseUrl", e.target.value)} /></div>
-        <div className="grid2">
-          <div className="field"><label>Ishga tushish kutish (s)</label><input className="input" inputMode="numeric" value={settings.startupTimeoutSec} onChange={(e) => set("startupTimeoutSec", num(e.target.value))} /></div>
-          <div className="field"><label>TTS so&apos;rov vaqti (s)</label><input className="input" inputMode="numeric" value={settings.requestTimeoutSec} onChange={(e) => set("requestTimeoutSec", num(e.target.value))} /></div>
-          <div className="field"><label>TTS bo&apos;lagi (belgi)</label><input className="input" inputMode="numeric" value={settings.chunkChars} onChange={(e) => set("chunkChars", num(e.target.value))} /></div>
-          <div className="field"><label>Bo&apos;laklar orasi pauza (s)</label><DecimalInput value={settings.pauseBetweenChunksSec} onChange={(v) => set("pauseBetweenChunksSec", v)} /></div>
-          <div className="field"><label>Subtitr vaqti timeouti (s)</label><input className="input" inputMode="numeric" value={settings.alignTimeoutSec} onChange={(e) => set("alignTimeoutSec", num(e.target.value))} /></div>
-        </div>
-        <div className="field"><label>Whisper modeli (subtitr vaqtlari)</label><input className="input" value={settings.whisperModel} onChange={(e) => set("whisperModel", e.target.value)} /></div>
-      </div>
-      </> : null}
     </>
   );
 }
@@ -122,20 +105,5 @@ function SpeedControl({ value, onChange }: { value: number; onChange: (v: number
       </div>
       <div className="hint">Yangi tezlik keyingi tayyorlanadigan videolarga qo&apos;llanadi (ovozi tayyor bo&apos;lgan videolar o&apos;zgarmaydi).</div>
     </div>
-  );
-}
-
-/** O'nli son maydoni: yozilayotgan matn ("0.", "0,2") saqlanadi, son faqat to'g'ri bo'lganda yuboriladi; vergul ham qabul qilinadi. */
-function DecimalInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  return (
-    <input className="input" inputMode="decimal" value={draft ?? String(value)}
-      onChange={(e) => {
-        const t = e.target.value.replace(",", ".");
-        setDraft(t);
-        const n = Number(t);
-        if (t.trim() !== "" && Number.isFinite(n)) onChange(n);
-      }}
-      onBlur={() => setDraft(null)} />
   );
 }

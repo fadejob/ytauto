@@ -236,6 +236,11 @@ public interface IMediaProbe
     /// kuchli siqilgan H.264 MP4 (Gemini'ga video sifatida yuborish uchun - harakat saqlanadi, hajm kichik).
     /// </summary>
     Task MakeAnalysisClipAsync(string video, double startSec, double durationSec, string outMp4, int width, CancellationToken ct);
+    /// <summary>
+    /// Kontakt varaq: har rasm <paramref name="tileWidth"/>x<paramref name="tileHeight"/> katakka (nisbati saqlanib) joylanadi, ustiga yozuvi
+    /// chiziladi (shrift bo'lsa). Claude bitta rasmda bir sahnaning hamma nomzodlarini ko'radi.
+    /// </summary>
+    Task ContactSheetAsync(IReadOnlyList<Visuals.SheetTile> tiles, int tileWidth, int tileHeight, string outJpg, CancellationToken ct);
     string Version { get; }
 }
 

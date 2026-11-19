@@ -190,6 +190,52 @@ public sealed class FfmpegMediaProbe : IMediaProbe
             throw PipelineException.Transient("ffmpeg_clip", $"Tahlil klipi yasalmadi: {err.Trim()}");
     }
 
+    /// <summary>Kataklar ustidagi yozuv shrifti (Windows'da doim bor). Topilmasa yozuvsiz varaq yasaladi.</summary>
+    private static readonly string[] LabelFonts = { @"C:\Windows\Fonts\arialbd.ttf", @"C:\Windows\Fonts\arial.ttf", @"C:\Windows\Fonts\segoeui.ttf" };
+
+    public async Task ContactSheetAsync(IReadOnlyList<Core.Visuals.SheetTile> tiles, int tileWidth, int tileHeight, string outJpg, CancellationToken ct)
+    {
+        if (tiles.Count == 0) throw new ArgumentException("kontakt varaq uchun kamida bitta katak kerak", nameof(tiles));
+        Directory.CreateDirectory(Path.GetDirectoryName(outJpg)!);
+        var font = LabelFonts.FirstOrDefault(File.Exists);
+        var args = new List<string> { "-hide_banner", "-v", "error" };
+        foreach (var t in tiles) { args.Add("-i"); args.Add(t.Path); }
+        args.Add("-filter_complex"); args.Add(ContactSheetFilter(tiles, tileWidth, tileHeight, font));
+        args.AddRange(new[] { "-frames:v", "1", "-q:v", "3", "-y", outJpg });
+        var (r, _, err) = await RunAsync(Ffmpeg, args, TimeSpan.FromMinutes(2), ct).ConfigureAwait(false);
+        if (r.ExitCode != 0 || !File.Exists(outJpg)) throw PipelineException.Transient("ffmpeg_sheet", $"Kontakt varaq yasalmadi: {err.Trim()}");
+    }
+
+    /// <summary>
+    /// Fon (qatorlar x ustunlar) ustiga har katak overlay qilinadi; katak nisbati saqlanib sig'diriladi. Yozuv faqat xavfsiz belgilar
+    /// (harf, raqam, bo'sh joy, nuqta, x) - ffmpeg filtr qochirish muammosi bo'lmasin.
+    /// </summary>
+    internal static string ContactSheetFilter(IReadOnlyList<Core.Visuals.SheetTile> tiles, int w, int h, string? font)
+    {
+        var rows = tiles.Max(t => t.Row) + 1; var cols = tiles.Max(t => t.Col) + 1;
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"color=c=0x101010:s={cols * w}x{rows * h}:d=1[bg]");
+        for (int i = 0; i < tiles.Count; i++)
+        {
+            sb.Append($";[{i}:v]scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=0x202020,setsar=1");
+            var label = Regex.Replace(tiles[i].Label ?? "", @"[^A-Za-z0-9 .x]", " ").Trim();
+            if (font is not null && label.Length > 0)
+            {
+                var ff = font.Replace('\\', '/').Replace(":", "\\:");
+                sb.Append($",drawtext=fontfile='{ff}':text='{label}':x=8:y=8:fontsize={Math.Max(14, h / 10)}:fontcolor=white:box=1:boxcolor=black@0.75:boxborderw=6");
+            }
+            sb.Append($"[t{i}]");
+        }
+        var prev = "bg";
+        for (int i = 0; i < tiles.Count; i++)
+        {
+            var next = i == tiles.Count - 1 ? "" : $"[o{i}]";
+            sb.Append($";[{prev}][t{i}]overlay={tiles[i].Col * w}:{tiles[i].Row * h}{next}");
+            prev = $"o{i}";
+        }
+        return sb.ToString();
+    }
+
     public async Task<(double Mean, double Std)> FrameLumaAsync(string video, double atSec, CancellationToken ct)
     {
         var args = new[] { "-hide_banner", "-v", "error", "-ss", atSec.ToString("0.###", CultureInfo.InvariantCulture), "-i", video,

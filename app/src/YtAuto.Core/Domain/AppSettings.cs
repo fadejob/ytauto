@@ -117,6 +117,11 @@ public sealed class ScheduleSettings
 public sealed class GeminiSettings
 {
     public string Model { get; set; } = "gemini-2.5-flash";
+    /// <summary>
+    /// Model zanjiri (bot: Sozlamalar -> Gemini): birinchisi asosiy, qolganlari - limiti tugasa yoki ishlamasa navbat bilan ishlatiladi.
+    /// AI Studio nomi ("Gemini 3.8 Flash") yoki API id. Bo'sh - standart zanjir (bepul kalitdagi barcha matn modellari).
+    /// </summary>
+    public List<string> Models { get; set; } = new();
     public string ScriptPrompt { get; set; } = "";
     /// <summary>Hozirgi faktlar uchun Google Search grounding bilan alohida fakt varag'i olinadi.</summary>
     public bool UseSearchGrounding { get; set; } = true;
@@ -129,6 +134,15 @@ public sealed class GeminiSettings
     [JsonIgnore] public List<string> RemoteApiKeys { get; set; } = new();
     /// <summary>Mehmon hisobi vazifasi: faqat uning bot orqali kiritgan kalitlari (kompyuter egasining lokal kaliti ishlatilmaydi).</summary>
     [JsonIgnore] public bool RemoteOnly { get; set; }
+
+    /// <summary>Ishlatiladigan zanjir: sozlangan ro'yxat (bo'lmasa standart) va oxirida eski bitta model (takrorlanmasa).</summary>
+    public IReadOnlyList<string> ModelChain(IReadOnlyList<string> defaults)
+    {
+        var list = Models.Select(m => (m ?? "").Trim()).Where(m => m.Length > 0).ToList();
+        if (list.Count == 0) list.AddRange(defaults);
+        if (!string.IsNullOrWhiteSpace(Model) && !list.Contains(Model.Trim(), StringComparer.OrdinalIgnoreCase)) list.Add(Model.Trim());
+        return list.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
 }
 
 public sealed class ClaudeSettings
@@ -211,7 +225,19 @@ public sealed class VisualSettings
     [JsonIgnore] public string PixabayApiKey { get; set; } = "";
     /// <summary>Bitta videoga ko'pi bilan nechta rasm/ikon.</summary>
     public int MaxMedia { get; set; } = 16;
-    /// <summary>Shablon kadrlaridan Gemini dizayn qo'llanmasi (STYLE_GUIDE.md) yaratiladi va Claude'ga beriladi.</summary>
+    /// <summary>
+    /// Stok rasm va video parchalarini OpenFilm o'zi qidiradi (Pexels/Pixabay kaliti bilan): har sahnaga bir nechta nomzod,
+    /// Claude ularni sifat va moslik bo'yicha tekshirib tanlaydi. O'chiq yoki kalit yo'q bo'lsa - avvalgidek bitta foto.
+    /// </summary>
+    public bool OpenFilmStock { get; set; } = true;
+    /// <summary>Har sahnaga nechta rasm nomzodi (OpenFilm bir so'rovda 1-8).</summary>
+    public int StockImagesPerScene { get; set; } = 5;
+    /// <summary>Har sahnaga nechta video parcha nomzodi (OpenFilm bir so'rovda 1-4; 0 - video qidirilmaydi).</summary>
+    public int StockClipsPerScene { get; set; } = 3;
+    /// <summary>
+    /// Shablon kadrlaridan Gemini dizayn qo'llanmasi (STYLE_GUIDE.md) yaratiladi va Claude'ga beriladi. Majburiy: botda ko'rsatilmaydi va
+    /// bot qiymati e'tiborga olinmaydi (TemplateMotionGuide va OpenFilmStock ham) - faqat ichki sinovlar o'chirishi mumkin.
+    /// </summary>
     public bool TemplateStyleGuide { get; set; } = true;
     /// <summary>Shablon videosining harakati (animatsiya, o'tishlar, temp) Gemini'ga video sifatida beriladi - MOTION_GUIDE.md. Shablon uchun bir marta.</summary>
     public bool TemplateMotionGuide { get; set; } = true;

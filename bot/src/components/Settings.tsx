@@ -9,6 +9,20 @@ import VoiceClone from "./VoiceClone";
 import Library from "./Library";
 import Guests from "./Guests";
 import McpConnect from "./McpConnect";
+import GeminiLimits from "./GeminiLimits";
+import { DEFAULT_GEMINI_CHAIN, limitsFor } from "@/lib/gemini-models";
+
+/**
+ * Claude Code (montaj) modeli: `claude --model <id>` ga uzatiladi. Bo'sh - Claude Code'ning o'z standarti.
+ * Fable - eng kuchli va eng qimmat; obunangizda bo'lmasa Claude Code xato beradi.
+ */
+const CLAUDE_MODELS: [string, string][] = [
+  ["", "Claude Code standarti"],
+  ["claude-opus-5-5", "Claude Opus 5.5 — tavsiya"],
+  ["claude-sonnet-5-5", "Claude Sonnet 5.5 — tezroq, arzonroq"],
+  ["claude-haiku-5-5", "Claude Haiku 5.5 — eng tez va arzon"],
+  ["claude-fable-5-2", "Claude Fable 5.2 — eng kuchli, eng qimmat"],
+];
 
 type Sch = { enabled: boolean; startTime: string; endTime: string; timeZoneId: string; wakeToRun: boolean; executionLimitHours: number };
 type Draft = BotConfigInput;
@@ -41,6 +55,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
   const [cfgSaved, setCfgSaved] = useState<BotConfig | null>(null);
   /** Yangi Gemini kalitlari: har qatorga bittasi (saqlanganda qo'shiladi). */
   const [newKeys, setNewKeys] = useState("");
+  /** Gemini model zanjiri matni: har qatorga bitta model (birinchisi asosiy). */
   const [voiceInfo, setVoiceInfo] = useState<VoiceInfo[]>([]);
   const [saving, setSaving] = useState(false);
   const [yt, setYt] = useState<{ connected: boolean; channelTitle: string; connectedAt: string | null; clientConfigured: boolean; redirectUri: string } | null>(null);
@@ -105,10 +120,8 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
   }
 
   const G = (p: Partial<Draft["gemini"]>) => setCfg((c) => c && { ...c, gemini: { ...c.gemini, ...p } });
-  const L = (p: Partial<Draft["limits"]>) => setCfg((c) => c && { ...c, limits: { ...c.limits, ...p } });
   const D = (p: Partial<Draft["defaults"]>) => setCfg((c) => c && { ...c, defaults: { ...c.defaults, ...p } });
   const Y = (p: Partial<Draft["youtube"]>) => setCfg((c) => c && { ...c, youtube: { ...c.youtube, ...p } });
-  const O = (p: Partial<Draft["openFilm"]>) => setCfg((c) => c && { ...c, openFilm: { ...c.openFilm, ...p } });
   const V = (p: Partial<Draft["visuals"]>) => setCfg((c) => c && { ...c, visuals: { ...c.visuals, ...p } });
   const C = (p: Partial<Draft["claude"]>) => setCfg((c) => c && { ...c, claude: { ...c.claude, ...p } });
   const num = (v: string) => (v === "" ? 0 : Number(v));
@@ -164,20 +177,32 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
                 <textarea className="textarea" rows={2} autoComplete="off" spellCheck={false} value={newKeys} placeholder={"Yangi kalit(lar): AIza…\nhar qatorga bittadan"} onChange={(e) => setNewKeys(e.target.value)} />
               </div>
               <div className="hint">Kalitlar tartib bilan ishlatiladi: biri limitga (429) tushsa keyingisi bilan davom etiladi, hammasi tugasa ish to&apos;xtaydi. AI yordamchi ham shu kalitlardan foydalanadi.</div>
-              <div className="grid2">
-                <div className="field"><label>Model</label><input className="input" value={cfg.gemini.model} onChange={(e) => G({ model: e.target.value })} /></div>
-                <div className="field"><label>Temperature</label><input className="input" inputMode="decimal" value={cfg.gemini.temperature} onChange={(e) => G({ temperature: num(e.target.value) })} /></div>
-                <div className="field"><label>Timeout (soniya)</label><input className="input" inputMode="numeric" value={cfg.gemini.timeoutSec} onChange={(e) => G({ timeoutSec: num(e.target.value) })} /></div>
-              </div>
-              <label className="chk"><input type="checkbox" checked={cfg.gemini.useSearchGrounding} onChange={(e) => G({ useSearchGrounding: e.target.checked })} /><span>Hozirgi faktlar uchun Google Search</span></label>
+              {(() => {
+                // Zanjirning birinchisi - joriy model; tanlangani boshga o'tadi, qolganlari shu tartibda zaxira bo'lib qoladi.
+                const chain = cfg.gemini.models.length ? cfg.gemini.models : DEFAULT_GEMINI_CHAIN;
+                const options = [...chain, ...DEFAULT_GEMINI_CHAIN.filter((m) => !chain.some((c) => c.toLowerCase() === m.toLowerCase()))];
+                const perDay = (m: string) => { const l = limitsFor(m); return l ? ` — bepul kalitda kuniga ${l.rpd.toLocaleString("en-US").replace(/,/g, " ")} so'rov` : ""; };
+                return (
+                  <div className="field"><label>Joriy model</label>
+                    <select className="input" value={chain[0]} onChange={(e) => G({ models: [e.target.value, ...options.filter((m) => m !== e.target.value)] })}>
+                      {options.map((m) => <option key={m} value={m}>{m}{perDay(m)}</option>)}
+                    </select>
+                    <div className="hint">Ssenariy va boshqa Gemini ishlari shu model bilan bajariladi. Uning limiti tugasa yoki ishlamasa, qolgan modellarga navbat bilan avtomatik o&apos;tiladi.</div>
+                  </div>
+                );
+              })()}
             </div>
+            {!guest ? <GeminiLimits toast={toast} /> : null}
 
             {!guest ? <>
             <div className="sect">Claude (montaj)</div>
             <div className="card formcard">
               <div className="grid2">
-                <div className="field"><label>Model (bo&apos;sh — standart)</label><input className="input" value={cfg.claude.model} onChange={(e) => C({ model: e.target.value })} /></div>
-                <div className="field"><label>Timeout (daqiqa)</label><input className="input" inputMode="numeric" value={cfg.claude.timeoutMinutes} onChange={(e) => C({ timeoutMinutes: num(e.target.value) })} /></div>
+                <div className="field"><label>Model</label>
+                  <select className="input" value={cfg.claude.model} onChange={(e) => C({ model: e.target.value })}>
+                    {CLAUDE_MODELS.map(([id, label]) => <option key={id || "default"} value={id}>{label}</option>)}
+                    {cfg.claude.model && !CLAUDE_MODELS.some(([id]) => id === cfg.claude.model) ? <option value={cfg.claude.model}>{cfg.claude.model}</option> : null}
+                  </select></div>
                 <div className="field"><label>Maks. byudjet USD (0 — cheklovsiz)</label><input className="input" inputMode="decimal" value={cfg.claude.maxBudgetUsd} onChange={(e) => C({ maxBudgetUsd: num(e.target.value) })} /></div>
               </div>
             </div>
@@ -190,11 +215,9 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
             }} />
 
             <VoiceProfiles
-              profiles={cfg.voice.profiles} settings={cfg.voice.settings} defaultProfile={cfg.defaults.voiceProfile} info={voiceInfo}
+              profiles={cfg.voice.profiles} defaultProfile={cfg.defaults.voiceProfile} info={voiceInfo}
               onProfiles={(p) => setCfg((c) => c && { ...c, voice: { ...c.voice, profiles: p } })}
-              onSettings={(s) => setCfg((c) => c && { ...c, voice: { ...c.voice, settings: s } })}
               onDefault={(n) => D({ voiceProfile: n })}
-              machineSettings={!guest}
             />
 
             <div className="sect">Yangi mavzu standartlari</div>
@@ -227,40 +250,10 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
 
             <McpConnect toast={toast} />
 
-            {!guest ? <>
-            <div className="sect">Limitlar</div>
-            <div className="card formcard">
-              <div className="grid2">
-                <div className="field"><label>Ishga tushish urinishlari</label><input className="input" inputMode="numeric" value={cfg.limits.maxRunAttempts} onChange={(e) => L({ maxRunAttempts: num(e.target.value) })} /></div>
-                <div className="field"><label>QA tuzatish sikllari</label><input className="input" inputMode="numeric" value={cfg.limits.maxQaFixCycles} onChange={(e) => L({ maxQaFixCycles: num(e.target.value) })} /></div>
-                <div className="field"><label>Min. bo&apos;sh disk (GB)</label><input className="input" inputMode="decimal" value={cfg.limits.minFreeDiskGb} onChange={(e) => L({ minFreeDiskGb: num(e.target.value) })} /></div>
-                <div className="field"><label>TTS uchun min. RAM (GB)</label><input className="input" inputMode="decimal" value={cfg.limits.minFreeRamGbForTts} onChange={(e) => L({ minFreeRamGbForTts: num(e.target.value) })} /></div>
-              </div>
-            </div>
-
-            <div className="sect">OpenFilm render</div>
-            <div className="card formcard">
-              <div className="grid2">
-                <div className="field"><label>Parallel renderer (8 GB RAM: 1)</label><input className="input" inputMode="numeric" value={cfg.openFilm.renderWorkers} onChange={(e) => O({ renderWorkers: num(e.target.value) })} /></div>
-                <div className="field"><label>FPS</label><input className="input" inputMode="numeric" value={cfg.openFilm.fps} onChange={(e) => O({ fps: num(e.target.value) })} /></div>
-                <div className="field"><label>Loudness (LUFS)</label><input className="input" inputMode="decimal" value={cfg.openFilm.loudnessLufs} onChange={(e) => O({ loudnessLufs: num(e.target.value) })} /></div>
-                <div className="field"><label>Render timeout (daqiqa)</label><input className="input" inputMode="numeric" value={cfg.openFilm.renderTimeoutMinutes} onChange={(e) => O({ renderTimeoutMinutes: num(e.target.value) })} /></div>
-              </div>
-              <label className="chk"><input type="checkbox" checked={cfg.openFilm.burnSubtitles} onChange={(e) => O({ burnSubtitles: e.target.checked })} /><span>Subtitrlarni videoga kuydirish</span></label>
-              <label className="chk"><input type="checkbox" checked={cfg.openFilm.lookFullAfterRender} onChange={(e) => O({ lookFullAfterRender: e.target.checked })} /><span>Renderdan keyin to&apos;liq ko&apos;rik (look --full)</span></label>
-            </div>
-            </> : null}
-
             <div className="sect">Video sifati</div>
             <div className="card formcard">
               <label className="chk"><input type="checkbox" checked={cfg.visuals.realMedia} onChange={(e) => V({ realMedia: e.target.checked })} /><span>Real rasm, logo va ikonlar (barchasi bepul va tijoratda ishlatish mumkin)</span></label>
-              <label className="chk"><input type="checkbox" checked={cfg.visuals.templateStyleGuide} onChange={(e) => V({ templateStyleGuide: e.target.checked })} /><span>Shablon uslubini tahlil qilish (ranglar, shrift, kompozitsiya — Gemini)</span></label>
-              <label className="chk"><input type="checkbox" checked={cfg.visuals.templateMotion} onChange={(e) => V({ templateMotion: e.target.checked })} /><span>Shablon animatsiyasini tahlil qilish (o&apos;tishlar, matn va elementlar harakati, temp — Gemini videoni ko&apos;radi, har shablon uchun bir marta)</span></label>
               <label className="chk"><input type="checkbox" checked={cfg.visuals.styleReview} onChange={(e) => V({ styleReview: e.target.checked })} /><span>Tayyor videoni shablon bilan solishtirish va mos kelmasa tuzattirish</span></label>
-              <div className="grid2">
-                <div className="field"><label>Bitta videoga rasmlar (0–40)</label><input className="input" inputMode="numeric" value={cfg.visuals.maxMedia} onChange={(e) => V({ maxMedia: num(e.target.value) })} /></div>
-                <div className="field"><label>Shablonga moslik bali (0–10)</label><input className="input" inputMode="decimal" value={cfg.visuals.minStyleScore} onChange={(e) => V({ minStyleScore: num(e.target.value) })} /></div>
-              </div>
               <div className="grid2">
                 <div className="field"><label>Pexels API kaliti {cfg.visuals.pexelsKeySet ? "· saqlangan ✓" : "· kiritilmagan"}</label>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -273,7 +266,6 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
                     {cfg.visuals.pixabayKeySet ? <button className="btn danger" type="button" onClick={() => V({ pixabayKeySet: false, pixabayApiKey: "" })}>O&apos;chirish</button> : null}
                   </div></div>
               </div>
-              <div className="hint">Fotolar sifat tartibida olinadi: Pexels → Pixabay (kalit kiritilgan bo&apos;lsa) → Openverse → Wikimedia Commons. Ikon va logolar — Iconify. Faqat bepul litsenziyalar (Pexels/Pixabay License, CC0, Public domain, CC BY); CC BY mualliflari video tavsifiga avtomatik yoziladi.</div>
             </div>
 
             <div className="sect">YouTube</div>

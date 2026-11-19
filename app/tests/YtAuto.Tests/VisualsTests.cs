@@ -64,6 +64,20 @@ public class VisualsTests
     }
 
     [Fact]
+    public async Task Template_OutranksChannelStyleFromOlderVideos()
+    {
+        using var h = WithTemplate(new Harness());
+        h.Settings.S.ChannelContext = new ChannelContextSettings { Enabled = true, Montage = "MONTAGE-STYLE: dark navy 2D" };
+        await h.Run();
+        var ins = h.Editor.LastInstructions!;
+        Assert.Contains(EditorInstructions.MontageHeadingBelowTemplate, ins);
+        Assert.Contains(EditorInstructions.TemplatePriorityRule, ins);
+        Assert.DoesNotContain(EditorInstructions.MontageHeading, ins);
+        Assert.Contains("MONTAGE-STYLE: dark navy 2D", ins); // kanal odatlari yo'qolmaydi, faqat ikkinchi darajali
+        Assert.Contains("Never let the channel's older videos override the template.", ins);
+    }
+
+    [Fact]
     public async Task Pipeline_GivesClaudeStyleGuideFramesAndLicensedMedia_AndCreditsGoToDescription()
     {
         using var h = WithTemplate(new Harness());

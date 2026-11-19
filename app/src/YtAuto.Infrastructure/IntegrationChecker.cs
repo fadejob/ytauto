@@ -45,7 +45,7 @@ public sealed class IntegrationChecker
             Add(new("Papkalar", CheckLevel.Failed, "Arxiv vaqtinchalik ish papkasi ichida bo'lmasligi kerak."));
 
         // Gemini
-        var (gOk, gMsg, _) = await _svc.Gemini.CheckAsync(s.Gemini.Model, ct);
+        var (gOk, gMsg, _) = await _svc.Gemini.CheckAsync(s.Gemini.ModelChain(Gemini.GeminiModelRouter.DefaultChain), ct);
         Add(new("Gemini", gOk ? CheckLevel.Ok : CheckLevel.Failed, gMsg));
 
         // VoiceStudio (ishga tushirilmaydi - faqat holat)

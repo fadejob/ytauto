@@ -15,6 +15,8 @@ public sealed class ScriptRequest
     public string FactSheetPromptTemplate { get; init; } = "";
     public bool UseSearchGrounding { get; init; }
     public string Model { get; init; } = "";
+    /// <summary>Model zanjiri (asosiy, keyin fallback'lar). Bo'sh bo'lsa - Model yoki standart zanjir.</summary>
+    public IReadOnlyList<string> Models { get; init; } = Array.Empty<string>();
     public double Temperature { get; init; } = 0.7;
     /// <summary>Oldingi urinishdagi validatsiya xatolari (qayta yozish uchun).</summary>
     public IReadOnlyList<string> PreviousProblems { get; init; } = Array.Empty<string>();
@@ -31,6 +33,8 @@ public sealed class MetadataRequest
     public string Text { get; init; } = "";
     public string Language { get; init; } = "en";
     public string Model { get; init; } = "";
+    /// <summary>Model zanjiri (asosiy, keyin fallback'lar). Bo'sh bo'lsa - Model yoki standart zanjir.</summary>
+    public IReadOnlyList<string> Models { get; init; } = Array.Empty<string>();
     public bool WriteDescription { get; init; } = true;
     public bool WriteTags { get; init; } = true;
 }
