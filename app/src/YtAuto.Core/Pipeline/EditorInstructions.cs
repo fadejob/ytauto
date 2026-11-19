@@ -14,6 +14,14 @@ internal static class EditorInstructions
 {
     /// <summary>Kanal tahlilidan (bot) montaj uslubi: shablon/brief bilan birga Claude'ga beriladi.</summary>
     public const string MontageHeading = "## Channel style (learned from this channel's latest videos; keep new videos consistent with it)";
+    /// <summary>
+    /// Video uchun shablon tanlangan bo'lsa kanalning oldingi videolaridan olingan uslub ikkinchi darajali: foydalanuvchi yuklagan shablon ustun.
+    /// </summary>
+    public const string MontageHeadingBelowTemplate = "## Channel habits (from this channel's latest videos) - LOWER priority than the template";
+    public const string TemplatePriorityRule =
+        "The template chosen for this video outranks this section. Use this section only for what the template does not decide " +
+        "(how the topic is framed, how much information a scene carries, how explanations are paced). Wherever the two differ - colours, fonts, " +
+        "layout, recurring brand elements, image treatment, motion, transitions - follow the template and ignore this section.";
 
     public static string Build(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues, double audioSec,
         TemplateDefinition? tpl, IReadOnlyList<string> refFrames, bool hasStyleGuide = false, MediaManifest? media = null, bool hasMotionGuide = false,
@@ -33,8 +41,10 @@ internal static class EditorInstructions
         sb.AppendLine();
         if (c.S.ChannelContext?.MontageBlock is { Length: > 0 } channel)
         {
-            sb.AppendLine(MontageHeading);
+            // Shablon bor bo'lsa - kanal odatlari shablondan past: foydalanuvchi yuklagan shablon har doim ustun.
+            sb.AppendLine(tpl is null ? MontageHeading : MontageHeadingBelowTemplate);
             sb.AppendLine();
+            if (tpl is not null) { sb.AppendLine(TemplatePriorityRule); sb.AppendLine(); }
             sb.AppendLine(channel);
             sb.AppendLine();
         }
@@ -119,6 +129,7 @@ internal static class EditorInstructions
         sb.AppendLine("## Template fidelity (the most important design goal)");
         sb.AppendLine();
         sb.AppendLine("A viewer of this channel must recognise the video as the channel's own at first glance. After rendering, frames are compared with the template frames and the style guide; a mismatch sends the video back to you.");
+        sb.AppendLine("- Priority for every design decision: the template (its project files, frames, STYLE_GUIDE.md, MOTION_GUIDE.md) first, then the channel habits section, then the generic rules in this file. Never let the channel's older videos override the template.");
         sb.AppendLine("- Before writing pages, put the template's design tokens in `film/style.css` as CSS variables (palette hex codes, font stacks, headline/label sizes, radius, stroke width, shadow, spacing) and use only those variables in every page.");
         sb.AppendLine("- Rebuild the template's recurring elements as reusable parts: background treatment, card/panel style, headline placement and highlight style, labels, lower-third or watermark position, progress or counter elements.");
         sb.AppendLine("- Match the template's density and pacing: as much text per scene, the same balance of text vs picture, similar entrance motion and transitions.");
