@@ -102,6 +102,29 @@ public static class TranscriptAligner
         return result;
     }
 
+    /// <summary>
+    /// TTS tashlab ketgan joylar: ketma-ket kamida <paramref name="minWords"/> ta asl so'z ASR'da topilmagan VA ularga deyarli vaqt
+    /// qolmagan (qo'shni topilgan so'zlar orasidagi oraliq so'z boshiga <paramref name="maxSecPerWord"/> dan kam). ASR shunchaki
+    /// noto'g'ri eshitgan so'zlarning vaqti bor - ular bu yerga tushmaydi. Natija: (birinchi so'z indeksi, so'zlar soni).
+    /// </summary>
+    public static List<(int First, int Count)> DroppedRuns(AlignmentResult res, double audioDuration, int minWords = 5, double maxSecPerWord = 0.12)
+    {
+        var runs = new List<(int, int)>();
+        var w = res.Words;
+        for (int i = 0; i < w.Count;)
+        {
+            if (w[i].Matched) { i++; continue; }
+            var j = i;
+            while (j < w.Count && !w[j].Matched) j++;
+            var count = j - i;
+            var from = i > 0 ? w[i - 1].End : 0;
+            var to = j < w.Count ? w[j].Start : audioDuration;
+            if (count >= minWords && to - from < count * maxSecPerWord) runs.Add((i, count));
+            i = j;
+        }
+        return runs;
+    }
+
     private static double MatchCost(string x, string y)
     {
         if (x == y) return 0;

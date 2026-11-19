@@ -91,12 +91,15 @@ internal sealed class FakeTts : ITtsService
 internal sealed class FakeAligner : IAligner
 {
     public int Calls;
+    /// <summary>Shuncha birinchi chaqiruvda TTS <see cref="Drop"/> so'zlarini o'qimagandek javob beradi (ularga vaqt ham qolmaydi).</summary>
+    public int DropOnFirstCalls; public (int From, int Count) Drop;
     public Dictionary<string, double> LastMetrics { get; } = new();
     public string Describe() => "fake";
     public Task<IReadOnlyList<WordTiming>> TranscribeWordsAsync(string wav, string lang, string outJson, IJobLog log, CancellationToken ct)
     {
         Calls++;
         var d = Wav.ReadInfo(wav).Duration; var words = TextNormalizer.Tokenize(TestScript.Narration);
+        if (Calls <= DropOnFirstCalls) words.RemoveRange(Drop.From, Drop.Count);
         var step = d / words.Count;
         File.WriteAllText(outJson, "{}");
         return Task.FromResult<IReadOnlyList<WordTiming>>(words.Select((w, i) => new WordTiming { Word = " " + w.Word, Start = i * step, End = i * step + step * 0.8 }).ToList());
@@ -355,6 +358,20 @@ public class PipelineTests
         var r = await h.Run();
         Assert.Equal(RunOutcome.QueueEmpty, r.Outcome);
         Assert.Equal(tts, h.Tts.Opens);
+    }
+
+    [Fact]
+    public async Task DroppedSentence_IsResynthesizedBySentence_AndAlignReusesCheck()
+    {
+        using var h = new Harness();
+        h.AddJob();
+        h.Aligner.DropOnFirstCalls = 1; h.Aligner.Drop = (7, 10); // "Bubbles of steam form at the bottom of the pot." o'qilmadi
+        var r = await h.Run();
+        Assert.Equal(RunOutcome.Completed, r.Outcome);
+        Assert.Contains(h.Log.Lines, l => l.Contains("gapni o'qimay tashlab ketdi") && l.Contains("Bubbles of steam"));
+        Assert.Contains(h.Log.Lines, l => l.Contains("tashlab ketilgan gap qolmadi"));
+        Assert.True(h.Tts.Synth >= 5, $"synth={h.Tts.Synth}"); // 1 bo'lak + 4 gap alohida
+        Assert.Equal(2, h.Aligner.Calls); // tekshiruv 2 marta; Align bosqichi ASR'ni takrorlamadi
     }
 
     [Fact]

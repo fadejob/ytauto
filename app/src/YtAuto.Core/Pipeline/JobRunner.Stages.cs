@@ -253,6 +253,7 @@ public sealed partial class JobRunner
                 }, c.S.Limits.MaxTransientRetries, (n, e) => c.Log.Warn($"TTS qayta urinish ({n}): {e.Message}", "Voice"), c.Ct, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
                 c.Log.Info($"TTS bo'lak {i + 1}/{chunks.Count} tayyor ({Wav.ReadInfo(paths[i]).Duration:0.0}s).", "Voice");
             }
+            await RecoverDroppedSpeechAsync(c, session, voice, chunks, paths).ConfigureAwait(false);
             foreach (var kv in session.Metrics) c.StageMetrics["tts_" + kv.Key] = kv.Value;
         } // session dispose: worker ochgan VoiceStudio va model jarayonlari shu yerda yopiladi
 
@@ -295,6 +296,109 @@ public sealed partial class JobRunner
         return new StageOutputs { Files = { FileOps.Describe(c.VoiceWav, "voice") }, Values = { ["duration"] = a.Duration.ToString("R", System.Globalization.CultureInfo.InvariantCulture), ["source"] = "manual" } };
     }
 
+    /// <summary>
+    /// MOSS-TTS-Nano ba'zan bo'lak ichidagi butun gapni o'qimay tashlab ketadi (audio uzunligi baribir me'yorda, ChunkOk sezmaydi;
+    /// subtitr esa o'sha gapni bir zumda "miltillatib" o'tkazardi). Tayyor ovoz ASR bilan tekshiriladi: tashlab ketilgan so'zlar
+    /// (<see cref="TranscriptAligner.DroppedRuns"/>) bo'lgan bo'laklar gapma-gap qayta o'qitiladi (eng ko'pi 2 marta). Tekshiruvning
+    /// o'zi ishlamasa (ASR xatosi) ovoz o'zgarishsiz qoladi - Align bosqichi baribir tekshiradi.
+    /// </summary>
+    private async Task RecoverDroppedSpeechAsync(JobContext c, ITtsSession session, VoiceProfile voice, List<string> chunks, List<string> paths)
+    {
+        var counts = chunks.Select(t => TextNormalizer.Tokenize(t).Count).ToList();
+        var text = string.Join(" ", chunks);
+        if (counts.Sum() != TextNormalizer.Tokenize(text).Count) return;
+        var pause = chunks.Count > 1 ? c.S.VoiceStudio.PauseBetweenChunksSec : 0;
+        var check = Path.Combine(c.VoiceChunksDir, "check.wav");
+        try
+        {
+            for (int round = 0; ; round++)
+            {
+                Wav.Concat(paths, check, pause);
+                var duration = Wav.ReadInfo(check).Duration;
+                IReadOnlyList<WordTiming> asr;
+                try { asr = await _x.Aligner.TranscribeWordsAsync(check, c.Job.Language, Path.Combine(c.VoiceChunksDir, "check.asr.json"), c.Log, c.Ct).ConfigureAwait(false); }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    c.Log.Warn("Ovozni to'liqlikka tekshirib bo'lmadi (ASR): " + e.Message, "Voice");
+                    return;
+                }
+                var res = TranscriptAligner.Align(text, asr, duration);
+                var runs = TranscriptAligner.DroppedRuns(res, duration);
+                c.StageMetrics["tts_dropped_runs"] = runs.Count;
+                if (runs.Count == 0)
+                {
+                    if (round > 0) c.Log.Info("Qayta o'qitilgan bo'laklardan keyin ovozda tashlab ketilgan gap qolmadi.", "Voice");
+                    // Yakuniy voice.wav aynan shu bo'laklardan yig'iladi: Align bosqichi ASR'ni takrorlamasdan shu natijani oladi.
+                    File.WriteAllText(VerifiedAsrPath(c), JsonSerializer.Serialize(new VerifiedAsr { Sha256 = Hashing.Sha256File(check), Words = asr.ToList() }));
+                    return;
+                }
+                var dropped = string.Join("; ", runs.Select(r => "\"" + string.Join(" ", res.Words.Skip(r.First).Take(r.Count).Select(w => w.Word)) + "\""));
+                if (round == 2)
+                {
+                    c.Log.Warn($"TTS 2 marta qayta o'qitilgandan keyin ham ba'zi so'zlarni o'qimadi: {dropped}", "Voice");
+                    return;
+                }
+                var bad = new SortedSet<int>();
+                foreach (var (first, count) in runs)
+                    for (int i = 0, start = 0; i < counts.Count; start += counts[i], i++)
+                        if (first < start + counts[i] && first + count > start) bad.Add(i);
+                c.Log.Warn($"TTS {runs.Count} joyda gapni o'qimay tashlab ketdi ({dropped}). {string.Join(", ", bad.Select(i => i + 1))}-bo'lak(lar) gapma-gap qayta o'qitiladi.", "Voice");
+                c.StageMetrics["tts_resynth_chunks"] = c.StageMetrics.GetValueOrDefault("tts_resynth_chunks") + bad.Count;
+                foreach (var i in bad) await SynthesizeBySentenceAsync(c, session, voice, chunks[i], paths[i], i).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            try { if (File.Exists(check)) File.Delete(check); } catch { }
+        }
+    }
+
+    private sealed class VerifiedAsr { public string Sha256 { get; set; } = ""; public List<WordTiming> Words { get; set; } = new(); }
+    private static string VerifiedAsrPath(JobContext c) => Path.Combine(c.VoiceChunksDir, "verified.asr.json");
+
+    /// <summary>Ovoz tekshiruvidagi ASR natijasi - faqat voice.wav aynan o'sha audio bo'lsa (SHA-256), aks holda null.</summary>
+    private static IReadOnlyList<WordTiming>? ReuseVerifiedAsr(JobContext c)
+    {
+        try
+        {
+            var path = VerifiedAsrPath(c);
+            if (!File.Exists(path) || !File.Exists(c.VoiceWav)) return null;
+            var v = JsonSerializer.Deserialize<VerifiedAsr>(File.ReadAllText(path));
+            return v is { Words.Count: > 0 } && v.Sha256 == Hashing.Sha256File(c.VoiceWav) ? v.Words : null;
+        }
+        catch (Exception e) when (e is IOException or JsonException) { return null; }
+    }
+
+    /// <summary>Bo'lakni gaplarga bo'lib alohida o'qitadi (qisqa so'rovda model gapni kamroq tashlaydi) va bitta WAV'ga yig'adi.</summary>
+    private async Task SynthesizeBySentenceAsync(JobContext c, ITtsSession session, VoiceProfile voice, string chunk, string outWav, int index)
+    {
+        var sentences = System.Text.RegularExpressions.Regex.Split(chunk.Trim(), @"(?<=[.!?…])\s+").Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+        if (sentences.Count == 0) return;
+        var parts = new List<string>();
+        try
+        {
+            for (int k = 0; k < sentences.Count; k++)
+            {
+                var part = Path.Combine(c.VoiceChunksDir, $"chunk_{index:000}_s{k:00}.wav");
+                var sentence = sentences[k];
+                await Retry.TransientAsync(async _ =>
+                {
+                    await session.SynthesizeAsync(sentence, voice, part, c.Ct).ConfigureAwait(false);
+                    if (!ChunkOk(part, sentence, out var why)) { File.Delete(part); throw PipelineException.Transient("tts_chunk_bad", $"{index + 1}-bo'lak {k + 1}-gap audio yaroqsiz: {why}"); }
+                    return true;
+                }, c.S.Limits.MaxTransientRetries, (n, e) => c.Log.Warn($"TTS qayta urinish ({n}): {e.Message}", "Voice"), c.Ct, TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                parts.Add(part);
+            }
+            var tmp = outWav + ".tmp";
+            Wav.Concat(parts, tmp, 0.25);
+            File.Move(tmp, outWav, true);
+        }
+        finally
+        {
+            foreach (var p in parts) try { File.Delete(p); } catch { }
+        }
+    }
+
     private sealed class ChunkInfo { public int Index { get; set; } public string TextHash { get; set; } = ""; public int Chars { get; set; } }
 
     private static bool ChunkOk(string path, string text, out string why)
@@ -313,8 +417,13 @@ public sealed partial class JobRunner
     // ---------------------------------------------------------------- D: timing
     private async Task<StageOutputs> AlignStageAsync(JobContext c, VideoScript script)
     {
-        var words = await _x.Aligner.TranscribeWordsAsync(c.VoiceWav, c.Job.Language, c.AsrJson, c.Log, c.Ct).ConfigureAwait(false);
-        foreach (var kv in _x.Aligner.LastMetrics) c.StageMetrics["align_" + kv.Key] = kv.Value;
+        var words = ReuseVerifiedAsr(c);
+        if (words is not null) c.Log.Info("So'z vaqtlari ovoz to'liqligi tekshiruvidagi ASR'dan olindi (audio o'zgarmagan).", "Align");
+        else
+        {
+            words = await _x.Aligner.TranscribeWordsAsync(c.VoiceWav, c.Job.Language, c.AsrJson, c.Log, c.Ct).ConfigureAwait(false);
+            foreach (var kv in _x.Aligner.LastMetrics) c.StageMetrics["align_" + kv.Key] = kv.Value;
+        }
         var duration = c.Job.AudioDurationSec ?? Wav.ReadInfo(c.VoiceWav).Duration;
         var res = TranscriptAligner.Align(script.SubtitleText, words, duration);
         File.WriteAllText(c.AlignmentJson, JsonSerializer.Serialize(res, new JsonSerializerOptions { WriteIndented = true }));

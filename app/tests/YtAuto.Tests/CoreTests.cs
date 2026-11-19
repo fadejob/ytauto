@@ -101,6 +101,32 @@ public class AlignmentTests
         Assert.Equal(cues[0].Text, parsed[0].Text); // so'z teglari olib tashlangach asl matn
         Assert.Contains("<00:00:00.300>", vtt);
     }
+
+    private static List<WordTiming> Spoken(params string[] words) =>
+        words.Select((w, i) => new WordTiming { Word = " " + w, Start = i * 0.4, End = i * 0.4 + 0.3 }).ToList();
+
+    [Fact]
+    public void DroppedRuns_FindsSentenceTheVoiceSkipped()
+    {
+        // MOSS butun gapni o'qimay o'tib ketgan holat (2026-11-19 sinovi): o'rtadagi 7 so'z ASR'da yo'q, ularga vaqt ham qolmagan.
+        var text = "Your phone talks to nearby towers. By measuring the signal it finds you. This is less precise.";
+        var asr = Spoken("Your", "phone", "talks", "to", "nearby", "towers.", "This", "is", "less", "precise.");
+        var r = TranscriptAligner.Align(text, asr, 4.0);
+        var runs = TranscriptAligner.DroppedRuns(r, 4.0);
+        Assert.Single(runs);
+        Assert.Equal((6, 7), runs[0]);
+    }
+
+    [Fact]
+    public void DroppedRuns_IgnoresMisheardWordsThatHaveTime()
+    {
+        // ASR boshqacha eshitgan, lekin ovozda aytilgan so'zlar (vaqti bor) - tashlab ketilgan emas.
+        var text = "In two thousand twenty six we use GPS daily.";
+        var asr = Spoken("In", "tuu", "thowsend", "twonty", "sicks", "wee", "use", "GPS", "daily.");
+        var r = TranscriptAligner.Align(text, asr, 3.6);
+        Assert.Empty(TranscriptAligner.DroppedRuns(r, 3.6));
+        Assert.Empty(TranscriptAligner.DroppedRuns(TranscriptAligner.Align(text, Spoken("In", "two", "thousand", "twenty", "six", "we", "use", "GPS", "daily."), 3.6), 3.6));
+    }
 }
 
 public class ScriptValidatorTests
