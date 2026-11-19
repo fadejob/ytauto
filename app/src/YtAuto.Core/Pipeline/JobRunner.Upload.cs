@@ -49,7 +49,7 @@ public sealed partial class JobRunner
         _x.Store.SaveStage(rec);
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var tags = ComposeTags(script.Tags, c.S.YouTube.DefaultTags);
-        var description = ComposeDescription(c.Job.Description, MediaCreditsBlock(c), c.S.YouTube.DefaultDescription);
+        var description = ComposeDescription(c.Job.Description, JoinCredits(MediaCreditsBlock(c), MusicCreditsBlock(c)), c.S.YouTube.DefaultDescription);
         c.Log.Info(DescribeMetadataSources(ScriptValidator.CleanTags(script.Tags, DefaultPrompts.TagsPerVideo).Count, !string.IsNullOrWhiteSpace(c.Job.Description), c.S.YouTube.DefaultTags, c.S.YouTube.DefaultDescription), "Upload");
         var req = new UploadRequest
         {

@@ -247,3 +247,14 @@ export type VoiceInfo = {
   machine: string; fetchedAtUtc: string | null; voiceStudioVersion: string; updatedAtUtc: string;
   engines: VoiceEngine[]; profiles: { name: string; model: string; voice: string; language: string; speed: number }[]; defaultProfile: string;
 };
+
+/** Fon musiqasi (shared_settings['music.library']): bot ro'yxatdan tanlaydi, server Storage'ga yuklaydi, desktop videoga qo'yadi. */
+export type MusicTrack = {
+  id: string; title: string; creator: string; license: string; licenseVersion: string; licenseUrl: string; landingUrl: string;
+  durationSec: number; genres: string[]; attribution: string; addedAt: string;
+  /** previewUrl - asl manba (tinglash uchun); url - Storage'dagi nusxa (desktop yuklab oladi), urlExpiresAt - havola muddati. */
+  previewUrl: string; storagePath: string; url: string; urlExpiresAt: string;
+};
+export type MusicLibrary = { enabled: boolean; volume: number; tracks: MusicTrack[] };
+/** Openverse qidiruv natijasi (brauzer to'g'ridan-to'g'ri oladi). */
+export type MusicCandidate = { id: string; title: string; creator: string; license: string; licenseVersion: string; durationSec: number; genres: string[]; previewUrl: string; landingUrl: string };

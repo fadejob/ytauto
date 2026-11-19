@@ -387,12 +387,13 @@ public sealed partial class JobRunner
         var duration = c.Job.AudioDurationSec ?? Wav.ReadInfo(c.VoiceWav).Duration;
         var cues = VttParser.Parse(File.ReadAllText(c.VoiceVtt));
         var media = await PrepareMediaAsync(c, script, cues).ConfigureAwait(false);
+        var music = await PrepareMusicAsync(c, duration).ConfigureAwait(false);
         File.WriteAllText(Path.Combine(c.EditDir, "subtitles.txt"), script.SubtitleText, new UTF8Encoding(false));
         File.Copy(c.VoiceSrt, Path.Combine(c.EditDir, "subtitles.srt"), true);
         var stale = Path.Combine(c.EditDir, "script.json");
         if (File.Exists(stale)) File.Delete(stale);
         File.WriteAllText(Path.Combine(c.EditDir, "instructions.md"),
-            EditorInstructions.Build(c, script, cues, duration, tpl, style.Frames, style.Guide.Length > 0, media, style.Motion.Length > 0), new UTF8Encoding(false));
+            EditorInstructions.Build(c, script, cues, duration, tpl, style.Frames, style.Guide.Length > 0, media, style.Motion.Length > 0, music), new UTF8Encoding(false));
         File.Copy(Path.Combine(c.EditDir, "instructions.md"), Path.Combine(c.RecordDir, "instructions.md"), true);
 
         var shimDir = _x.Film.WriteShims(Path.Combine(_x.Paths.ToolsDir, "openfilm-shim"));

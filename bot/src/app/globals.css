@@ -173,6 +173,21 @@ select.input { appearance: auto; }
 .pulse { animation: pulse 1.4s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: 0.45; } }
 
+/* ---------- fon musiqasi */
+.track { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--sep); }
+.track:first-of-type { border-top: 0; }
+.track .info { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.track .btn { flex: none; }
+.play { width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--soft); color: var(--accent); font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { font-size: 13px; padding: 6px 12px; border-radius: 999px; background: color-mix(in srgb, var(--hint) 12%, transparent); color: var(--text); }
+.chips button.on { background: var(--accent); color: var(--accent-text); }
+.row2 { display: flex; gap: 8px; }
+.row2 .input { flex: 1; min-width: 0; }
+.row2 .btn { height: auto; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pager .hint { text-align: center; }
+
 /* ================================================================ katta ekranlar
    Bitta kod: telefonda pastki menyu, planshetda kengroq kontent, kompyuterda (va to'liq ekrandagi Telegram'da) chap menyu,
    ikki ustunli mavzular va markazdagi modal oyna. */

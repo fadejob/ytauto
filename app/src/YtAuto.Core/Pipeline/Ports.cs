@@ -298,6 +298,13 @@ public interface IResourceMonitor
     double FreeDiskGb(string path);
 }
 
+/// <summary>Fon musiqasi treklari: serverdan bir marta yuklab olinadi va kompyuterda keshlanadi.</summary>
+public interface IMusicCache
+{
+    /// <summary>Trekning lokal fayli (kerak bo'lsa yuklab oladi). Xato bo'lsa istisno - vazifa musiqasiz davom etadi.</summary>
+    Task<string> GetLocalAsync(MusicTrack track, IJobLog log, CancellationToken ct);
+}
+
 public interface IAppPaths
 {
     string DataRoot { get; }

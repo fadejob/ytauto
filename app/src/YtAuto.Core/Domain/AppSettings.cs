@@ -26,6 +26,8 @@ public sealed class AppSettings
     public VisualSettings Visuals { get; set; } = new();
     /// <summary>Hisobning o'z ovoz namunasi («Mening ovozim», bot: shared_settings['voice.clone']); job snapshot'iga tushadi.</summary>
     public VoiceCloneSettings VoiceClone { get; set; } = new();
+    /// <summary>Fon musiqasi kutubxonasi (bot: shared_settings['music.library']); job snapshot'iga tushadi - qayta urinishda o'sha trek.</summary>
+    public MusicSettings Music { get; set; } = new();
 
     public VoiceProfile? FindVoice(string name) =>
         VoiceProfiles.FirstOrDefault(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase))
@@ -138,6 +140,48 @@ public sealed class ClaudeSettings
     public int TimeoutMinutes { get; set; } = 45;
     /// <summary>0 - cheklanmagan.</summary>
     public double MaxBudgetUsd { get; set; }
+}
+
+/// <summary>
+/// Fon musiqasi: botda Openverse'dan tanlangan CC0 / CC BY treklar (server Storage'ga yuklagan). Har videoga navbat bilan bittasi
+/// alohida audio trekda, past ovozda qo'yiladi; muallif YouTube tavsifiga yoziladi (CC BY talabi).
+/// </summary>
+public sealed class MusicSettings
+{
+    public bool Enabled { get; set; }
+    /// <summary>Musiqa ovozi (0.03–0.2): nutq aniq eshitilishi uchun past.</summary>
+    public double Volume { get; set; } = 0.12;
+    public List<MusicTrack> Tracks { get; set; } = new();
+
+    /// <summary>Vazifa uchun trek: vazifa raqami bo'yicha navbat bilan (ketma-ket videolar turli musiqa oladi). Yo'q bo'lsa - null.</summary>
+    public MusicTrack? PickFor(long jobId) => !Enabled || Tracks.Count == 0 ? null : Tracks[(int)(Math.Abs(jobId) % Tracks.Count)];
+}
+
+public sealed class MusicTrack
+{
+    /// <summary>Openverse identifikatori (GUID).</summary>
+    public string Id { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Creator { get; set; } = "";
+    /// <summary>"cc0" yoki "by".</summary>
+    public string License { get; set; } = "";
+    public string LicenseVersion { get; set; } = "";
+    public string LicenseUrl { get; set; } = "";
+    /// <summary>Manba sahifasi (masalan jamendo.com/track/…): tavsifdagi muallif qatorida.</summary>
+    public string LandingUrl { get; set; } = "";
+    public int DurationSec { get; set; }
+    /// <summary>Server (Supabase Storage) nusxasini yuklab olish havolasi.</summary>
+    public string Url { get; set; } = "";
+
+    public string LicenseLabel => License == "cc0" ? "CC0" : $"CC {License.ToUpperInvariant()}{(LicenseVersion.Length > 0 ? " " + LicenseVersion : "")}";
+
+    /// <summary>YouTube tavsifi uchun muallif qatori.</summary>
+    public string Credit()
+    {
+        var by = string.IsNullOrWhiteSpace(Creator) ? "" : $" by {Creator.Trim()}";
+        var lic = LicenseUrl.Length > 0 ? $"{LicenseLabel} ({LicenseUrl})" : LicenseLabel;
+        return $"Music: \"{Title.Trim()}\"{by}, licensed under {lic}" + (LandingUrl.Length > 0 ? $" - {LandingUrl}" : "");
+    }
 }
 
 /// <summary>Video sifati sozlamalari (bot: config.visuals).</summary>

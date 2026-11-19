@@ -16,7 +16,8 @@ internal static class EditorInstructions
     public const string MontageHeading = "## Channel style (learned from this channel's latest videos; keep new videos consistent with it)";
 
     public static string Build(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues, double audioSec,
-        TemplateDefinition? tpl, IReadOnlyList<string> refFrames, bool hasStyleGuide = false, MediaManifest? media = null, bool hasMotionGuide = false)
+        TemplateDefinition? tpl, IReadOnlyList<string> refFrames, bool hasStyleGuide = false, MediaManifest? media = null, bool hasMotionGuide = false,
+        MusicPick? music = null)
     {
         var (w, h) = c.StageSize;
         var inv = CultureInfo.InvariantCulture;
@@ -46,6 +47,11 @@ internal static class EditorInstructions
         sb.AppendLine("- `subtitles.txt`: the full subtitle text. It is exactly what the voice says.");
         sb.AppendLine("- `subtitles.srt` and `film/assets/voice.vtt`: the same subtitles with real timings taken from the voice (voice.vtt has a time tag at each word). Do not edit, move or rename voice.vtt.");
         sb.AppendLine($"- `film/assets/voice.wav`: the voice, **{audioSec.ToString("0.000", inv)} seconds**. You cannot hear it; use the subtitle timings.");
+        if (music is not null)
+        {
+            var len = music.DurationSec > 0 ? $"{music.DurationSec.ToString("0.0", inv)} seconds" : "length unknown — check it";
+            sb.AppendLine($"- `film/{music.File}`: background music \"{music.Track.Title}\" ({len}). Instrumental bed under the voice; do not edit or replace it.");
+        }
         if (tpl is { Kind: TemplateKind.OpenFilmProject })
         {
             sb.AppendLine($"- Template: the project in `film/` is a COPY of the channel template \"{tpl.Name}\". Keep its style, fonts, colours, shared files and layout;");
@@ -77,7 +83,18 @@ internal static class EditorInstructions
         sb.AppendLine();
         sb.AppendLine($"1. `film/film.html` with `<meta name=\"viewport\" content=\"width={w}, height={h}\">`.");
         sb.AppendLine($"2. Visual clips cover 0.00 → {audioSec.ToString("0.00", inv)} s with no gap (every page clip has `#t=0,<length>` and an `at`). A moment with no clip is black, which is an error.");
-        sb.AppendLine("3. `assets/voice.wav` on its own audio track, `at=\"0\"`, volume 1, speed 1. Optional music on another track at volume ≤ 0.2.");
+        if (music is null)
+            sb.AppendLine("3. `assets/voice.wav` on its own audio track, `at=\"0\"`, volume 1, speed 1. Optional music on another track at volume ≤ 0.2.");
+        else
+        {
+            var vol = music.Volume.ToString("0.00", inv);
+            sb.AppendLine("3. `assets/voice.wav` on its own audio track, `at=\"0\"`, volume 1, speed 1.");
+            sb.AppendLine($"   Background music: `{music.File}` on a SECOND audio track (never on the voice track), starting at `at=\"0\"`, volume exactly {vol}, speed 1, covering 0 → {audioSec.ToString("0.00", inv)} s.");
+            sb.AppendLine(music.DurationSec > 0 && music.DurationSec < audioSec
+                ? $"   It is shorter than the video: place it again end to end (same file, same volume) until the video end, and trim the last clip so it ends exactly at {audioSec.ToString("0.00", inv)} s."
+                : $"   Trim it so it ends exactly at {audioSec.ToString("0.00", inv)} s (the video end). If OpenFilm supports audio fades, fade it out over the last 1.5 s.");
+            sb.AppendLine("   No other music or sound files. Do not write the music credit on screen; the worker adds it to the video description.");
+        }
         sb.AppendLine("4. No subtitles drawn in pages (they are burned in from voice.vtt). Keep the lower 22% of the frame free of key text.");
         sb.AppendLine("5. Every page follows \"the picture depends only on t\". No external network resources (no CDN fonts or images); everything local" +
             (media is { Assets.Count: > 0 } ? " (the real images are already in `film/assets/media/`; do not download others)." : "."));

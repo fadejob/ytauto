@@ -666,6 +666,8 @@ public sealed class SqliteSettingsStore : ISettingsStore
             s.ChannelContext = ReadChannelContext(_shared.GetSetting(ChannelContextKey));
             // «Mening ovozim» namunasi - hisob doirasida (mehmon vazifasiga mehmonning o'z ovozi).
             s.VoiceClone = ReadVoiceClone(_shared.GetSetting(VoiceCloneKey));
+            // Fon musiqasi kutubxonasi - hisob doirasida (mehmon vazifasiga mehmonning o'z musiqasi).
+            s.Music = ReadMusic(_shared.GetSetting(MusicKey));
             // Faqat MOSS-TTS-Nano ishlatiladi: botdagi eski (KittenTTS va h.k.) profillar MOSS ayol/erkak bilan almashtiriladi
             // va bot ro'yxati ham bir marta tozalanadi (kompyuter egasi; mehmon sozlamalariga yozilmaydi).
             if (TtsVoices.Normalize(s) && !guest)
@@ -687,6 +689,41 @@ public sealed class SqliteSettingsStore : ISettingsStore
 
     /// <summary>Bot «Mening ovozim»: {version, profileName, url, status, …} yoki o'chirilgandan keyin {deleted:true, profileName}.</summary>
     public const string VoiceCloneKey = "voice.clone";
+
+    /// <summary>Bot fon musiqasi kutubxonasi: {enabled, volume, tracks:[{id,title,creator,license,licenseVersion,licenseUrl,landingUrl,durationSec,url,…}]}.</summary>
+    public const string MusicKey = "music.library";
+
+    /// <summary>Faqat CC0 / CC BY va https havolasi bor treklar olinadi (boshqasi videoga qo'shilmaydi).</summary>
+    internal static MusicSettings ReadMusic(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try
+        {
+            var n = System.Text.Json.Nodes.JsonNode.Parse(json);
+            static string Str(System.Text.Json.Nodes.JsonNode? o, string k) => o?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var x) ? x.Trim() : "";
+            var m = new MusicSettings
+            {
+                Enabled = n?["enabled"] is not System.Text.Json.Nodes.JsonValue e || !e.TryGetValue<bool>(out var en) || en,
+                Volume = n?["volume"] is System.Text.Json.Nodes.JsonValue vv && vv.TryGetValue<double>(out var vol) ? Math.Clamp(vol, 0.03, 0.2) : 0.12,
+            };
+            if (n?["tracks"] is System.Text.Json.Nodes.JsonArray arr)
+                foreach (var t in arr)
+                {
+                    var id = Str(t, "id").ToLowerInvariant();
+                    var lic = Str(t, "license").ToLowerInvariant();
+                    var url = Str(t, "url");
+                    if (!Guid.TryParse(id, out _) || (lic != "cc0" && lic != "by") || !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) continue;
+                    m.Tracks.Add(new MusicTrack
+                    {
+                        Id = id, Title = Str(t, "title"), Creator = Str(t, "creator"), License = lic, LicenseVersion = Str(t, "licenseVersion"),
+                        LicenseUrl = Str(t, "licenseUrl"), LandingUrl = Str(t, "landingUrl"), Url = url,
+                        DurationSec = t?["durationSec"] is System.Text.Json.Nodes.JsonValue d && d.TryGetValue<int>(out var ds) ? Math.Max(0, ds) : 0,
+                    });
+                }
+            return m;
+        }
+        catch { return new(); }
+    }
 
     internal static VoiceCloneSettings ReadVoiceClone(string? json)
     {

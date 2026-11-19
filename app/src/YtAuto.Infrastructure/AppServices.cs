@@ -127,6 +127,8 @@ public sealed class AppServices
             // Video sifati: Gemini vision (shablon uslubi, rasm rejasi, moslik) va ochiq manbalardan real rasmlar.
             Visuals = new Gemini.GeminiVisualDirector(Gemini, () => Settings.Load().Gemini.Model),
             MediaLibrary = new Media.OpenMediaLibrary(keys: () => { var v = Settings.Load().Visuals; return new Media.StockPhotoKeys(v.PexelsApiKey, v.PixabayApiKey); }),
+            // Fon musiqasi: botda tanlangan treklar kompyuterda bir marta yuklab olinib keshlanadi.
+            Music = new Media.MusicCache(Http, Path.Combine(Paths.DataRoot, "music")),
             Uploader = Uploader, Resources = Resources, Paths = Paths, Clock = new SystemClock(),
             JobLogFactory = id => new JobLog(id, Paths.RecordDirFor(id), Store, Log),
             RunLog = Log, AppVersion = typeof(AppServices).Assembly.GetName().Version?.ToString() ?? "1.0.0",

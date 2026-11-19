@@ -5,6 +5,7 @@ import { api, confirmBox } from "@/lib/client";
 import type { TemplateItem, VoiceInfo } from "@/lib/types";
 import type { Toast } from "./App";
 import TemplateUpload from "./TemplateUpload";
+import Music from "./Music";
 
 const KIND: Record<string, string> = { Mp4Reference: "video namuna", OpenFilmProject: "OpenFilm loyihasi" };
 const MB = 1048576;
@@ -61,6 +62,8 @@ export default function Library({ toast, canUpload = true }: { toast: Toast; can
         )}
       </div>
       {canUpload ? <TemplateUpload toast={toast} /> : null}
+
+      <Music toast={toast} />
 
       <div className="sect">Ovoz</div>
       {!voice ? <div className="card formcard"><div className="skeleton" /></div> : voice.length === 0 ? (
