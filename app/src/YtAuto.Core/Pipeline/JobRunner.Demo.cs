@@ -253,6 +253,8 @@ public sealed partial class JobRunner
         c.Job.Status = JobStatus.Ready;
         _x.Store.Update(c.Job);
         c.Log.Info("Demo video tayyor: YouTube'ga chiqarish alohida buyruq bilan (MCP publish_video yoki botdagi tugma).", "Archive");
+        // Video arxivda va serverda: vaqtinchalik jobs papkasi (yuzlab MB) kerak emas. Keyingi yuklash records\ dagi ssenariydan teglarni oladi.
+        CleanupWorkDir(c.Job, c.Log);
         return true;
     }
 

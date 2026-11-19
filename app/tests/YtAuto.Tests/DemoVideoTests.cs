@@ -120,15 +120,20 @@ public class DemoVideoTests
         Assert.Equal(3, w.LastDraft.PreviewFiles["aaaaaaaaaaaaaaaa/02.mp4"].Count); // video: 3 kadr
         Assert.Equal(new[] { "aaaaaaaaaaaaaaaa/01.png", "aaaaaaaaaaaaaaaa/02.mp4" }, f.Fetched);
         // Ovozga faqat aytiladigan matn ketdi.
-        var script = YtAuto.Core.Script.VideoScript.FromJson(File.ReadAllText(Path.Combine(j.WorkDir!, "script", "script.json")));
+        var rec = Path.Combine(h.Paths.RecordsDir, $"job-{job.Id}");
+        var script = YtAuto.Core.Script.VideoScript.FromJson(File.ReadAllText(Path.Combine(rec, "script.json")));
         Assert.DoesNotContain("Scene", script.SubtitleText);
         Assert.DoesNotContain("[", script.SubtitleText);
         Assert.Equal(TextNormalizer.Tokenize(TestScript.Narration).Count, TextNormalizer.Tokenize(script.SubtitleText).Count);
-        // Montaj: materiallar, SFX va sahna rejasi.
-        var film = Path.Combine(j.WorkDir!, "edit", "film", "assets");
-        Assert.True(File.Exists(Path.Combine(film, "demo", "01.png")));
-        Assert.True(File.Exists(Path.Combine(film, "demo", "02.mp4")));
-        Assert.True(File.Exists(Path.Combine(film, "sfx", "whoosh.wav")));
+        // Montaj: materiallar, SFX va sahna rejasi (Claude ishlagan paytda film/ ichida edi).
+        Assert.Equal(new[] { "assets/demo/01.png", "assets/demo/02.mp4", "assets/sfx/click.wav", "assets/sfx/pop.wav", "assets/sfx/whoosh.wav" }, h.Editor.SeenDemoAssets);
+        var plan = JsonSerializer.Deserialize<List<DemoPlanScene>>(File.ReadAllText(Path.Combine(rec, "demo_plan.json")))!;
+        Assert.Equal(3, plan.Count);
+        Assert.Equal(0, plan[0].Start);
+        Assert.Equal(plan[0].End, plan[1].Start);
+        // Tayyor: vaqtinchalik ish papkasi tozalandi, arxiv qoldi.
+        Assert.True(j.WorkDirCleaned);
+        Assert.False(Directory.Exists(j.WorkDir));
         Assert.Contains("## Product demo", h.Editor.LastInstructions);
         Assert.Contains("film/assets/demo/02.mp4", h.Editor.LastInstructions);
         Assert.Contains("temperature gauge", h.Editor.LastInstructions);

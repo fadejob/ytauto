@@ -106,6 +106,8 @@ internal sealed class FakeAligner : IAligner
 internal sealed class FakeEditor : IEditorAgent
 {
     public int Calls; public int GappyCalls; public int TransientFailures; public Func<Task>? DuringRun; public string? LastInstructions;
+    /// <summary>Claude ko'rgan demo materiallari va SFX (film/ ga nisbiy).</summary>
+    public List<string> SeenDemoAssets = new();
     /// <summary>Haqiqiy Claude kabi film/cover.html (muqova) ham yozadi.</summary>
     public bool WriteCover = true;
     /// <summary>Tuzatish sikllarida Claude ko'rgan qa_feedback.md matnlari.</summary>
@@ -116,6 +118,11 @@ internal sealed class FakeEditor : IEditorAgent
         Calls++;
         var ins = Path.Combine(dir, "instructions.md");
         if (File.Exists(ins)) LastInstructions = File.ReadAllText(ins);
+        var assetsDir = Path.Combine(dir, "film", "assets");
+        SeenDemoAssets = Directory.Exists(assetsDir)
+            ? Directory.GetFiles(assetsDir, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(Path.Combine(dir, "film"), f).Replace(Path.DirectorySeparatorChar, '/'))
+                .Where(f => f.StartsWith("assets/demo/") || f.StartsWith("assets/sfx/")).OrderBy(f => f, StringComparer.Ordinal).ToList()
+            : new();
         var fb = Path.Combine(dir, "qa_feedback.md");
         if (File.Exists(fb)) Feedbacks.Add(File.ReadAllText(fb));
         if (DuringRun is not null) await DuringRun();
