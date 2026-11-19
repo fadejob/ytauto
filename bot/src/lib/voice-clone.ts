@@ -94,7 +94,7 @@ export async function saveSample(i: { path: string; durationSec: number; passage
     path: i.path, url: isDemo() ? `https://demo.supabase.co/${i.path}` : await signDownload(i.path, DOWNLOAD_TTL_SEC),
     version: crypto.randomBytes(6).toString("hex"), profileName: profileNameFor(accountId), model: MODEL,
     durationSec: Math.round(dur * 10) / 10, refText, uploadedAt: now, consentAt: now, consentBy: i.by.slice(0, 80),
-    status: "pending", message: "Kompyuter namunani VoiceStudio'ga qo'shadi (ilova ochiq bo'lsa ~1 daqiqa, aks holda keyingi ishda).", machine: null, readyAt: null,
+    status: "pending", message: "Kompyuter namunani VoiceStudio'ga qo'shadi (~2 daqiqada, ilova yopiq bo'lsa ham).", machine: null, readyAt: null,
   };
   await write(s);
   await setCloneProfile({ name: PROFILE_LABEL, model: MODEL, voice: s.profileName }, i.makeDefault);

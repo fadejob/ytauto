@@ -8,7 +8,7 @@ import type { PendingTemplate, PreparedUpload, TemplateUpload } from "./types";
 /**
  * Shablon yuklash: brauzer faylni Supabase Storage'ga (private "templates" bucket) imzolangan havola bilan to'g'ridan-to'g'ri yuboradi
  * (Vercel'ning ~4.5 MB so'rov chegarasini chetlab o'tish uchun). So'ng har tanlangan kompyuter uchun bazada "pending" yozuv qo'shiladi;
- * ilova ochiq bo'lganda uni yuklab, o'rnatadi va holatni (progress, tayyor/xato) yozadi. Hamma yozuv tugagach fayl Storage'dan o'chiriladi.
+ * har 2 daqiqada (ilova yopiq bo'lsa ham) uni yuklab, o'rnatadi va holatni (progress, tayyor/xato) yozadi. Hamma yozuv tugagach fayl Storage'dan o'chiriladi.
  */
 const MAX_BYTES = 600 * 1024 * 1024;
 const VIDEO_EXT = [".mp4", ".mov", ".webm", ".mkv", ".m4v"];

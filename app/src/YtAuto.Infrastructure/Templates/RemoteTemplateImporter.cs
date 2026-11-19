@@ -5,7 +5,7 @@ namespace YtAuto.Infrastructure.Templates;
 
 /// <summary>
 /// Botdan (Supabase Storage orqali) yuklangan shablonlarni shu kompyuterga yuklab olib o'rnatadi.
-/// Ilova ochiq bo'lganda har 2 daqiqada chaqiriladi. Holat (yuklanmoqda %, tayyor, xato) bazaga yoziladi, bot ko'rsatadi.
+/// Har 2 daqiqada chaqiriladi: ilova ochiq bo'lsa uning timer'idan, yopiq bo'lsa yengil --poll worker'dan (band qilish atomar). Holat (yuklanmoqda %, tayyor, xato) bazaga yoziladi, bot ko'rsatadi.
 /// Xavfsizlik: faqat https://*.supabase.co manzillari, hajm cheklovi, zip ichida yo'l buzishdan (zip-slip) himoya,
 /// MP4 uchun fayl turi tekshiruvi; fayl faqat ilovaning shablonlar papkasiga nusxalanadi.
 /// </summary>

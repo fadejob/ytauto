@@ -114,6 +114,9 @@ public static class Program
             // Botdan kelgan shu kompyuterga buyruqlar (shablonni o'chirish, upload sessiyasini tozalash).
             if (dataRoot is null && (poll || scheduled)) Infrastructure.Commands.RemoteCommands.Run(svc);
 
+            // Botda yuklangan shablonlar va «Mening ovozim» namunalari: ilova yopiq bo'lsa ham shu yerda (har 2 daqiqada) olinadi.
+            if (dataRoot is null && (poll || scheduled)) await RemoteAssetsAsync(svc, cts.Token);
+
             // Botdan "Hozir ishga tushirish": yengil poll og'ir ishga o'tadi - jadvaldagi kabi mavzular soniga qarab videolar tayyorlanadi.
             if (poll && dataRoot is null && svc.IsOnline && svc.Store.TakeRunRequest(Environment.MachineName))
             {
@@ -403,6 +406,22 @@ public static class Program
     }
 
     /// <summary>Oqimni mehmon hisobiga o'tkazadi (null - o'z hisobi, hech narsa qilinmaydi).</summary>
+    /// <summary>Shablon yuklamalari (atomar band qilinadi - ochiq ilova bilan ikki marta o'rnatilmaydi) va har hisobning ovoz namunasi.</summary>
+    private static async Task RemoteAssetsAsync(AppServices svc, CancellationToken ct)
+    {
+        try { await Infrastructure.Templates.RemoteTemplateImporter.RunPendingAsync(svc, ct); }
+        catch (Exception e) when (e is not OperationCanceledException) { svc.Log.Warn("Botdagi shablonlar olinmadi: " + e.Message); }
+        List<(Guid? Id, string Label)> scopes;
+        try { scopes = AccountScopes(svc); }
+        catch (Exception e) when (e is not OperationCanceledException) { svc.Log.Warn("Mehmon hisoblari o'qilmadi: " + e.Message); scopes = new() { (null, "") }; }
+        foreach (var (account, _) in scopes)
+            using (EnterScope(svc, account))
+            {
+                try { await Infrastructure.Voice.VoiceClonePrefetch.RunAsync(svc, ct); }
+                catch (Exception e) when (e is not OperationCanceledException) { svc.Log.Warn("Ovoz namunasi olinmadi: " + e.Message); }
+            }
+    }
+
     private static IDisposable? EnterScope(AppServices svc, Guid? account) =>
         account is null ? null : (svc.Store as Infrastructure.Data.PostgresJobStore)?.UseScope(account);
 
