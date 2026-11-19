@@ -41,7 +41,7 @@ const DEF: BotConfig = {
   },
   openFilm: { renderWorkers: 1, fps: 30, loudnessLufs: -14, burnSubtitles: true, lookFullAfterRender: true, renderTimeoutMinutes: 90 },
   visuals: { realMedia: true, maxMedia: 16, templateStyleGuide: true, templateMotion: true, styleReview: true, minStyleScore: 6.5, pexelsKeySet: false, pixabayKeySet: false,
-    openFilmStock: true, stockImages: 5, stockClips: 3, stockScenes: 8 },
+    openFilmStock: true, stockImages: 5, stockClips: 3 },
 };
 
 let demoStored: Stored = {};
@@ -106,7 +106,8 @@ function view(s: Stored): BotConfig {
     defaults: { ...DEF.defaults, ...(s.defaults ?? {}) },
     youtube: { ...DEF.youtube, ...y, clientSecretSet: !!clientSecret },
     openFilm: { ...DEF.openFilm, ...(s.openFilm ?? {}) },
-    visuals: { ...DEF.visuals, ...vis, pexelsKeySet: !!pexelsApiKey, pixabayKeySet: !!pixabayApiKey },
+    // Majburiy funksiyalar eski saqlangan qiymatdan qat'i nazar yoqiq ko'rinadi.
+    visuals: { ...DEF.visuals, ...vis, templateStyleGuide: true, templateMotion: true, openFilmStock: true, pexelsKeySet: !!pexelsApiKey, pixabayKeySet: !!pixabayApiKey },
     claude: { ...DEF.claude, ...(s.claude ?? {}) },
     voice: { profiles: s.voice?.profiles ?? [], settings: { ...DEF.voice.settings, ...(s.voice?.settings ?? {}) } },
   };
@@ -240,12 +241,12 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
     },
     visuals: input.visuals ? {
       realMedia: !!input.visuals.realMedia, maxMedia: Math.round(num(input.visuals.maxMedia, 0, 40, "Rasmlar soni")),
-      templateStyleGuide: !!input.visuals.templateStyleGuide, templateMotion: input.visuals.templateMotion !== false, styleReview: !!input.visuals.styleReview,
+      // Majburiy (botda ko'rsatilmaydi): shablon uslubi va animatsiyasi tahlili, OpenFilm stok qidiruvi - doim yoqiq.
+      templateStyleGuide: true, templateMotion: true, styleReview: !!input.visuals.styleReview,
       minStyleScore: num(input.visuals.minStyleScore, 0, 10, "Shablonga moslik bali"),
-      openFilmStock: input.visuals.openFilmStock !== false,
+      openFilmStock: true,
       stockImages: Math.round(num(input.visuals.stockImages ?? DEF.visuals.stockImages, 1, 8, "Sahnaga rasm nomzodlari")),
       stockClips: Math.round(num(input.visuals.stockClips ?? DEF.visuals.stockClips, 0, 4, "Sahnaga video nomzodlari")),
-      stockScenes: Math.round(num(input.visuals.stockScenes ?? DEF.visuals.stockScenes, 0, 20, "Stok sahnalar soni")),
       pexelsApiKey: stockKey(input.visuals.pexelsApiKey, input.visuals.pexelsKeySet, cur.visuals?.pexelsApiKey, "Pexels"),
       pixabayApiKey: stockKey(input.visuals.pixabayApiKey, input.visuals.pixabayKeySet, cur.visuals?.pixabayApiKey, "Pixabay"),
     } : cur.visuals,

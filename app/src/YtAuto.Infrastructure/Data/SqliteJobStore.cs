@@ -776,6 +776,11 @@ public sealed class SqliteSettingsStore : ISettingsStore
 
     private static void ApplyBotConfig(AppSettings s, string? json)
     {
+        // Har videoga majburiy: shablon uslubi, shablon animatsiyasi va OpenFilm stok qidiruvi. Botda ko'rsatilmaydi; eski bot yoki
+        // lokal sozlamada o'chirilgan bo'lsa ham yoqiladi.
+        s.Visuals.TemplateStyleGuide = true;
+        s.Visuals.TemplateMotionGuide = true;
+        s.Visuals.OpenFilmStock = true;
         if (string.IsNullOrWhiteSpace(json)) return;
         try
         {
@@ -830,15 +835,11 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 // Video sifati (bot → Sozlamalar → Video): real rasmlar, shablon uslubi, shablonga moslik tekshiruvi.
                 if (vis["realMedia"] is System.Text.Json.Nodes.JsonValue rm && rm.TryGetValue<bool>(out var rmv)) s.Visuals.RealMedia = rmv;
                 if (vis["maxMedia"] is System.Text.Json.Nodes.JsonValue mm && mm.TryGetValue<int>(out var mmv)) s.Visuals.MaxMedia = Math.Clamp(mmv, 0, 40);
-                if (vis["templateStyleGuide"] is System.Text.Json.Nodes.JsonValue sg && sg.TryGetValue<bool>(out var sgv)) s.Visuals.TemplateStyleGuide = sgv;
-                if (vis["templateMotion"] is System.Text.Json.Nodes.JsonValue tm && tm.TryGetValue<bool>(out var tmv)) s.Visuals.TemplateMotionGuide = tmv;
                 if (vis["styleReview"] is System.Text.Json.Nodes.JsonValue sr && sr.TryGetValue<bool>(out var srv)) s.Visuals.StyleReview = srv;
                 if (vis["minStyleScore"] is System.Text.Json.Nodes.JsonValue ms && ms.TryGetValue<double>(out var msv)) s.Visuals.MinStyleScore = Math.Clamp(msv, 0, 10);
                 // Stok video/rasm nomzodlari (OpenFilm qidiradi, Claude tanlaydi).
-                if (vis["openFilmStock"] is System.Text.Json.Nodes.JsonValue os && os.TryGetValue<bool>(out var osv)) s.Visuals.OpenFilmStock = osv;
                 if (vis["stockImages"] is System.Text.Json.Nodes.JsonValue si && si.TryGetValue<int>(out var siv)) s.Visuals.StockImagesPerScene = Math.Clamp(siv, 1, 8);
                 if (vis["stockClips"] is System.Text.Json.Nodes.JsonValue sc && sc.TryGetValue<int>(out var scv)) s.Visuals.StockClipsPerScene = Math.Clamp(scv, 0, 4);
-                if (vis["stockScenes"] is System.Text.Json.Nodes.JsonValue ss && ss.TryGetValue<int>(out var ssv)) s.Visuals.MaxStockScenes = Math.Clamp(ssv, 0, 20);
                 // Sifatli stok foto manbalari (bepul kalitlar): bo'lmasa Openverse/Wikimedia ishlatiladi.
                 s.Visuals.PexelsApiKey = vis["pexelsApiKey"] is System.Text.Json.Nodes.JsonValue pk && pk.TryGetValue<string>(out var pkv) ? pkv.Trim() : "";
                 s.Visuals.PixabayApiKey = vis["pixabayApiKey"] is System.Text.Json.Nodes.JsonValue xk && xk.TryGetValue<string>(out var xkv) ? xkv.Trim() : "";

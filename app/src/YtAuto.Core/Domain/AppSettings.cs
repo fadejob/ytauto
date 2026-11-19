@@ -234,9 +234,10 @@ public sealed class VisualSettings
     public int StockImagesPerScene { get; set; } = 5;
     /// <summary>Har sahnaga nechta video parcha nomzodi (OpenFilm bir so'rovda 1-4; 0 - video qidirilmaydi).</summary>
     public int StockClipsPerScene { get; set; } = 3;
-    /// <summary>Ko'pi bilan nechta sahna uchun stok qidiriladi (video parchalar katta: ~5-30 MB dan).</summary>
-    public int MaxStockScenes { get; set; } = 8;
-    /// <summary>Shablon kadrlaridan Gemini dizayn qo'llanmasi (STYLE_GUIDE.md) yaratiladi va Claude'ga beriladi.</summary>
+    /// <summary>
+    /// Shablon kadrlaridan Gemini dizayn qo'llanmasi (STYLE_GUIDE.md) yaratiladi va Claude'ga beriladi. Majburiy: botda ko'rsatilmaydi va
+    /// bot qiymati e'tiborga olinmaydi (TemplateMotionGuide va OpenFilmStock ham) - faqat ichki sinovlar o'chirishi mumkin.
+    /// </summary>
     public bool TemplateStyleGuide { get; set; } = true;
     /// <summary>Shablon videosining harakati (animatsiya, o'tishlar, temp) Gemini'ga video sifatida beriladi - MOTION_GUIDE.md. Shablon uchun bir marta.</summary>
     public bool TemplateMotionGuide { get; set; } = true;

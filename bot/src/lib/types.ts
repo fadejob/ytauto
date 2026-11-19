@@ -85,7 +85,7 @@ export type BotConfig = {
    */
   visuals: { realMedia: boolean; maxMedia: number; templateStyleGuide: boolean; templateMotion: boolean; styleReview: boolean; minStyleScore: number; pexelsKeySet: boolean; pixabayKeySet: boolean;
     /** OpenFilm stok qidiruvi: har sahnaga rasm/video nomzodlari, tanlovni Claude qiladi. */
-    openFilmStock: boolean; stockImages: number; stockClips: number; stockScenes: number };
+    openFilmStock: boolean; stockImages: number; stockClips: number };
 };
 export type GeminiKeyInfo = { id: string; hint: string };
 /**

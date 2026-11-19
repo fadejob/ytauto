@@ -191,15 +191,15 @@ public class StockMediaTests
         var (h, stock, _, _) = Setup();
         using var _h = h;
         stock.AddBroken = true;
-        h.Settings.S.Visuals.StockImagesPerScene = 2; h.Settings.S.Visuals.StockClipsPerScene = 1; h.Settings.S.Visuals.MaxStockScenes = 1;
+        h.Settings.S.Visuals.StockImagesPerScene = 2; h.Settings.S.Visuals.StockClipsPerScene = 1;
         var j = h.Store.ListByStatus(JobStatus.Queued).Single(); j.Format = VideoFormat.Shorts9x16; h.Store.Update(j);
         await h.Run();
         Assert.Equal(new StockOptions(2, 1, "portrait"), stock.LastOptions);
-        Assert.Single(stock.Requests);
+        Assert.Equal(2, stock.Requests.Count); // sahnalar soni qat'iy emas: rasm rejasidagi har "photo" bandi - bitta sahna
         var ins = h.Editor.LastInstructions!;
         Assert.Contains("film/assets/stock/s01/img2.jpg", ins);
         Assert.DoesNotContain("`film/assets/stock/s01/img3.jpg`", ins); // buzilgan fayl ro'yxatga kirmadi
-        Assert.Contains(h.Log.Lines, l => l.Contains("1/1 sahna, 2 rasm, 1 video"));
+        Assert.Contains(h.Log.Lines, l => l.Contains("2/2 sahna, 4 rasm, 2 video"));
     }
 
     [Fact]
@@ -213,16 +213,17 @@ public class StockMediaTests
     }
 
     [Fact]
-    public void BotConfig_ReadsStockSettings_ClampedToOpenFilmLimits()
+    public void BotConfig_ReadsStockSettings_ClampedToOpenFilmLimits_AndForcesMandatoryAnalysis()
     {
         using var t = new TempDir();
         var db = new YtAuto.Infrastructure.Data.SqliteJobStore(Path.Combine(t.Path, "db.sqlite"));
+        // Eski bot: majburiy funksiyalarni o'chirib qo'ygan va qat'iy sahnalar sonini yozgan - hammasi e'tiborsiz.
         db.SetSetting(YtAuto.Infrastructure.Data.SqliteSettingsStore.ConfigKey,
-            """{"visuals":{"openFilmStock":false,"stockImages":12,"stockClips":2,"stockScenes":6,"pexelsApiKey":" pk "}}""");
+            """{"visuals":{"openFilmStock":false,"templateStyleGuide":false,"templateMotion":false,"stockImages":12,"stockClips":2,"stockScenes":6,"pexelsApiKey":" pk "}}""");
         var v = new YtAuto.Infrastructure.Data.SqliteSettingsStore(db, () => new AppSettings(), db).Load().Visuals;
-        Assert.Equal((false, 8, 2, 6, "pk"), (v.OpenFilmStock, v.StockImagesPerScene, v.StockClipsPerScene, v.MaxStockScenes, v.PexelsApiKey));
+        Assert.Equal((true, true, true, 8, 2, "pk"), (v.OpenFilmStock, v.TemplateStyleGuide, v.TemplateMotionGuide, v.StockImagesPerScene, v.StockClipsPerScene, v.PexelsApiKey));
         var d = new AppSettings().Visuals;
-        Assert.Equal((true, 5, 3, 8), (d.OpenFilmStock, d.StockImagesPerScene, d.StockClipsPerScene, d.MaxStockScenes));
+        Assert.Equal((true, 5, 3), (d.OpenFilmStock, d.StockImagesPerScene, d.StockClipsPerScene));
     }
 
     // ------------------------------------------------------------ OpenFilm javobi va yordamchilar

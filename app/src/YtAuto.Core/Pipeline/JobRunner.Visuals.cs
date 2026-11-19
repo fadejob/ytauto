@@ -156,7 +156,7 @@ public sealed partial class JobRunner
     private bool StockEnabled(JobContext c)
     {
         var v = c.S.Visuals;
-        return v.OpenFilmStock && v.MaxStockScenes > 0 && (v.StockImagesPerScene > 0 || v.StockClipsPerScene > 0) && _x.Stock is { IsConfigured: true };
+        return v.OpenFilmStock && (v.StockImagesPerScene > 0 || v.StockClipsPerScene > 0) && _x.Stock is { IsConfigured: true };
     }
 
     /// <summary>
@@ -176,7 +176,7 @@ public sealed partial class JobRunner
         var cacheDir = MediaCacheDir(c);
         var stockDir = StockCacheDir(c);
         var planHash = Hashing.Sha256Text("media-v2", script.SubtitleText, v.MaxMedia.ToString(inv),
-            useStock ? $"stock:{v.StockImagesPerScene}:{v.StockClipsPerScene}:{v.MaxStockScenes}:{StageOrientation(c)}" : "no-stock");
+            useStock ? $"stock:{v.StockImagesPerScene}:{v.StockClipsPerScene}:{StageOrientation(c)}" : "no-stock");
         MediaManifest? m = null;
         StockCandidates? stock = null;
         if (File.Exists(MediaManifestPath(c)))
@@ -244,14 +244,15 @@ public sealed partial class JobRunner
     }
 
     /// <summary>
-    /// OpenFilm stok qidiruvi: rejadagi "photo" bandlari (ko'pi bilan MaxStockScenes) - sahnalar. Har nomzod ffprobe bilan tekshiriladi
+    /// OpenFilm stok qidiruvi: rejadagi har "photo" bandi - bitta sahna. Sahnalar soni oldindan belgilanmaydi: Gemini ssenariy va subtitr
+    /// vaqtlaridan tuzgan rasm rejasi qancha sahna bersa, shuncha (reja o'zi «Bitta videoga rasmlar» bilan cheklangan). Har nomzod ffprobe bilan tekshiriladi
     /// (o'qib bo'lmaydigani tashlanadi, haqiqiy o'lcham/davomiylik yoziladi), sahna papkasiga img1.jpg / clip1.mp4 nomi bilan qo'yiladi va
     /// har sahnaga kontakt varaq yasaladi. Xato videoni to'xtatmaydi: null - fotolar MediaLibrary'dan olinadi.
     /// </summary>
     private async Task<StockCandidates?> FetchStockAsync(JobContext c, MediaPlan plan, string stockDir)
     {
         var v = c.S.Visuals;
-        var reqs = plan.Items.Where(i => i.Kind == MediaKinds.Photo).Take(v.MaxStockScenes)
+        var reqs = plan.Items.Where(i => i.Kind == MediaKinds.Photo)
             .Select((i, k) => new StockRequest($"s{k + 1:00}", i.Query, i.Purpose, i.At)).ToList();
         if (reqs.Count == 0) return null;
         var images = Math.Clamp(v.StockImagesPerScene, 0, 8);

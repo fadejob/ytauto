@@ -259,8 +259,6 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
             <div className="sect">Video sifati</div>
             <div className="card formcard">
               <label className="chk"><input type="checkbox" checked={cfg.visuals.realMedia} onChange={(e) => V({ realMedia: e.target.checked })} /><span>Real rasm, logo va ikonlar (barchasi bepul va tijoratda ishlatish mumkin)</span></label>
-              <label className="chk"><input type="checkbox" checked={cfg.visuals.templateStyleGuide} onChange={(e) => V({ templateStyleGuide: e.target.checked })} /><span>Shablon uslubini tahlil qilish (ranglar, shrift, kompozitsiya — Gemini)</span></label>
-              <label className="chk"><input type="checkbox" checked={cfg.visuals.templateMotion} onChange={(e) => V({ templateMotion: e.target.checked })} /><span>Shablon animatsiyasini tahlil qilish (o&apos;tishlar, matn va elementlar harakati, temp — Gemini videoni ko&apos;radi, har shablon uchun bir marta)</span></label>
               <label className="chk"><input type="checkbox" checked={cfg.visuals.styleReview} onChange={(e) => V({ styleReview: e.target.checked })} /><span>Tayyor videoni shablon bilan solishtirish va mos kelmasa tuzattirish</span></label>
               <div className="grid2">
                 <div className="field"><label>Bitta videoga rasmlar (0–40)</label><input className="input" inputMode="numeric" value={cfg.visuals.maxMedia} onChange={(e) => V({ maxMedia: num(e.target.value) })} /></div>
@@ -278,12 +276,14 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
                     {cfg.visuals.pixabayKeySet ? <button className="btn danger" type="button" onClick={() => V({ pixabayKeySet: false, pixabayApiKey: "" })}>O&apos;chirish</button> : null}
                   </div></div>
               </div>
-              <label className="chk"><input type="checkbox" checked={cfg.visuals.openFilmStock} onChange={(e) => V({ openFilmStock: e.target.checked })} /><span>Stok video va rasmlarni OpenFilm qidirsin, Claude eng sifatli va mosini tanlasin (Pexels/Pixabay kaliti kerak)</span></label>
-              {cfg.visuals.openFilmStock ? <div className="grid3">
+              <div className="grid2">
                 <div className="field"><label>Sahnaga rasm (1–8)</label><input className="input" inputMode="numeric" value={cfg.visuals.stockImages} onChange={(e) => V({ stockImages: num(e.target.value) })} /></div>
                 <div className="field"><label>Sahnaga video (0–4)</label><input className="input" inputMode="numeric" value={cfg.visuals.stockClips} onChange={(e) => V({ stockClips: num(e.target.value) })} /></div>
-                <div className="field"><label>Sahnalar (0–20)</label><input className="input" inputMode="numeric" value={cfg.visuals.stockScenes} onChange={(e) => V({ stockScenes: num(e.target.value) })} /></div>
-              </div> : null}
+              </div>
+              <div className="hint">
+                Har videoda doim: shablon uslubi va animatsiyasi tahlil qilinadi (Gemini), stok rasm va video parchalarni OpenFilm qidiradi, Claude
+                eng sifatli va mosini tanlaydi. Sahnalar soni oldindan belgilanmaydi — ssenariy va subtitrga qarab har videoda o&apos;zi chiqadi.
+              </div>
               <div className="hint">Kalit kiritilgan bo&apos;lsa OpenFilm har sahna uchun Pexels → Pixabay&apos;dan bir nechta rasm va qisqa video parcha yuklaydi; Claude ularni mavzuga mosligi, sifati (xiralik, o&apos;lcham), suv belgisi va matn bo&apos;yicha tekshirib, yaroqlilari bilan animatsiyali dizayn qiladi. Video parchalar katta (har biri ~5–30 MB). Kalit bo&apos;lmasa yoki hech narsa topilmasa fotolar Openverse/Wikimedia&apos;dan olinadi. Ikon va logolar — Iconify. Faqat bepul litsenziyalar (Pexels/Pixabay License, CC0, Public domain, CC BY); CC BY mualliflari video tavsifiga avtomatik yoziladi.</div>
             </div>
 
