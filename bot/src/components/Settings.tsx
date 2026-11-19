@@ -321,7 +321,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
             Hisobdan chiqish (boshqa token bilan kirish)
           </button>
         ) : null}
-        <div className="grid2" style={{ position: "sticky", bottom: 78 }}>
+        <div className="grid2 savebar">
           <button className="btn block" disabled={!dirty || saving} onClick={() => { if (schSaved) setSch(schSaved); if (cfgSaved) setCfg(toDraft(cfgSaved)); }}>Qaytarish</button>
           <button className="btn primary block" disabled={!dirty || saving} onClick={save}>{saving ? "Saqlanmoqda…" : "Saqlash"}</button>
         </div>

@@ -4,8 +4,14 @@
 type TgWebApp = {
   initData: string;
   colorScheme: "light" | "dark";
+  /** "android" | "ios" | "tdesktop" | "macos" | "weba" | "webk" | "unigram" | "unknown" … */
+  platform?: string;
+  isFullscreen?: boolean;
   ready(): void;
   expand(): void;
+  /** Bot API 8.0+: Mini App butun ekranni egallaydi (Telegram sarlavhasi ham yashiriladi). */
+  requestFullscreen?(): void;
+  onEvent?(e: string, cb: () => void): void;
   disableVerticalSwipes?(): void;
   setHeaderColor?(c: string): void;
   setBackgroundColor?(c: string): void;
@@ -32,6 +38,17 @@ export function initTelegram() {
   t.expand();
   try { t.disableVerticalSwipes?.(); } catch {}
   try { t.setHeaderColor?.("secondary_bg_color"); t.setBackgroundColor?.("secondary_bg_color"); } catch {}
+  // Kompyuter yoki planshetda kichik oyna o'rniga darhol to'liq ekran (telefonda odatdagidek - pastdan ochiladigan oyna).
+  if (isLargeDevice(t) && t.isVersionAtLeast?.("8.0") && !t.isFullscreen) {
+    try { t.onEvent?.("fullscreenFailed", () => {}); t.requestFullscreen?.(); } catch { /* eski Telegram — oddiy oyna qoladi */ }
+  }
+}
+
+/** Kompyuter (Telegram Desktop, macOS, Web) yoki planshet: ekranning qisqa tomoni 600px dan katta. */
+function isLargeDevice(t: TgWebApp): boolean {
+  const p = t.platform ?? "";
+  if (["tdesktop", "macos", "weba", "webk", "web", "unigram"].includes(p)) return true;
+  return Math.min(window.screen.width, window.screen.height) >= 600;
 }
 
 export const haptic = {

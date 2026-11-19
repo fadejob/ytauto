@@ -87,7 +87,7 @@ export default function Topics({ state, loading, refresh, run, locked }: { state
         ))}
       </div>
 
-      <div className="list" style={{ paddingBottom: group !== "done" ? 64 : 0 }}>
+      <div className="list cards" style={{ paddingBottom: group !== "done" ? 64 : 0 }}>
         {!state && loading && [0, 1, 2].map((i) => <div key={i} className="skeleton" />)}
         {state && items.length === 0 && <div className="empty">{group === "queue" ? "Navbat bo'sh. Pastdagi “Mavzu” tugmasi yoki AI yordamchi orqali qo'shing." : "Bu yerda hozircha hech narsa yo'q."}</div>}
         {items.map((t) => (
