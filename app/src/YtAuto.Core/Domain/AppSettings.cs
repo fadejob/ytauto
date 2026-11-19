@@ -143,8 +143,15 @@ public sealed class ClaudeSettings
 /// <summary>Video sifati sozlamalari (bot: config.visuals).</summary>
 public sealed class VisualSettings
 {
-    /// <summary>Ochiq manbalardan (Iconify, Openverse, Wikimedia Commons) real ikon, logo va fotolar qo'shiladi.</summary>
+    /// <summary>
+    /// Bepul manbalardan real ikon, logo va fotolar qo'shiladi: fotolar avval sifatli stok manbalardan (Pexels, Pixabay -
+    /// kalit kiritilgan bo'lsa), topilmasa Openverse va Wikimedia Commons'dan; ikon va logolar Iconify'dan.
+    /// </summary>
     public bool RealMedia { get; set; } = true;
+    /// <summary>Pexels API kaliti (bepul, bot: config.visuals). Saqlanmaydi/snapshotga tushmaydi (JsonIgnore).</summary>
+    [JsonIgnore] public string PexelsApiKey { get; set; } = "";
+    /// <summary>Pixabay API kaliti (bepul, bot: config.visuals). Saqlanmaydi/snapshotga tushmaydi (JsonIgnore).</summary>
+    [JsonIgnore] public string PixabayApiKey { get; set; } = "";
     /// <summary>Bitta videoga ko'pi bilan nechta rasm/ikon.</summary>
     public int MaxMedia { get; set; } = 16;
     /// <summary>Shablon kadrlaridan Gemini dizayn qo'llanmasi (STYLE_GUIDE.md) yaratiladi va Claude'ga beriladi.</summary>

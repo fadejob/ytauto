@@ -20,7 +20,7 @@ type Stored = {
   openFilm?: Partial<BotConfig["openFilm"]>;
   claude?: Partial<BotConfig["claude"]>;
   voice?: { profiles?: BotConfig["voice"]["profiles"]; settings?: Partial<BotConfig["voice"]["settings"]> };
-  visuals?: Partial<BotConfig["visuals"]>;
+  visuals?: Partial<Omit<BotConfig["visuals"], "pexelsKeySet" | "pixabayKeySet">> & { pexelsApiKey?: string; pixabayApiKey?: string };
 };
 
 const DEF: BotConfig = {
@@ -38,7 +38,7 @@ const DEF: BotConfig = {
     notifySubscribers: true, setRecordingDate: false, locationDescription: "", defaultTags: "", defaultDescription: "", minLeadMinutes: 30,
   },
   openFilm: { renderWorkers: 1, fps: 30, loudnessLufs: -14, burnSubtitles: true, lookFullAfterRender: true, renderTimeoutMinutes: 90 },
-  visuals: { realMedia: true, maxMedia: 16, templateStyleGuide: true, styleReview: true, minStyleScore: 6.5 },
+  visuals: { realMedia: true, maxMedia: 16, templateStyleGuide: true, styleReview: true, minStyleScore: 6.5, pexelsKeySet: false, pixabayKeySet: false },
 };
 
 let demoStored: Stored = {};
@@ -79,13 +79,14 @@ function view(s: Stored): BotConfig {
   const g = { ...(s.gemini ?? {}) };
   delete g.apiKey; delete g.apiKeys; // sirlar brauzerga qaytarilmaydi
   const { clientSecret, ...y } = s.youtube ?? {};
+  const { pexelsApiKey, pixabayApiKey, ...vis } = s.visuals ?? {}; // stok foto kalitlari ham brauzerga qaytarilmaydi
   return {
     gemini: { ...DEF.gemini, ...g, apiKeys: storedKeys(s).map(keyInfo) },
     limits: { ...DEF.limits, ...(s.limits ?? {}) },
     defaults: { ...DEF.defaults, ...(s.defaults ?? {}) },
     youtube: { ...DEF.youtube, ...y, clientSecretSet: !!clientSecret },
     openFilm: { ...DEF.openFilm, ...(s.openFilm ?? {}) },
-    visuals: { ...DEF.visuals, ...(s.visuals ?? {}) },
+    visuals: { ...DEF.visuals, ...vis, pexelsKeySet: !!pexelsApiKey, pixabayKeySet: !!pixabayApiKey },
     claude: { ...DEF.claude, ...(s.claude ?? {}) },
     voice: { profiles: s.voice?.profiles ?? [], settings: { ...DEF.voice.settings, ...(s.voice?.settings ?? {}) } },
   };
@@ -135,6 +136,19 @@ const hhmm = (v: string, name: string) => {
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) throw new Error(`${name}: HH:mm formatida bo'lsin.`);
   return v;
 };
+
+/**
+ * Stok foto kaliti (Pexels/Pixabay): yangisi kiritilgan bo'lsa - u (format tekshiriladi); bo'sh va keep=true - eskisi qoladi;
+ * bo'sh va keep=false - o'chiriladi (undefined).
+ */
+function stockKey(next: string | undefined, keep: boolean | undefined, cur: string | undefined, name: string): string | undefined {
+  const k = String(next ?? "").trim();
+  if (k) {
+    if (!/^[A-Za-z0-9_-]{10,120}$/.test(k)) throw new Error(`${name} kaliti noto'g'ri ko'rinishda (bo'sh joysiz harf/raqam satri bo'lishi kerak).`);
+    return k;
+  }
+  return keep ? cur?.trim() || undefined : undefined;
+}
 
 export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
   const cur = await readStored();
@@ -204,6 +218,8 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
       realMedia: !!input.visuals.realMedia, maxMedia: Math.round(num(input.visuals.maxMedia, 0, 40, "Rasmlar soni")),
       templateStyleGuide: !!input.visuals.templateStyleGuide, styleReview: !!input.visuals.styleReview,
       minStyleScore: num(input.visuals.minStyleScore, 0, 10, "Shablonga moslik bali"),
+      pexelsApiKey: stockKey(input.visuals.pexelsApiKey, input.visuals.pexelsKeySet, cur.visuals?.pexelsApiKey, "Pexels"),
+      pixabayApiKey: stockKey(input.visuals.pixabayApiKey, input.visuals.pixabayKeySet, cur.visuals?.pixabayApiKey, "Pixabay"),
     } : cur.visuals,
   };
   if (isDemo()) { demoStored = next; return view(next); }

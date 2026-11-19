@@ -18,7 +18,7 @@ const toDraft = (c: BotConfig): Draft => ({
   defaults: { ...c.defaults },
   youtube: { ...c.youtube, clientSecret: "" },
   openFilm: { ...c.openFilm },
-  visuals: { ...c.visuals },
+  visuals: { ...c.visuals, pexelsApiKey: "", pixabayApiKey: "" },
   claude: { ...c.claude },
   voice: { profiles: c.voice.profiles.map((p) => ({ ...p })), settings: { ...c.voice.settings } },
 });
@@ -250,14 +250,26 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
 
             <div className="sect">Video sifati</div>
             <div className="card formcard">
-              <label className="chk"><input type="checkbox" checked={cfg.visuals.realMedia} onChange={(e) => V({ realMedia: e.target.checked })} /><span>Real rasm, logo va ikonlar (Iconify, Openverse, Wikimedia — faqat CC0, Public domain, CC BY)</span></label>
+              <label className="chk"><input type="checkbox" checked={cfg.visuals.realMedia} onChange={(e) => V({ realMedia: e.target.checked })} /><span>Real rasm, logo va ikonlar (barchasi bepul va tijoratda ishlatish mumkin)</span></label>
               <label className="chk"><input type="checkbox" checked={cfg.visuals.templateStyleGuide} onChange={(e) => V({ templateStyleGuide: e.target.checked })} /><span>Shablon uslubini tahlil qilish (ranglar, shrift, kompozitsiya — Gemini)</span></label>
               <label className="chk"><input type="checkbox" checked={cfg.visuals.styleReview} onChange={(e) => V({ styleReview: e.target.checked })} /><span>Tayyor videoni shablon bilan solishtirish va mos kelmasa tuzattirish</span></label>
               <div className="grid2">
                 <div className="field"><label>Bitta videoga rasmlar (0–40)</label><input className="input" inputMode="numeric" value={cfg.visuals.maxMedia} onChange={(e) => V({ maxMedia: num(e.target.value) })} /></div>
                 <div className="field"><label>Shablonga moslik bali (0–10)</label><input className="input" inputMode="decimal" value={cfg.visuals.minStyleScore} onChange={(e) => V({ minStyleScore: num(e.target.value) })} /></div>
               </div>
-              <div className="hint">CC BY rasmlar mualliflari video tavsifiga avtomatik yoziladi.</div>
+              <div className="grid2">
+                <div className="field"><label>Pexels API kaliti {cfg.visuals.pexelsKeySet ? "· saqlangan ✓" : "· kiritilmagan"}</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input className="input" type="password" autoComplete="off" value={cfg.visuals.pexelsApiKey ?? ""} placeholder={cfg.visuals.pexelsKeySet ? "O'zgartirish uchun yangisini kiriting" : "Bepul: pexels.com/api"} onChange={(e) => V({ pexelsApiKey: e.target.value })} />
+                    {cfg.visuals.pexelsKeySet ? <button className="btn danger" type="button" onClick={() => V({ pexelsKeySet: false, pexelsApiKey: "" })}>O&apos;chirish</button> : null}
+                  </div></div>
+                <div className="field"><label>Pixabay API kaliti {cfg.visuals.pixabayKeySet ? "· saqlangan ✓" : "· kiritilmagan"}</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input className="input" type="password" autoComplete="off" value={cfg.visuals.pixabayApiKey ?? ""} placeholder={cfg.visuals.pixabayKeySet ? "O'zgartirish uchun yangisini kiriting" : "Bepul: pixabay.com/api/docs"} onChange={(e) => V({ pixabayApiKey: e.target.value })} />
+                    {cfg.visuals.pixabayKeySet ? <button className="btn danger" type="button" onClick={() => V({ pixabayKeySet: false, pixabayApiKey: "" })}>O&apos;chirish</button> : null}
+                  </div></div>
+              </div>
+              <div className="hint">Fotolar sifat tartibida olinadi: Pexels → Pixabay (kalit kiritilgan bo&apos;lsa) → Openverse → Wikimedia Commons. Ikon va logolar — Iconify. Faqat bepul litsenziyalar (Pexels/Pixabay License, CC0, Public domain, CC BY); CC BY mualliflari video tavsifiga avtomatik yoziladi.</div>
             </div>
 
             <div className="sect">YouTube</div>

@@ -76,13 +76,17 @@ export type BotConfig = {
     notifySubscribers: boolean; setRecordingDate: boolean; locationDescription: string; defaultTags: string; defaultDescription: string; minLeadMinutes: number;
   };
   openFilm: { renderWorkers: number; fps: number; loudnessLufs: number; burnSubtitles: boolean; lookFullAfterRender: boolean; renderTimeoutMinutes: number };
-  /** Video sifati: ochiq manbalardan real rasm/logo/ikonlar, shablon uslub qo'llanmasi va shablonga moslik tekshiruvi. */
-  visuals: { realMedia: boolean; maxMedia: number; templateStyleGuide: boolean; styleReview: boolean; minStyleScore: number };
+  /**
+   * Video sifati: bepul manbalardan real rasm/logo/ikonlar, shablon uslub qo'llanmasi va shablonga moslik tekshiruvi.
+   * pexelsKeySet/pixabayKeySet - sifatli stok foto kalitlari saqlanganmi (kalitning o'zi qaytarilmaydi).
+   */
+  visuals: { realMedia: boolean; maxMedia: number; templateStyleGuide: boolean; styleReview: boolean; minStyleScore: number; pexelsKeySet: boolean; pixabayKeySet: boolean };
 };
 export type GeminiKeyInfo = { id: string; hint: string };
 /**
  * Saqlashda yuboriladi. gemini.apiKeys - qoldiriladigan kalitlar (id bo'yicha, shu tartibda), newApiKeys - qo'shiladigan yangi kalitlar.
- * clientSecret bo'sh bo'lsa mavjud sir o'zgarmaydi.
+ * clientSecret bo'sh bo'lsa mavjud sir o'zgarmaydi. visuals.pexelsApiKey/pixabayApiKey - yangi kalit; bo'sh bo'lsa
+ * pexelsKeySet/pixabayKeySet true bo'lganda mavjud kalit qoladi, false bo'lsa o'chiriladi.
  */
 export type BotConfigInput = {
   gemini: BotConfig["gemini"] & { newApiKeys?: string[] };
@@ -92,7 +96,7 @@ export type BotConfigInput = {
   openFilm: BotConfig["openFilm"];
   claude: BotConfig["claude"];
   voice: BotConfig["voice"];
-  visuals: BotConfig["visuals"];
+  visuals: BotConfig["visuals"] & { pexelsApiKey?: string; pixabayApiKey?: string };
 };
 
 export type Catalog = {

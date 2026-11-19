@@ -7,14 +7,23 @@ using YtAuto.Core.Visuals;
 
 namespace YtAuto.Infrastructure.Media;
 
+/// <summary>Sifatli stok foto manbalarining bepul API kalitlari (bo'sh - shu manba ishlatilmaydi).</summary>
+public sealed record StockPhotoKeys(string Pexels, string Pixabay)
+{
+    public static readonly StockPhotoKeys None = new("", "");
+}
+
 /// <summary>
-/// Kalitsiz ochiq manbalardan rasm yuklaydi va faqat tijoratda ishlatish mumkin bo'lgan litsenziyalarni oladi:
+/// Bepul manbalardan rasm yuklaydi va faqat tijoratda bepul ishlatish mumkin bo'lgan litsenziyalarni oladi:
 /// <list type="bullet">
 /// <item>Ikon va logolar: Iconify (api.iconify.design). Logolar - "logos" va "simple-icons" (CC0) to'plamlari;
 /// ikonlar - MIT/Apache/ISC/CC0/BSD litsenziyali to'plamlar, butun video uchun bitta uslubdagi to'plam afzal.</item>
-/// <item>Fotolar: Openverse (CC0, Public Domain Mark, CC BY), bo'lmasa Wikimedia Commons (CC0, Public domain, CC BY).
-/// NC, ND va SA litsenziyalari olinmaydi. CC BY mualliflari manifestga yoziladi (YouTube tavsifiga qo'shiladi).</item>
+/// <item>Fotolar - sifat tartibida: Pexels, Pixabay (professional stok fotolar, bepul, muallif ko'rsatish shart emas;
+/// bepul API kalit kiritilgan bo'lsa), topilmasa Openverse (CC0, Public Domain Mark, CC BY), so'ng Wikimedia Commons
+/// (CC0, Public domain, CC BY). NC, ND va SA litsenziyalari olinmaydi. CC BY mualliflari manifestga yoziladi (YouTube tavsifiga qo'shiladi).</item>
 /// </list>
+/// Kalit noto'g'ri yoki limit tugagan (401/403/429) manba shu video uchun o'chiriladi va keyingisiga o'tiladi.
+/// Bitta foto bitta videoda ikki marta ishlatilmaydi.
 /// Xavfsizlik: faqat https, hajm chegarasi, rasm turi fayl boshidan tekshiriladi, SVG ichidagi skript/hodisa atributlari olib tashlanadi.
 /// Hech bir xato vazifani to'xtatmaydi: topilmagan so'rov Skipped ro'yxatiga tushadi.
 /// </summary>
@@ -23,14 +32,30 @@ public sealed class OpenMediaLibrary : IMediaLibrary
     private const string UserAgent = "YtAuto/1.0 (educational video tool)";
     private const long MaxBytes = 15L * 1024 * 1024;
     private readonly HttpClient _http;
+    private readonly Func<StockPhotoKeys> _keys;
+
+    /// <summary>Bitta FetchAsync davomidagi foto holati: o'chirilgan manbalar va ishlatilgan fotolar.</summary>
+    private sealed class PhotoRun
+    {
+        public required StockPhotoKeys Keys { get; init; }
+        public HashSet<string> Disabled { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> Used { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public bool On(string provider) => !Disabled.Contains(provider) && provider switch
+        {
+            "pexels" => Keys.Pexels.Length > 0,
+            "pixabay" => Keys.Pixabay.Length > 0,
+            _ => true,
+        };
+    }
 
     /// <summary>Iconify to'plamlari: bitta videoda ikonlar bir xil uslubda bo'lishi uchun shu tartibda afzal ko'riladi.</summary>
     public static readonly string[] PreferredIconSets = { "ph", "tabler", "lucide", "mdi", "material-symbols", "carbon", "solar", "fluent", "iconoir", "mingcute", "ri", "bi" };
     public static readonly string[] LogoSets = { "logos", "simple-icons" };
     private static readonly string[] PermissiveSpdx = { "MIT", "Apache-2.0", "ISC", "CC0-1.0", "BSD-2-Clause", "BSD-3-Clause", "Unlicense" };
 
-    public OpenMediaLibrary(HttpClient? http = null)
+    public OpenMediaLibrary(HttpClient? http = null, Func<StockPhotoKeys>? keys = null)
     {
+        _keys = keys ?? (() => StockPhotoKeys.None);
         _http = http ?? new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5), AutomaticDecompression = System.Net.DecompressionMethods.All })
         { Timeout = TimeSpan.FromSeconds(40) };
         if (!_http.DefaultRequestHeaders.UserAgent.Any()) _http.DefaultRequestHeaders.UserAgent.ParseAdd(UserAgent);
@@ -44,6 +69,15 @@ public sealed class OpenMediaLibrary : IMediaLibrary
         try { sets = await IconSetsAsync(ct).ConfigureAwait(false); }
         catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested) { log.Warn("Iconify to'plamlari ro'yxati olinmadi: " + e.Message, "Media"); }
         string? iconSet = null; // birinchi topilgan ikon to'plami - keyingilari ham shundan
+        StockPhotoKeys keys;
+        try { keys = _keys() ?? StockPhotoKeys.None; } catch { keys = StockPhotoKeys.None; }
+        var photos = new PhotoRun { Keys = new StockPhotoKeys((keys.Pexels ?? "").Trim(), (keys.Pixabay ?? "").Trim()) };
+        if (plan.Items.Any(i => i.Kind == MediaKinds.Photo))
+        {
+            var chain = new[] { "pexels", "pixabay", "openverse", "wikimedia" }.Where(photos.On);
+            log.Info("Foto manbalari (tartib bilan): " + string.Join(" → ", chain) +
+                     (photos.Keys.Pexels.Length == 0 && photos.Keys.Pixabay.Length == 0 ? ". Sifatliroq fotolar uchun botda Pexels/Pixabay bepul kalitini kiriting." : "."), "Media");
+        }
         var n = 0;
         foreach (var item in plan.Items)
         {
@@ -56,7 +90,7 @@ public sealed class OpenMediaLibrary : IMediaLibrary
                 {
                     MediaKinds.Logo => await LogoAsync(item, sets, mediaDir, $"logo_{n:00}_{slug}", ct).ConfigureAwait(false),
                     MediaKinds.Icon => await IconAsync(item, sets, mediaDir, $"icon_{n:00}_{slug}", iconSet, ct).ConfigureAwait(false),
-                    _ => await PhotoAsync(item, mediaDir, $"photo_{n:00}_{slug}", log, ct).ConfigureAwait(false),
+                    _ => await PhotoAsync(item, mediaDir, $"photo_{n:00}_{slug}", photos, log, ct).ConfigureAwait(false),
                 };
                 if (a is null) { manifest.Skipped.Add($"{item.Kind}: {item.Query}"); continue; }
                 if (a.Kind == MediaKinds.Icon && iconSet is null) iconSet = a.Provider.Split(':').Last();
@@ -155,21 +189,110 @@ public sealed class OpenMediaLibrary : IMediaLibrary
 
     // ------------------------------------------------------------ Fotolar
 
-    private async Task<MediaAsset?> PhotoAsync(MediaPlanItem item, string dir, string name, IJobLog log, CancellationToken ct)
+    /// <summary>Fotolar sifat tartibida: Pexels → Pixabay → Openverse → Wikimedia. Birinchi topilgani olinadi.</summary>
+    private async Task<MediaAsset?> PhotoAsync(MediaPlanItem item, string dir, string name, PhotoRun run, IJobLog log, CancellationToken ct)
     {
-        try
+        var providers = new (string Id, Func<Task<MediaAsset?>> Find)[]
         {
-            var a = await OpenverseAsync(item.Query, dir, name, ct).ConfigureAwait(false);
-            if (a is not null) return a;
-        }
-        catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+            ("pexels", () => PexelsAsync(item.Query, run.Keys.Pexels, dir, name, run.Used, ct)),
+            ("pixabay", () => PixabayAsync(item.Query, run.Keys.Pixabay, dir, name, run.Used, ct)),
+            ("openverse", () => OpenverseAsync(item.Query, dir, name, run.Used, ct)),
+            ("wikimedia", () => WikimediaAsync(item.Query, dir, name, run.Used, ct)),
+        };
+        foreach (var (id, find) in providers)
         {
-            log.Debug($"Openverse ({item.Query}): {e.Message}", "Media");
+            if (!run.On(id)) continue;
+            try
+            {
+                var a = await find().ConfigureAwait(false);
+                if (a is not null) { run.Used.Add(a.SourceUrl); return a; }
+            }
+            catch (HttpRequestException e) when (e.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.TooManyRequests
+                                                 || (id is "pixabay" && e.StatusCode is System.Net.HttpStatusCode.BadRequest))
+            {
+                // Kalit noto'g'ri yoki limit tugagan: shu videoning qolgan fotolari keyingi manbadan olinadi.
+                run.Disabled.Add(id);
+                log.Warn($"{id} foto manbasi ishlamadi ({e.Message}{(e.StatusCode == System.Net.HttpStatusCode.TooManyRequests ? ", limit tugagan" : ", kalitni tekshiring")}); keyingi manbaga o'tildi.", "Media");
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.Debug($"{id} ({item.Query}): {e.Message}", "Media");
+            }
         }
-        return await WikimediaAsync(item.Query, dir, name, ct).ConfigureAwait(false);
+        return null;
     }
 
-    private async Task<MediaAsset?> OpenverseAsync(string query, string dir, string name, CancellationToken ct)
+    public const string PexelsLicenseUrl = "https://www.pexels.com/license/";
+    public const string PixabayLicenseUrl = "https://pixabay.com/service/license-summary/";
+
+    /// <summary>
+    /// Pexels: professional stok fotolar, Pexels License (tijoratda bepul, muallif ko'rsatish shart emas).
+    /// Kalit sarlavhada yuboriladi (URL'da emas). 1920 px kenglikdagi variant yuklanadi.
+    /// </summary>
+    private async Task<MediaAsset?> PexelsAsync(string query, string key, string dir, string name, HashSet<string> used, CancellationToken ct)
+    {
+        var json = await GetJsonAsync($"https://api.pexels.com/v1/search?query={Uri.EscapeDataString(query)}&per_page=15&size=large", ct, auth: key).ConfigureAwait(false);
+        var results = PexelsCandidates(json).Where(r => !used.Contains(r.Page)).Take(4).ToList();
+        foreach (var r in results)
+        {
+            var file = await TryDownloadImageAsync(r.Url, dir, name, ct).ConfigureAwait(false)
+                       ?? (r.Fallback.Length > 0 ? await TryDownloadImageAsync(r.Fallback, dir, name, ct).ConfigureAwait(false) : null);
+            if (file is null) continue;
+            return new MediaAsset
+            {
+                File = file.Value.File, Kind = MediaKinds.Photo, Title = r.Title, Author = r.Author, License = "Pexels License", LicenseUrl = PexelsLicenseUrl,
+                SourceUrl = r.Page, Provider = "pexels", Width = file.Value.W > 0 ? file.Value.W : r.W, Height = file.Value.H > 0 ? file.Value.H : r.H, NeedsCredit = false,
+            };
+        }
+        return null;
+    }
+
+    /// <summary>Pexels javobidan nomzodlar: kamida 1280 px, gorizontallari avval; asosiy URL - 1920 px variant, zaxira - large2x.</summary>
+    internal static List<(string Url, string Fallback, string Page, string Title, string Author, int W, int H)> PexelsCandidates(JsonNode? json) =>
+        (json?["photos"] as JsonArray ?? new JsonArray()).OfType<JsonObject>()
+            .Select(p =>
+            {
+                var original = Str(p["src"]?["original"]);
+                return (Url: original.Length > 0 ? original + (original.Contains('?') ? "&" : "?") + "auto=compress&cs=tinysrgb&w=1920" : "",
+                        Fallback: Str(p["src"]?["large2x"]), Page: Str(p["url"]), Title: Str(p["alt"]), Author: Str(p["photographer"]),
+                        W: Int(p["width"]), H: Int(p["height"]));
+            })
+            .Where(r => r.Url.StartsWith("https://") && r.Page.Length > 0 && r.W >= 1280)
+            .OrderByDescending(r => r.W >= r.H ? 1 : 0)
+            .ToList();
+
+    /// <summary>
+    /// Pixabay: stok fotolar, Pixabay Content License (tijoratda bepul, muallif ko'rsatish shart emas). API qoidasi bo'yicha
+    /// rasm to'g'ridan-to'g'ri ulanmaydi, yuklab olinadi. largeImageURL - 1280 px gacha.
+    /// </summary>
+    private async Task<MediaAsset?> PixabayAsync(string query, string key, string dir, string name, HashSet<string> used, CancellationToken ct)
+    {
+        var url = $"https://pixabay.com/api/?key={Uri.EscapeDataString(key)}&q={Uri.EscapeDataString(query)}&image_type=photo&safesearch=true&per_page=20&min_width=1280&order=popular";
+        var json = await GetJsonAsync(url, ct).ConfigureAwait(false);
+        var results = PixabayCandidates(json).Where(r => !used.Contains(r.Page)).Take(4).ToList();
+        foreach (var r in results)
+        {
+            var file = await TryDownloadImageAsync(r.Url, dir, name, ct).ConfigureAwait(false);
+            if (file is null) continue;
+            return new MediaAsset
+            {
+                File = file.Value.File, Kind = MediaKinds.Photo, Title = r.Title, Author = r.Author, License = "Pixabay Content License", LicenseUrl = PixabayLicenseUrl,
+                SourceUrl = r.Page, Provider = "pixabay", Width = file.Value.W > 0 ? file.Value.W : r.W, Height = file.Value.H > 0 ? file.Value.H : r.H, NeedsCredit = false,
+            };
+        }
+        return null;
+    }
+
+    /// <summary>Pixabay javobidan nomzodlar: kamida 1280 px, gorizontallari avval (Pixabay o'z mashhurlik tartibini saqlaydi).</summary>
+    internal static List<(string Url, string Page, string Title, string Author, int W, int H)> PixabayCandidates(JsonNode? json) =>
+        (json?["hits"] as JsonArray ?? new JsonArray()).OfType<JsonObject>()
+            .Select(h => (Url: Str(h["largeImageURL"]), Page: Str(h["pageURL"]), Title: Str(h["tags"]), Author: Str(h["user"]),
+                          W: Int(h["imageWidth"]), H: Int(h["imageHeight"])))
+            .Where(r => r.Url.StartsWith("https://") && r.Page.Length > 0 && r.W >= 1280)
+            .OrderByDescending(r => r.W >= r.H ? 1 : 0)
+            .ToList();
+
+    private async Task<MediaAsset?> OpenverseAsync(string query, string dir, string name, HashSet<string> used, CancellationToken ct)
     {
         var url = $"https://api.openverse.org/v1/images/?q={Uri.EscapeDataString(query)}&license=cc0,pdm,by&mature=false&page_size=20";
         var json = await GetJsonAsync(url, ct).ConfigureAwait(false);
@@ -182,7 +305,7 @@ public sealed class OpenMediaLibrary : IMediaLibrary
                 W = Int(r["width"]), H = Int(r["height"]), Type = Str(r["filetype"]).ToLowerInvariant(),
             })
             .Where(r => r.Url.StartsWith("https://") && r.Lic is "cc0" or "pdm" or "by" && r.Type is "" or "jpg" or "jpeg" or "png" or "webp")
-            .Where(r => r.W == 0 || r.W >= 800)
+            .Where(r => (r.W == 0 || r.W >= 800) && !used.Contains(r.Page))
             .OrderBy(r => r.W == 0 ? 1 : 0).ThenByDescending(r => r.W >= r.H ? 1 : 0).ThenByDescending(r => Math.Min(r.W, 3000))
             .Take(4).ToList();
         foreach (var r in results)
@@ -215,7 +338,7 @@ public sealed class OpenMediaLibrary : IMediaLibrary
         return null;
     }
 
-    private async Task<MediaAsset?> WikimediaAsync(string query, string dir, string name, CancellationToken ct)
+    private async Task<MediaAsset?> WikimediaAsync(string query, string dir, string name, HashSet<string> used, CancellationToken ct)
     {
         var url = "https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=15" +
                   $"&gsrsearch={Uri.EscapeDataString(query + " filetype:bitmap")}" +
@@ -233,7 +356,7 @@ public sealed class OpenMediaLibrary : IMediaLibrary
             if (w < 800) continue;
             var meta = ii["extmetadata"];
             var lic = WikimediaLicense(Str(meta?["LicenseShortName"]?["value"]));
-            if (lic is null) continue;
+            if (lic is null || used.Contains(Str(ii["descriptionurl"]))) continue;
             var src = Str(ii["thumburl"]); if (!src.StartsWith("https://")) src = Str(ii["url"]);
             var file = await TryDownloadImageAsync(src, dir, name, ct).ConfigureAwait(false);
             if (file is null) continue;
@@ -324,12 +447,14 @@ public sealed class OpenMediaLibrary : IMediaLibrary
         return Encoding.UTF8.GetString(await ReadLimitedAsync(resp, max, ct).ConfigureAwait(false));
     }
 
-    private async Task<JsonNode?> GetJsonAsync(string url, CancellationToken ct)
+    /// <summary>JSON so'rov. Xatoda faqat HTTP kodi (URL va kalit xabarga tushmaydi). auth - Authorization sarlavhasi (Pexels).</summary>
+    private async Task<JsonNode?> GetJsonAsync(string url, CancellationToken ct, string? auth = null)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        if (!string.IsNullOrEmpty(auth)) req.Headers.TryAddWithoutValidation("Authorization", auth);
         using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
-        if (!resp.IsSuccessStatusCode) throw new HttpRequestException($"HTTP {(int)resp.StatusCode}");
+        if (!resp.IsSuccessStatusCode) throw new HttpRequestException($"HTTP {(int)resp.StatusCode}", null, resp.StatusCode);
         return JsonNode.Parse(Encoding.UTF8.GetString(await ReadLimitedAsync(resp, 8 * 1024 * 1024, ct).ConfigureAwait(false)));
     }
 
