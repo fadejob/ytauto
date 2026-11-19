@@ -17,7 +17,7 @@ export const GUEST_NO_PUBLISH_NOW =
   "Qo'shimcha tokenda «Hozir chiqarish» yo'q: video token bergan hisob kompyuterida ish vaqtida tayyorlanadi va chiqish vaqtida YouTube'ga chiqadi.";
 
 /** Shablon va format: berilmasa bot sozlamasidagi (yoki katalogdagi) standart; berilsa katalogda borligi tekshiriladi. */
-async function pickTemplateFormat(cat: Catalog, template?: string, format?: number, voice?: string): Promise<{ template: string; format: number; voice: string } | { error: string }> {
+export async function pickTemplateFormat(cat: Catalog, template?: string, format?: number, voice?: string): Promise<{ template: string; format: number; voice: string } | { error: string }> {
   const cfg = await getConfig();
   const tpl = template !== undefined ? template : cfg.defaults.template || cat.defaults.template;
   const fmt = format !== undefined ? format : cfg.defaults.format ?? cat.defaults.format;

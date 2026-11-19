@@ -3,12 +3,14 @@
 export const Status = {
   Queued: 0, Scripting: 1, GeneratingVoice: 2, Aligning: 3, Editing: 4, Rendering: 5, Validating: 6, Archived: 7,
   Uploading: 8, Processing: 9, Scheduled: 10, Published: 11, Failed: 12, NeedsAttention: 13, Cancelled: 14,
+  /** Demo video (Claude Code MCP) tayyor, YouTube'ga chiqarish alohida buyruq bilan. */
+  Ready: 15,
 } as const;
 
 export const StatusText: Record<number, string> = {
   0: "Navbatda", 1: "Ssenariy yozilmoqda", 2: "Ovoz yaratilmoqda", 3: "Subtitr vaqtlari", 4: "Montaj", 5: "Render",
   6: "Sifat tekshiruvi", 7: "Arxivlandi", 8: "YouTube'ga yuklanmoqda", 9: "YouTube qayta ishlamoqda", 10: "Rejalashtirildi",
-  11: "Chiqarildi", 12: "Xato (qayta urinadi)", 13: "E'tibor kerak", 14: "Bekor qilindi",
+  11: "Chiqarildi", 12: "Xato (qayta urinadi)", 13: "E'tibor kerak", 14: "Bekor qilindi", 15: "Tayyor (chiqarish kutilmoqda)",
 };
 
 export type Topic = {

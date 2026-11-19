@@ -13,10 +13,11 @@ export function storageCfg() {
   return { url, key, headers: { apikey: key, "Content-Type": "application/json" } };
 }
 
-/** Brauzer PUT qiladigan bir martalik yuklash havolasi. */
-export async function signUpload(path: string): Promise<string> {
+/** Brauzer PUT qiladigan bir martalik yuklash havolasi (2 soat amal qiladi). upsert - bor faylni almashtirishga ruxsat. */
+export async function signUpload(path: string, opts?: { upsert?: boolean }): Promise<string> {
   const { url, headers } = storageCfg();
-  const r = await fetch(`${url}/storage/v1/object/upload/sign/${BUCKET}/${path}`, { method: "POST", headers, body: "{}" });
+  const h = opts?.upsert ? { ...headers, "x-upsert": "true" } : headers;
+  const r = await fetch(`${url}/storage/v1/object/upload/sign/${BUCKET}/${path}`, { method: "POST", headers: h, body: "{}" });
   const j = (await r.json().catch(() => ({}))) as { url?: string; message?: string };
   if (!r.ok || !j.url) throw new Error(`Yuklash havolasi olinmadi: ${j.message ?? r.status}`);
   return `${url}/storage/v1${j.url}`;
@@ -26,6 +27,15 @@ export async function objectExists(path: string): Promise<boolean> {
   const { url, headers } = storageCfg();
   const r = await fetch(`${url}/storage/v1/object/info/${BUCKET}/${path}`, { headers });
   return r.ok;
+}
+
+/** Fayl hajmi va turi (yo'q bo'lsa null). Storage versiyasiga qarab maydonlar ildizda yoki metadata ichida. */
+export async function objectInfo(path: string): Promise<{ size: number; contentType: string } | null> {
+  const { url, headers } = storageCfg();
+  const r = await fetch(`${url}/storage/v1/object/info/${BUCKET}/${path}`, { headers });
+  if (!r.ok) return null;
+  const j = (await r.json().catch(() => ({}))) as { size?: number; content_type?: string; metadata?: { size?: number; mimetype?: string; contentLength?: number } };
+  return { size: Number(j.size ?? j.metadata?.size ?? j.metadata?.contentLength ?? 0), contentType: String(j.content_type ?? j.metadata?.mimetype ?? "") };
 }
 
 /** Kompyuter yuklab oladigan imzolangan havola. */

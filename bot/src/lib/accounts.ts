@@ -48,6 +48,27 @@ export async function activeAccounts(): Promise<{ id: string; guest: boolean }[]
   return rows.map((r) => ({ id: r.id as string, guest: r.guest === true }));
 }
 
+/**
+ * MCP (Claude Code) va kompyuter (worker) so'rovlari: "Authorization: Bearer <token>" - botdagi bilan bir xil token.
+ * Noto'g'ri token IP bo'yicha cheklanadi (15 daqiqada 20 urinish). Token o'zi saqlanmaydi - faqat xeshi solishtiriladi.
+ */
+export async function accountForToken(token: string, ip: string): Promise<LinkedAccount | null> {
+  await ensureSchema();
+  const t = token.trim();
+  const [row] = TOKEN_RE.test(t) ? await ownerSql()`
+    SELECT a.id::text AS id, a.host_account_id IS NOT NULL AS guest, h.device_name AS host_label FROM ytauto.accounts a
+    LEFT JOIN ytauto.accounts h ON h.id = a.host_account_id WHERE a.token_hash = ${hashToken(t)}` : [];
+  if (!row) { await rateLimit(`bearer:${ip}`, 20, 15); return null; }
+  return { id: row.id as string, guest: row.guest === true, hostLabel: (row.host_label as string | null) ?? null };
+}
+
+/** guestId - hostId hisobi yaratgan qo'shimcha (mehmon) hisobmi (mezbon kompyuter mehmon vazifasini bajarganda). */
+export async function isHostedGuest(hostId: string, guestId: string): Promise<boolean> {
+  if (!/^[0-9a-f-]{36}$/i.test(guestId)) return false;
+  const [r] = await ownerSql()`SELECT 1 AS ok FROM ytauto.accounts WHERE id = ${guestId} AND host_account_id = ${hostId}`;
+  return !!r;
+}
+
 // ------------------------------------------------------------------ qo'shimcha (mehmon) tokenlar
 export const GUEST_LIMIT = 20;
 const ALNUM = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
