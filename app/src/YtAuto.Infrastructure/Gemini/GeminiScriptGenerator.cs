@@ -271,13 +271,14 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
         return new JsonObject
         {
             ["type"] = "OBJECT",
-            // Asosiy shartnoma: subtitle_text (ovoz + subtitr) va youtube_title. Qolganlari ixtiyoriy.
+            // Asosiy shartnoma: subtitle_text (ovoz + subtitr), youtube_title, tavsif va aynan 5 ta tag (ssenariy bilan birga yoziladi).
             ["properties"] = new JsonObject
             {
-                ["subtitle_text"] = Str(), ["youtube_title"] = Str(), ["youtube_description"] = Str(), ["tags"] = Arr(Str()),
+                ["subtitle_text"] = Str(), ["youtube_title"] = Str(), ["youtube_description"] = Str(),
+                ["tags"] = new JsonObject { ["type"] = "ARRAY", ["items"] = Str(), ["minItems"] = DefaultPrompts.TagsPerVideo, ["maxItems"] = DefaultPrompts.TagsPerVideo },
                 ["sources"] = Arr(source),
             },
-            ["required"] = new JsonArray("subtitle_text", "youtube_title"),
+            ["required"] = new JsonArray("subtitle_text", "youtube_title", "youtube_description", "tags"),
             ["propertyOrdering"] = new JsonArray("youtube_title", "subtitle_text", "youtube_description", "tags", "sources"),
         };
     }

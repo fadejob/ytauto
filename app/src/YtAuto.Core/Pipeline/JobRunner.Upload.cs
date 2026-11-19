@@ -48,11 +48,12 @@ public sealed partial class JobRunner
         rec.State = StageState.Running; rec.Attempts++; rec.StartedAtUtc = _x.Clock.UtcNow; rec.ErrorCode = null; rec.ErrorMessage = null;
         _x.Store.SaveStage(rec);
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var tags = script.Tags.Concat(c.S.YouTube.DefaultTags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            .Distinct(StringComparer.OrdinalIgnoreCase).Take(30).ToList();
+        var tags = ComposeTags(script.Tags, c.S.YouTube.DefaultTags);
+        var description = ComposeDescription(c.Job.Description, MediaCreditsBlock(c), c.S.YouTube.DefaultDescription);
+        c.Log.Info(DescribeMetadataSources(ScriptValidator.CleanTags(script.Tags, DefaultPrompts.TagsPerVideo).Count, !string.IsNullOrWhiteSpace(c.Job.Description), c.S.YouTube.DefaultTags, c.S.YouTube.DefaultDescription), "Upload");
         var req = new UploadRequest
         {
-            VideoPath = c.Job.VideoArchivePath!, Title = Trunc(c.Job.DisplayTitle, 100), Description = ComposeDescription(c.Job.Description, MediaCreditsBlock(c), c.S.YouTube.DefaultDescription),
+            VideoPath = c.Job.VideoArchivePath!, Title = Trunc(c.Job.DisplayTitle, 100), Description = description,
             Tags = tags, CategoryId = c.S.YouTube.CategoryId, Language = c.Job.Language, PublishAtUtc = c.Job.PublishAtUtc, PublishNow = c.PublishNow,
             MadeForKids = c.S.YouTube.MadeForKids, ContainsSyntheticMedia = c.S.YouTube.ContainsSyntheticMedia, ThumbnailPath = c.Job.ThumbnailPath,
             License = c.S.YouTube.License == "creativeCommon" ? "creativeCommon" : "youtube", Embeddable = c.S.YouTube.Embeddable,
@@ -265,6 +266,41 @@ public sealed partial class JobRunner
             var pct = total == 0 ? 100 : (int)(sent * 100 / total);
             if (pct / 10 != _lastPct / 10) { _lastPct = pct; _c.Log.Info($"Upload: {pct}% ({sent / 1048576} / {total / 1048576} MB)", "Upload"); }
         }
+    }
+
+    /// <summary>YouTube barcha taglar uchun 500 belgi chegarasi (bo'sh joyli taglar qo'shtirnoq bilan hisoblanadi).</summary>
+    private const int MaxTagChars = 500;
+
+    /// <summary>
+    /// Taglar: ssenariy bilan yozilgan (ko'pi bilan 5) + kanal standart taglari (Sozlamalar → YouTube, vergul bilan). Ssenariyda tag bo'lmasa -
+    /// faqat standartlar. Takrorlar olib tashlanadi; YouTube 500 belgi chegarasidan oshganlari tashlanadi.
+    /// </summary>
+    internal static List<string> ComposeTags(IEnumerable<string>? scriptTags, string? channelDefaults)
+    {
+        var generated = ScriptValidator.CleanTags(scriptTags, DefaultPrompts.TagsPerVideo);
+        var defaults = ScriptValidator.CleanTags((channelDefaults ?? "").Split(','), 100);
+        var list = new List<string>(); var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var used = 0;
+        foreach (var t in generated.Concat(defaults))
+        {
+            var cost = t.Length + (t.Contains(' ') ? 2 : 0) + (list.Count > 0 ? 1 : 0);
+            if (!seen.Add(t) || used + cost > MaxTagChars) continue;
+            list.Add(t); used += cost;
+        }
+        return list;
+    }
+
+    /// <summary>Logda: tavsif va taglar qayerdan olindi (ssenariy / kanal standarti).</summary>
+    internal static string DescribeMetadataSources(int scriptTags, bool scriptDescription, string? defaultTags, string? defaultDescription)
+    {
+        var hasDefTags = !string.IsNullOrWhiteSpace(defaultTags); var hasDefDesc = !string.IsNullOrWhiteSpace(defaultDescription);
+        string Part(string what, bool fromScript, bool fromDefault) => $"{what}: " + (fromScript, fromDefault) switch
+        {
+            (true, true) => "ssenariydan + kanal standarti",
+            (true, false) => "ssenariydan",
+            (false, true) => "faqat kanal standarti (ssenariyda yo'q)",
+            _ => "yo'q",
+        };
+        return $"{Part($"Taglar ({scriptTags} ta)", scriptTags > 0, hasDefTags)}; {Part("tavsif", scriptDescription, hasDefDesc)}.";
     }
 
     /// <summary>

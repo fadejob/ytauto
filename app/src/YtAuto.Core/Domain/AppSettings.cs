@@ -218,7 +218,8 @@ public sealed class YouTubeSettings
     /// <summary>Kategoriyalar ro'yxati qaysi mamlakat uchun (videoCategories.list regionCode).</summary>
     public string RegionCode { get; set; } = "UZ";
     public bool MadeForKids { get; set; }
-    public bool ContainsSyntheticMedia { get; set; } = true;
+    /// <summary>YouTube "AI (sintetik) kontent" belgisi. Standart o'chiq; kerak bo'lsa botda yoqiladi.</summary>
+    public bool ContainsSyntheticMedia { get; set; }
     /// <summary>"youtube" (standart YouTube litsenziyasi) yoki "creativeCommon" (CC BY).</summary>
     public string License { get; set; } = "youtube";
     public bool Embeddable { get; set; } = true;

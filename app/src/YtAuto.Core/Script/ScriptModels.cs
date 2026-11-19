@@ -108,7 +108,26 @@ public static class ScriptValidator
         s.NarrationText = s.SubtitleText;
         s.YouTubeTitle = (s.YouTubeTitle ?? "").Trim();
         s.YouTubeDescription = (s.YouTubeDescription ?? "").Trim();
-        s.Tags ??= new(); s.Sources ??= new(); s.Scenes ??= new(); s.UnverifiedClaims ??= new(); s.OnScreenTexts ??= new();
+        s.Tags = CleanTags(s.Tags, Domain.DefaultPrompts.TagsPerVideo);
+        s.Sources ??= new(); s.Scenes ??= new(); s.UnverifiedClaims ??= new(); s.OnScreenTexts ??= new();
+    }
+
+    /// <summary>
+    /// YouTube taglari: # va burchak qavslar olib tashlanadi, bo'shliqlar yig'iladi, bo'sh va 100 belgidan uzunlari tashlanadi,
+    /// takrorlar (katta-kichik harfsiz) olib tashlanadi, ko'pi bilan <paramref name="max"/> ta.
+    /// </summary>
+    public static List<string> CleanTags(IEnumerable<string>? tags, int max)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var list = new List<string>();
+        foreach (var raw in tags ?? Array.Empty<string>())
+        {
+            var t = Regex.Replace((raw ?? "").Replace("#", " ").Replace("<", " ").Replace(">", " ").Replace(",", " "), @"\s+", " ").Trim();
+            if (t.Length is 0 or > 100 || !seen.Add(t)) continue;
+            list.Add(t);
+            if (list.Count >= max) break;
+        }
+        return list;
     }
 
     public static List<string> Validate(VideoScript s, string language, int targetDurationSec)
