@@ -89,6 +89,13 @@ internal static class SelfTest
         }
         else
         {
+            // Navbat eng eskisidan band qilinadi: oldingi sinovning Archived (yuklashni kutayotgan) vazifasi yangisining o'rniga
+            // olinmasligi uchun tugallanmagan eski vazifalar bekor qilinadi (faqat shu alohida sinov bazasida).
+            foreach (var old in all.Where(j => j.Status is not (JobStatus.Cancelled or JobStatus.Published)))
+            {
+                old.Status = JobStatus.Cancelled;
+                svc.Store.Update(old);
+            }
             job = new VideoJob
             {
                 Topic = topic ?? "Self-test: night worker", Notes = Arg("--notes") ?? (topic is null ? "local chain test" : ""), Language = "en", TargetDurationSec = 0,
