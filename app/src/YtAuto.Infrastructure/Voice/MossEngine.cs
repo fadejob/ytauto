@@ -14,6 +14,7 @@ public static class MossEngine
 {
     private const string EngineId = TtsVoices.Model;
     private const string CompleteMarker = ".voicestudio_install_complete";
+    private static readonly TimeSpan PollGiveUp = TimeSpan.FromMinutes(3);
 
     public static string EnginesDir()
     {
@@ -43,11 +44,29 @@ public static class MossEngine
         await using var session = (VoiceStudioSession)await new VoiceStudioTtsService(store, "moss-install").OpenAsync(settings, log, ct).ConfigureAwait(false);
         var (code, body) = await session.PostAsync($"engines/sidecar/{EngineId}/install", TimeSpan.FromMinutes(1), ct).ConfigureAwait(false);
         if (code >= 400) throw new InvalidOperationException($"VoiceStudio {TtsVoices.DisplayName} o'rnatishni boshlamadi ({code}): {Detail(body)}");
+        // Holat so'rovidagi bitta tarmoq xatosi o'rnatishni to'xtatmasin: xato bilan chiqsak session VoiceStudio'ni yopadi va
+        // ~8 GB yuklash yarim yo'lda o'ladi. Faqat uzoq vaqt (PollGiveUp) javob bo'lmasa voz kechamiz.
+        var lastOk = DateTime.UtcNow;
+        Exception? lastError = null;
         while (true)
         {
-            await Task.Delay(TimeSpan.FromSeconds(5), ct).ConfigureAwait(false);
-            var json = await session.GetStringAsync($"engines/sidecar/{EngineId}/install/status", TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
-            var st = json is null ? null : JsonNode.Parse(json);
+            await Task.Delay(TimeSpan.FromSeconds(3), ct).ConfigureAwait(false);
+            JsonNode? st;
+            try
+            {
+                var json = await session.GetStringAsync($"engines/sidecar/{EngineId}/install/status", TimeSpan.FromSeconds(30), ct).ConfigureAwait(false)
+                           ?? throw new HttpRequestException("VoiceStudio o'rnatish holatini qaytarmadi.");
+                st = JsonNode.Parse(json);
+                lastOk = DateTime.UtcNow; lastError = null;
+            }
+            catch (Exception e) when (e is HttpRequestException or TimeoutException or System.Text.Json.JsonException && !ct.IsCancellationRequested)
+            {
+                if (lastError is null) log.Warn($"{TtsVoices.DisplayName}: o'rnatish holati o'qilmadi, qayta urinilmoqda: {e.Message}", "Voice");
+                lastError = e;
+                if (DateTime.UtcNow - lastOk > PollGiveUp)
+                    throw new InvalidOperationException($"VoiceStudio {PollGiveUp.TotalMinutes:0} daqiqa javob bermadi ({TtsVoices.DisplayName} o'rnatilishi to'xtadi): {e.Message}", e);
+                continue;
+            }
             if (st?["installed"]?.GetValue<bool>() == true) { progress?.Report("O'rnatildi"); return; }
             var job = st?["job"];
             var state = job?["state"]?.GetValue<string>() ?? "";

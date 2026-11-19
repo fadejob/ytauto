@@ -21,7 +21,10 @@ public sealed class VoiceStudioTtsService : ITtsService
 
     public async Task<ITtsSession> OpenAsync(VoiceStudioSettings s, IJobLog log, CancellationToken ct)
     {
-        var http = new HttpClient { BaseAddress = new Uri(s.BaseUrl.TrimEnd('/') + "/"), Timeout = Timeout.InfiniteTimeSpan };
+        // VoiceStudio (uvicorn) bo'sh keep-alive ulanishni 5 soniyada yopadi. .NET standarti (1 daqiqa) bilan yopilayotgan
+        // ulanish qayta ishlatilib "An error occurred while sending the request" chiqardi (MOSS o'rnatishi 5 s'lik so'rovda uzilardi).
+        var handler = new SocketsHttpHandler { PooledConnectionIdleTimeout = TimeSpan.FromSeconds(2) };
+        var http = new HttpClient(handler) { BaseAddress = new Uri(s.BaseUrl.TrimEnd('/') + "/"), Timeout = Timeout.InfiniteTimeSpan };
         var session = new VoiceStudioSession(s, http, log, _store, _runId);
         try
         {
