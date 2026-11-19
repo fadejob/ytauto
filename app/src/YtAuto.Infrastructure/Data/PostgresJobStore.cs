@@ -22,7 +22,10 @@ public sealed class PostgresJobStore : IAppStore
     {
         var b = new NpgsqlConnectionStringBuilder(connectionString)
         {
-            Pooling = true, MaxPoolSize = 5, Timeout = 15, CommandTimeout = 30, KeepAlive = 30,
+            // Supabase pooler session rejimi (5432) har ochiq ulanishni band qiladi va pool_size (15) bilan cheklangan (EMAXCONNSESSION):
+            // ilova + bir nechta worker jarayoni bo'sh ulanishlarni ushlab turmasin - 30 soniya ishlatilmasa yopiladi.
+            Pooling = true, MaxPoolSize = 5, ConnectionIdleLifetime = 30, ConnectionPruningInterval = 10,
+            Timeout = 15, CommandTimeout = 30, KeepAlive = 30,
         };
         if (b.SslMode is SslMode.Disable or SslMode.Allow or SslMode.Prefer && !Accounts.DeviceAccount.IsLocalHost(b.Host)) b.SslMode = SslMode.Require;
         _ds = NpgsqlDataSource.Create(b.ConnectionString);

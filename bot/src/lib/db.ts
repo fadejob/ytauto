@@ -47,10 +47,25 @@ export function ownerConnectionInfo(): { host: string; port: number; database: s
   return { host: String(o.host ?? ""), port: Number(o.port ?? 5432), database: String(o.database ?? "postgres"), username: String(o.username ?? "") };
 }
 
+/**
+ * Supabase pooler'ning session rejimi (5432) har mijozga alohida ulanish beradi va pool_size (15) bilan cheklangan: serverless
+ * (Vercel) instance'lar uni tez to'ldiradi - EMAXCONNSESSION. Bot faqat qisqa tranzaksiyalar ishlatadi (SET LOCAL, set_config(..., true),
+ * pg_advisory_xact_lock, prepare: false), shuning uchun shu hostda doim transaction rejimi (6543). Desktop qurilmalar 5432 da qoladi (deviceDb).
+ */
+export function botPort(host: string, port: number): number {
+  return /pooler\.supabase\.com$/i.test(host) && port === 5432 ? 6543 : port;
+}
+
 function create() {
   const raw = process.env.DATABASE_URL ?? "";
   if (!raw.trim()) throw new Error("DATABASE_URL sozlanmagan (bot/.env.local).");
-  const { url, ...opts } = connectionOptions(raw);
+  const { url: rawUrl, ...opts } = connectionOptions(raw);
+  let url = rawUrl;
+  if (url) {
+    const u = new URL(url);
+    const p = botPort(u.hostname, Number(u.port || 5432));
+    if (String(p) !== (u.port || "5432")) { u.port = String(p); url = u.toString(); }
+  } else opts.port = botPort(String(opts.host ?? ""), Number(opts.port ?? 5432));
   const local = /^(localhost|127\.0\.0\.1)$/.test(String(url ? new URL(url).hostname : opts.host ?? ""));
   const common = {
     ssl: local ? (false as const) : ("require" as const),
