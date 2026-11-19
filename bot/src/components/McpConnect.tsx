@@ -3,15 +3,16 @@
 import { useEffect, useState } from "react";
 import { api, confirmBox, haptic } from "@/lib/client";
 import type { Toast } from "./App";
+import { IconCopy } from "./icons";
 
-type Info = { exists: boolean; createdAt: string | null; lastUsedAt: string | null; url: string; token?: string; setup?: string; command?: string; message?: string };
+type Info = { exists: boolean; createdAt: string | null; lastUsedAt: string | null; url: string; token?: string; command?: string; message?: string };
 
 const MONTHS = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"];
 const when = (iso: string) => { const d = new Date(iso); return `${d.getDate()} ${MONTHS[d.getMonth()]}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 
 /**
- * Claude Code ulash: alohida token yaratiladi va Claude'ga beriladigan tayyor matn (server, token, buyruq) nusxalanadi.
- * Claude matnni olib o'zi `claude mcp add` qiladi. Token faqat yaratilgan paytda ko'rinadi; yangisi eskisini bekor qiladi.
+ * Claude Code ulash: alohida token yaratiladi va bitta `claude mcp add` buyrug'i (bir qatorli ko'rinish + nusxalash ikonkasi) chiqadi.
+ * Token faqat yaratilgan paytda ko'rinadi; yangisi eskisini bekor qiladi.
  */
 export default function McpConnect({ toast }: { toast: Toast }) {
   const [info, setInfo] = useState<Info | null>(null);
@@ -44,12 +45,13 @@ export default function McpConnect({ toast }: { toast: Toast }) {
     setBusy(false);
   }
 
-  async function copy(text: string, what: string) {
-    try { await navigator.clipboard.writeText(text); haptic.ok(); toast(`${what} nusxalandi — Claude Code'ga joylang.`); }
-    catch { toast("Nusxalab bo'lmadi — matnni qo'lda belgilab nusxalang.", true); }
+  async function copy(text: string) {
+    try { await navigator.clipboard.writeText(text); haptic.ok(); toast("Buyruq nusxalandi."); }
+    catch { toast("Nusxalab bo'lmadi.", true); }
   }
 
-  const code = { display: "block", overflowWrap: "anywhere" as const, whiteSpace: "pre-wrap" as const, userSelect: "all" as const, fontSize: 12.5, padding: "10px 12px", borderRadius: 8, background: "var(--soft)", maxHeight: 260, overflow: "auto" };
+  // Bir qatorga sig'adigan boshi ko'rinadi, qolgani «…»; nusxa - to'liq buyruq.
+  const line = { flex: 1, minWidth: 0, whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", fontSize: 12.5, padding: "8px 10px", borderRadius: 8, background: "var(--soft)" };
 
   return (
     <>
@@ -57,19 +59,14 @@ export default function McpConnect({ toast }: { toast: Toast }) {
       <div className="card formcard">
         <div className="hint">
           Claude Code loyihangizni o&apos;rganib, screenshot va qisqa videolarni YtAuto&apos;ga yuboradi — ssenariy, ovoz, montaj va render
-          kompyuteringizda bajariladi. Token yarating, matnni nusxalab Claude Code&apos;ga bering: u o&apos;zi ulanadi. So&apos;ng
+          kompyuteringizda bajariladi. Token yarating, buyruqni nusxalab terminalda (yoki Claude Code&apos;da) bajaring. So&apos;ng
           «shu loyihaning demo videosini yarat» deng. YouTube&apos;ga faqat siz aniq buyursangiz chiqadi.
         </div>
 
-        {fresh?.setup && fresh.token ? (
-          <div className="card formcard" style={{ border: "1px solid var(--accent)" }}>
-            <div><b>Claude Code uchun matn</b> — token faqat hozir ko&apos;rsatiladi:</div>
-            <code style={code}>{fresh.setup}</code>
-            <div className="grid2">
-              <button className="btn primary" onClick={() => copy(fresh.setup!, "Matn")}>Matnni nusxalash</button>
-              <button className="btn" onClick={() => copy(fresh.command!, "Buyruq")}>Faqat buyruq</button>
-            </div>
-            <button className="btn block" onClick={() => setFresh(null)}>Yopish</button>
+        {fresh?.command ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <code style={line}>{fresh.command}</code>
+            <button className="iconbtn" aria-label="Buyruqni nusxalash" onClick={() => copy(fresh.command!)}><IconCopy /></button>
           </div>
         ) : null}
 

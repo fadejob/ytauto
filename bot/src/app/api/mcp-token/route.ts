@@ -1,14 +1,14 @@
 import { handler } from "@/lib/api";
 import { createMcpToken, mcpTokenInfo, revokeMcpToken, type McpTokenInfo } from "@/lib/accounts";
 import { isDemo } from "@/lib/demo";
-import { setupText } from "@/lib/mcp";
+import { setupCommand } from "@/lib/mcp";
 import { originOf } from "@/lib/youtube";
 
 /**
  * Claude Code ulash: alohida MCP tokeni (faqat /api/mcp ga kiradi) va Claude'ga beriladigan tayyor matn - server manzili, token,
  * ulash buyrug'i va ko'rsatma. Token o'zi faqat yaratilgan javobda qaytadi (bazada xeshi). Asosiy va qo'shimcha hisoblar uchun.
  */
-type Res = McpTokenInfo & { url: string; token?: string; setup?: string; command?: string; message?: string };
+type Res = McpTokenInfo & { url: string; token?: string; command?: string; message?: string };
 
 export const GET = handler(async (req, viewer): Promise<Res> => {
   const url = `${originOf(req)}/api/mcp`;
@@ -23,7 +23,7 @@ export const POST = handler(async (req, viewer): Promise<Res> => {
   if (body.action === "create") {
     const token = await createMcpToken(viewer.accountId);
     console.log(`[mcp-token] ${viewer.name}: yangi Claude Code tokeni`);
-    return { ...(await mcpTokenInfo(viewer.accountId)), url, token, ...setupText(url, token), message: "Claude Code tokeni yaratildi — matnni nusxalab Claude'ga bering." };
+    return { ...(await mcpTokenInfo(viewer.accountId)), url, token, command: setupCommand(url, token), message: "Claude Code tokeni yaratildi — buyruqni nusxalang." };
   }
   if (body.action === "revoke") {
     await revokeMcpToken(viewer.accountId);
