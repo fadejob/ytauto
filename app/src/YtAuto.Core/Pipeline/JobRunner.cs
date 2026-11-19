@@ -21,6 +21,8 @@ public sealed class PipelineServices
     public Visuals.IVisualDirector? Visuals { get; init; }
     /// <summary>Ochiq manbalardan real rasm/ikonlar (berilmasa - faqat chizilgan grafika).</summary>
     public Visuals.IMediaLibrary? MediaLibrary { get; init; }
+    /// <summary>Stok rasm va video parchalari nomzodlari (OpenFilm qidiradi; berilmasa yoki kalit yo'q bo'lsa - faqat MediaLibrary).</summary>
+    public Visuals.IStockMediaSource? Stock { get; init; }
     /// <summary>Fon musiqasi fayllarini (bot serveridan) yuklab, lokal keshda saqlaydi (berilmasa - musiqasiz).</summary>
     public IMusicCache? Music { get; init; }
     public required IVideoUploader Uploader { get; init; }

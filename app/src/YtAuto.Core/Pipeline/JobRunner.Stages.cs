@@ -75,7 +75,7 @@ public sealed partial class JobRunner
             Format = c.Job.Format switch { VideoFormat.Shorts9x16 => "vertical 9:16 short", VideoFormat.Square1x1 => "square 1:1", _ => "horizontal 16:9" },
             PromptTemplate = ChannelPrompt.ApplyToScript(string.IsNullOrWhiteSpace(c.S.Gemini.ScriptPrompt) ? DefaultPrompts.Script : c.S.Gemini.ScriptPrompt, c.S.ChannelContext),
             FactSheetPromptTemplate = DefaultPrompts.FactSheet,
-            UseSearchGrounding = c.S.Gemini.UseSearchGrounding, Model = c.S.Gemini.Model, Temperature = c.S.Gemini.Temperature,
+            UseSearchGrounding = c.S.Gemini.UseSearchGrounding, Model = c.S.Gemini.Model, Models = c.S.Gemini.Models, Temperature = c.S.Gemini.Temperature,
             WriteDescription = writeDesc, WriteTags = writeTags,
         };
         VideoScript? script = null; List<string> problems = new(); ScriptResult? last = null;
@@ -148,7 +148,7 @@ public sealed partial class JobRunner
             {
                 var meta = await Retry.TransientAsync(_ => _x.ScriptGenerator.DescribeAsync(new MetadataRequest
                 {
-                    Title = script.YouTubeTitle, Text = script.SubtitleText, Language = c.Job.Language, Model = c.S.Gemini.Model,
+                    Title = script.YouTubeTitle, Text = script.SubtitleText, Language = c.Job.Language, Model = c.S.Gemini.Model, Models = c.S.Gemini.Models,
                     WriteDescription = writeDesc, WriteTags = writeTags,
                 }, c.Log, c.Ct), c.S.Limits.MaxTransientRetries, (n, e) => c.Log.Warn($"Gemini (tavsif/tag) vaqtinchalik xato ({n}): {e.Message}", "Script"), c.Ct).ConfigureAwait(false);
                 script.YouTubeDescription = meta.Description.Replace("<", "‹").Replace(">", "›");
@@ -393,7 +393,7 @@ public sealed partial class JobRunner
         var stale = Path.Combine(c.EditDir, "script.json");
         if (File.Exists(stale)) File.Delete(stale);
         File.WriteAllText(Path.Combine(c.EditDir, "instructions.md"),
-            EditorInstructions.Build(c, script, cues, duration, tpl, style.Frames, style.Guide.Length > 0, media, style.Motion.Length > 0, music), new UTF8Encoding(false));
+            EditorInstructions.Build(c, script, cues, duration, tpl, style.Frames, style.Guide.Length > 0, media.Media, style.Motion.Length > 0, media.Stock, music), new UTF8Encoding(false));
         File.Copy(Path.Combine(c.EditDir, "instructions.md"), Path.Combine(c.RecordDir, "instructions.md"), true);
 
         var shimDir = _x.Film.WriteShims(Path.Combine(_x.Paths.ToolsDir, "openfilm-shim"));
@@ -434,6 +434,7 @@ public sealed partial class JobRunner
         }
         File.Copy(c.VoiceVtt, Path.Combine(assets, "voice.vtt"), true);
         CopyIfExists(Path.Combine(c.FilmDir, "BUILD_NOTES.md"), Path.Combine(c.RecordDir, "BUILD_NOTES.md"));
+        if (media.Stock is { Total: > 0 } stock) ReviewStockSelection(c, stock);
         CopyIfExists(c.FilmHtml, Path.Combine(c.RecordDir, "film.html"));
 
         var manifest = Hashing.DirectoryManifest(c.FilmDir, f => !f.Contains(Path.DirectorySeparatorChar + ".film" + Path.DirectorySeparatorChar) && !f.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase));

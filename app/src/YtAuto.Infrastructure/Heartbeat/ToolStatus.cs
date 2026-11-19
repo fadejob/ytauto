@@ -38,7 +38,7 @@ public static class ToolStatus
                 new { key = "claude", name = "Claude Code", ok = File.Exists(s.Claude.ExecutablePath), detail = s.Claude.ExecutablePath ?? "" },
                 new { key = "claude-login", name = "Claude Code'ga kirish", ok = auth.LoggedIn == true, detail = auth.Message },
                 new { key = "youtube", name = "YouTube kanali", ok = svc.Uploader.IsConnected, detail = s.YouTube.ChannelTitle ?? "" },
-                new { key = "gemini", name = "Gemini kaliti", ok = geminiKeys > 0, detail = geminiKeys > 0 ? $"{geminiKeys} ta kalit · {s.Gemini.Model}" : "kiritilmagan" },
+                new { key = "gemini", name = "Gemini kaliti", ok = geminiKeys > 0, detail = geminiKeys > 0 ? $"{geminiKeys} ta kalit · {GeminiChainLabel(s)}" : "kiritilmagan" },
                 new { key = "schedule", name = "Windows jadvali", ok = schedOk, detail = schedDetail },
             };
             svc.Store.SetSetting("tools.status." + Environment.MachineName, JsonSerializer.Serialize(
@@ -46,5 +46,12 @@ public static class ToolStatus
                 new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
         }
         catch (Exception e) { svc.Log.Debug("Dasturlar holati yozilmadi: " + e.Message); }
+    }
+
+    /// <summary>Botdagi dasturlar holati uchun: asosiy model va zanjirdagi fallback'lar soni.</summary>
+    private static string GeminiChainLabel(Core.Domain.AppSettings s)
+    {
+        var chain = s.Gemini.ModelChain(Gemini.GeminiModelRouter.DefaultChain);
+        return chain.Count <= 1 ? (chain.FirstOrDefault() ?? "") : $"{chain[0]} + {chain.Count - 1} ta zaxira model";
     }
 }

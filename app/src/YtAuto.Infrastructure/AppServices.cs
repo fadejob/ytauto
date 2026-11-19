@@ -28,6 +28,9 @@ public sealed class AppServices
     public YouTubeAuth YouTubeAuth { get; }
     public YouTubeUploader Uploader { get; }
     public GeminiScriptGenerator Gemini { get; }
+    /// <summary>Bot shu yozuvdan har model bo'yicha sarf va limit holatini egasiga ko'rsatadi (bot o'z chaqiruvlarini alohida yozadi).</summary>
+    public const string GeminiUsageKey = "gemini.usage.worker";
+    private static readonly System.Text.Json.JsonSerializerOptions GeminiUsageJson = new() { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
     public ResourceMonitor Resources { get; } = new();
     public RunLog Log { get; }
     public string RunId { get; }
@@ -65,6 +68,18 @@ public sealed class AppServices
         YouTubeAuth = new YouTubeAuth(Secrets, () => Settings.Load().YouTube, Http);
         Uploader = new YouTubeUploader(YouTubeAuth, Http);
         Gemini = new GeminiScriptGenerator(Secrets) { RemoteKeys = () => Settings.Load().Gemini.RemoteApiKeys, LocalKeyAllowed = () => !Store.InGuestScope };
+        // Model router: limit holati faylda (worker qayta ishga tushsa ham limiti tugagan modelni qayta urmaydi). Sarf botga - faqat
+        // asosiy hisob egasining kalitlari bo'yicha (qo'shimcha foydalanuvchi vazifalari o'z kalitlari bilan, hisobga kirmaydi).
+        Gemini.Router = new GeminiModelRouter(Path.Combine(Paths.DataRoot, "gemini-router.json"))
+        {
+            Counting = () => !Store.InGuestScope,
+            UsageChanged = snap =>
+            {
+                if (!IsOnline || Store.InGuestScope) return;
+                try { Store.SetSetting(GeminiUsageKey, System.Text.Json.JsonSerializer.Serialize(snap, GeminiUsageJson)); }
+                catch (Exception e) { Log.Debug("Gemini sarfi botga yozilmadi: " + e.Message); }
+            },
+        };
         // Ma'lum sirlarni log redaktoriga oldindan ro'yxatga olamiz.
         Secrets.Get(SecretNames.GeminiApiKey); Secrets.Get(SecretNames.YouTubeClientSecret); Secrets.Get(SecretNames.YouTubeTokens);
         Secrets.Get(SecretNames.AccountToken); Secrets.Get(SecretNames.DeviceConnection);
@@ -125,8 +140,11 @@ public sealed class AppServices
             AudioImporter = new RemoteAudioImporter(Http, media),
             Aligner = Aligner(), Editor = Claude(), Film = film, Media = media,
             // Video sifati: Gemini vision (shablon uslubi, rasm rejasi, moslik) va ochiq manbalardan real rasmlar.
-            Visuals = new Gemini.GeminiVisualDirector(Gemini, () => Settings.Load().Gemini.Model),
+            Visuals = new Gemini.GeminiVisualDirector(Gemini, () => Settings.Load().Gemini.ModelChain(GeminiModelRouter.DefaultChain)),
             MediaLibrary = new Media.OpenMediaLibrary(keys: () => { var v = Settings.Load().Visuals; return new Media.StockPhotoKeys(v.PexelsApiKey, v.PixabayApiKey); }),
+            // Stok rasm va video parchalari: OpenFilm o'zi qidiradi (alohida OPENFILM_HOME'li Studio, kalitlar faqat uning muhitida).
+            Stock = new OpenFilm.OpenFilmStockSearch(film, () => { var v = Settings.Load().Visuals; return new Media.StockPhotoKeys(v.PexelsApiKey, v.PixabayApiKey); },
+                Path.Combine(Paths.ToolsDir, "openfilm-stock-home")),
             // Fon musiqasi: botda tanlangan treklar kompyuterda bir marta yuklab olinib keshlanadi.
             Music = new Media.MusicCache(Http, Path.Combine(Paths.DataRoot, "music")),
             Uploader = Uploader, Resources = Resources, Paths = Paths, Clock = new SystemClock(),

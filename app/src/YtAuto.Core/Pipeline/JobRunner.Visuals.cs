@@ -141,17 +141,44 @@ public sealed partial class JobRunner
 
     private string MediaCacheDir(JobContext c) => Path.Combine(c.EditDir, "media_cache");
     private string MediaManifestPath(JobContext c) => Path.Combine(MediaCacheDir(c), "manifest.json");
+    private string StockCacheDir(JobContext c) => Path.Combine(c.EditDir, "stock_cache");
+    private string StockManifestPath(JobContext c) => Path.Combine(StockCacheDir(c), "stock.json");
+    /// <summary>Claude ko'radigan kontakt varaqlar (edit/ ichida, film/ dan tashqarida - render'ga tushmaydi).</summary>
+    internal const string StockReviewDir = "stock_review";
+    /// <summary>Claude tanlovi: film/ ichida (Claude faqat shu papkaga yozadi).</summary>
+    internal const string StockSelectionFile = "media_selection.json";
+
+    /// <summary>Tayyorlangan real media: ikon/logo/fotolar (MediaLibrary) va stok nomzodlar (OpenFilm). Ikkalasi ham ixtiyoriy.</summary>
+    internal sealed record PreparedMedia(MediaManifest? Media, StockCandidates? Stock);
+
+    private static string StageOrientation(JobContext c) { var (w, h) = c.StageSize; return h > w ? "portrait" : "landscape"; }
+
+    private bool StockEnabled(JobContext c)
+    {
+        var v = c.S.Visuals;
+        return v.OpenFilmStock && v.MaxStockScenes > 0 && (v.StockImagesPerScene > 0 || v.StockClipsPerScene > 0) && _x.Stock is { IsConfigured: true };
+    }
 
     /// <summary>
-    /// Real rasmlar: Gemini ssenariydan rasm rejasini tuzadi, ochiq manbalardan yuklanadi (litsenziyasi tekshirilgan), so'ng
-    /// film/assets/media/ ga nusxalanadi. Natija ssenariy matni bo'yicha keshlanadi (tuzatish sikllarida qayta yuklanmaydi).
+    /// Real rasmlar: Gemini ssenariydan rasm rejasini tuzadi. "photo" bandlari (sahnalar) uchun - OpenFilm stok qidiruvi (har biriga bir nechta
+    /// rasm va video nomzod; tanlovni Claude qiladi). Ikon/logolar va OpenFilm hech narsa topmagan fotolar - ochiq manbalardan (MediaLibrary).
+    /// Natija ssenariy matni va sozlama bo'yicha keshlanadi (tuzatish sikllarida qayta yuklanmaydi).
     /// </summary>
-    private async Task<MediaManifest?> PrepareMediaAsync(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues)
+    private async Task<PreparedMedia> PrepareMediaAsync(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues)
     {
-        if (!c.S.Visuals.RealMedia || c.S.Visuals.MaxMedia <= 0 || _x.Visuals is null || _x.MediaLibrary is null) return null;
+        var v = c.S.Visuals;
+        if (!v.RealMedia || v.MaxMedia <= 0 || _x.Visuals is null) return new(null, null);
+        var useStock = StockEnabled(c);
+        if (v.OpenFilmStock && !useStock && _x.Stock is not null)
+            c.Log.Info("Stok video/rasm nomzodlari o'chiq: botda (Sozlamalar → Video sifati) Pexels yoki Pixabay kalitini kiriting - OpenFilm ular orqali qidiradi.", "Media");
+        if (_x.MediaLibrary is null && !useStock) return new(null, null);
+        var inv = CultureInfo.InvariantCulture;
         var cacheDir = MediaCacheDir(c);
-        var planHash = Hashing.Sha256Text("media-v1", script.SubtitleText, c.S.Visuals.MaxMedia.ToString(CultureInfo.InvariantCulture));
+        var stockDir = StockCacheDir(c);
+        var planHash = Hashing.Sha256Text("media-v2", script.SubtitleText, v.MaxMedia.ToString(inv),
+            useStock ? $"stock:{v.StockImagesPerScene}:{v.StockClipsPerScene}:{v.MaxStockScenes}:{StageOrientation(c)}" : "no-stock");
         MediaManifest? m = null;
+        StockCandidates? stock = null;
         if (File.Exists(MediaManifestPath(c)))
         {
             try
@@ -161,22 +188,45 @@ public sealed partial class JobRunner
             }
             catch { }
         }
+        if (m is not null && useStock)
+        {
+            // Stok keshi ham butun bo'lishi kerak; bo'lmasa hammasi qaytadan (reja bitta, ikkalasi undan chiqadi).
+            try
+            {
+                var old = File.Exists(StockManifestPath(c)) ? StockCandidates.FromJson(File.ReadAllText(StockManifestPath(c))) : null;
+                if (old is not null && old.PlanHash == planHash && old.Scenes.SelectMany(s => s.Candidates).All(x => File.Exists(Path.Combine(stockDir, x.File)))) stock = old;
+                else m = null;
+            }
+            catch { m = null; }
+        }
         if (m is null)
         {
             try
             {
-                if (Directory.Exists(cacheDir)) PathGuard.SafeDeleteDirectory(c.WorkRoot, cacheDir, s => c.Log.Debug(s));
+                foreach (var d in new[] { cacheDir, stockDir })
+                    if (Directory.Exists(d)) PathGuard.SafeDeleteDirectory(c.WorkRoot, d, s => c.Log.Debug(s));
                 Directory.CreateDirectory(cacheDir);
-                var plan = await _x.Visuals.PlanMediaAsync(script.SubtitleText, cues, c.S.ChannelContext?.MontageBlock ?? "", c.S.Visuals.MaxMedia, c.Log, c.Ct).ConfigureAwait(false);
+                var plan = await _x.Visuals.PlanMediaAsync(script.SubtitleText, cues, c.S.ChannelContext?.MontageBlock ?? "", v.MaxMedia, c.Log, c.Ct).ConfigureAwait(false);
                 c.Log.Info($"Rasm rejasi: {plan.Items.Count} ta ({string.Join(", ", plan.Items.Select(i => $"{i.Kind}:{i.Query}"))}).", "Media");
-                m = plan.Items.Count == 0 ? new MediaManifest() : await _x.MediaLibrary.FetchAsync(plan, cacheDir, c.Log, c.Ct).ConfigureAwait(false);
+                var libPlan = plan;
+                if (useStock)
+                {
+                    stock = await FetchStockAsync(c, plan, stockDir).ConfigureAwait(false) ?? new StockCandidates();
+                    // Bo'sh natija ham keshlanadi: tuzatish sikllarida qayta qidirilmaydi.
+                    stock.PlanHash = planHash;
+                    Directory.CreateDirectory(stockDir);
+                    File.WriteAllText(StockManifestPath(c), stock.ToJson(), new UTF8Encoding(false));
+                    var covered = (stock?.Scenes ?? new()).Where(s => s.Candidates.Count > 0).Select(s => s.Query).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    libPlan = new MediaPlan { Items = plan.Items.Where(i => !(i.Kind == MediaKinds.Photo && covered.Contains(i.Query))).ToList() };
+                }
+                m = libPlan.Items.Count == 0 || _x.MediaLibrary is null ? new MediaManifest() : await _x.MediaLibrary.FetchAsync(libPlan, cacheDir, c.Log, c.Ct).ConfigureAwait(false);
                 m.PlanHash = planHash;
                 File.WriteAllText(MediaManifestPath(c), m.ToJson(), new UTF8Encoding(false));
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 c.Log.Warn($"Real rasmlarni tayyorlab bo'lmadi, video chizilgan grafika bilan davom etadi: {e.Message}", "Media");
-                return null;
+                return new(null, null);
             }
         }
         var dst = Path.Combine(c.FilmDir, "assets", "media");
@@ -189,7 +239,181 @@ public sealed partial class JobRunner
         File.WriteAllText(Path.Combine(c.RecordDir, "media.json"), m.ToJson(), new UTF8Encoding(false));
         c.StageMetrics["media_assets"] = m.Assets.Count;
         c.StageMetrics["media_credits"] = m.Assets.Count(a => a.NeedsCredit);
-        return m;
+        var filmStock = stock is { Total: > 0 } ? PlaceStockInFilm(c, stock) : null;
+        return new(m, filmStock);
+    }
+
+    /// <summary>
+    /// OpenFilm stok qidiruvi: rejadagi "photo" bandlari (ko'pi bilan MaxStockScenes) - sahnalar. Har nomzod ffprobe bilan tekshiriladi
+    /// (o'qib bo'lmaydigani tashlanadi, haqiqiy o'lcham/davomiylik yoziladi), sahna papkasiga img1.jpg / clip1.mp4 nomi bilan qo'yiladi va
+    /// har sahnaga kontakt varaq yasaladi. Xato videoni to'xtatmaydi: null - fotolar MediaLibrary'dan olinadi.
+    /// </summary>
+    private async Task<StockCandidates?> FetchStockAsync(JobContext c, MediaPlan plan, string stockDir)
+    {
+        var v = c.S.Visuals;
+        var reqs = plan.Items.Where(i => i.Kind == MediaKinds.Photo).Take(v.MaxStockScenes)
+            .Select((i, k) => new StockRequest($"s{k + 1:00}", i.Query, i.Purpose, i.At)).ToList();
+        if (reqs.Count == 0) return null;
+        var images = Math.Clamp(v.StockImagesPerScene, 0, 8);
+        var clips = Math.Clamp(v.StockClipsPerScene, 0, 4);
+        try
+        {
+            Directory.CreateDirectory(stockDir);
+            c.Log.Info($"Stok: OpenFilm {reqs.Count} sahna uchun internetdan qidiradi (har biriga {images} rasm va {clips} video parcha nomzodi).", "Media");
+            var raw = await _x.Stock!.FetchAsync(reqs, Path.Combine(stockDir, "openfilm"), new StockOptions(images, clips, StageOrientation(c)), c.Log, c.Ct).ConfigureAwait(false);
+            foreach (var scene in raw.Scenes)
+            {
+                var dir = Path.Combine(stockDir, scene.Id);
+                Directory.CreateDirectory(dir);
+                var kept = new List<StockCandidate>();
+                int ni = 0, nv = 0;
+                foreach (var x in scene.Candidates.OrderBy(x => x.Type == StockTypes.Video ? 1 : 0))
+                {
+                    var video = x.Type == StockTypes.Video;
+                    MediaInfo info;
+                    try { info = await _x.Media.ProbeAsync(x.File, c.Ct).ConfigureAwait(false); }
+                    catch (Exception e) when (e is not OperationCanceledException) { scene.Notes.Add($"{Path.GetFileName(x.File)} o'qilmadi: {e.Message}"); continue; }
+                    if (!info.HasVideo || (video && info.Duration < 1)) { scene.Notes.Add($"{Path.GetFileName(x.File)}: rasm/video oqimi yo'q"); continue; }
+                    if (info.Width > 0) { x.Width = info.Width; x.Height = info.Height; }
+                    if (video) x.Duration = Math.Round(info.Duration, 2);
+                    var ext = video ? ".mp4" : (Path.GetExtension(x.File) is { Length: > 1 } e2 ? e2.ToLowerInvariant() : ".jpg");
+                    var name = video ? $"clip{++nv}{ext}" : $"img{++ni}{ext}";
+                    x.Label = video ? $"V{nv}" : $"I{ni}";
+                    var target = Path.Combine(dir, name);
+                    File.Copy(x.File, target, true);
+                    x.Bytes = new FileInfo(target).Length;
+                    x.File = $"{scene.Id}/{name}";
+                    kept.Add(x);
+                }
+                scene.Candidates = kept;
+                if (kept.Count > 0)
+                {
+                    try { scene.Sheet = await MakeStockSheetAsync(c, scene, stockDir).ConfigureAwait(false); }
+                    catch (Exception e) when (e is not OperationCanceledException) { c.Log.Warn($"Stok {scene.Id}: kontakt varaq yasalmadi ({e.Message}); Claude fayllarni o'zi ochadi.", "Media"); }
+                }
+            }
+            // Asl yuklamalar endi sahna papkalarida: ikki nusxa disk egallamasin (loglar qoladi).
+            try { var dl = Path.Combine(stockDir, "openfilm", "assets"); if (Directory.Exists(dl)) PathGuard.SafeDeleteDirectory(c.WorkRoot, dl, s => c.Log.Debug(s)); } catch { }
+            c.Log.Info($"Stok nomzodlar tayyor: {raw.Scenes.Count(s => s.Candidates.Count > 0)}/{raw.Scenes.Count} sahna, {raw.Scenes.Sum(s => s.Images)} rasm, {raw.Scenes.Sum(s => s.Clips)} video " +
+                       $"({raw.Scenes.SelectMany(s => s.Candidates).Sum(x => x.Bytes) / 1048576.0:0} MB). Tanlovni Claude qiladi.", "Media");
+            return raw;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            c.Log.Warn($"OpenFilm stok qidiruvi ishlamadi, fotolar ochiq manbalardan olinadi: {e.Message}", "Media");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Sahna kontakt varag'i: 1-qator - rasmlar (I1..), keyingi har qator - bitta video (V1..) boshi/o'rtasi/oxiri kadrlari.
+    /// Natija - stockDir ga nisbiy yo'l.
+    /// </summary>
+    private async Task<string> MakeStockSheetAsync(JobContext c, StockScene scene, string stockDir)
+    {
+        var (w, h) = c.StageSize;
+        var (tw, th) = h > w ? (216, 384) : (384, 216);
+        var tiles = new List<SheetTile>();
+        var col = 0;
+        foreach (var x in scene.Candidates.Where(x => x.Type == StockTypes.Image))
+            tiles.Add(new SheetTile(Path.Combine(stockDir, x.File), $"{x.Label} {x.Width}x{x.Height}", 0, col++));
+        var row = col > 0 ? 1 : 0;
+        var framesDir = Path.Combine(stockDir, scene.Id, "frames");
+        Directory.CreateDirectory(framesDir);
+        foreach (var x in scene.Candidates.Where(x => x.Type == StockTypes.Video))
+        {
+            var marks = new[] { (0.15, $"{x.Label} {x.Duration.ToString("0", CultureInfo.InvariantCulture)}s {x.Width}x{x.Height}"), (0.5, $"{x.Label} mid"), (0.85, $"{x.Label} end") };
+            for (int i = 0; i < marks.Length; i++)
+            {
+                var f = Path.Combine(framesDir, $"{x.Label}_{i + 1}.jpg");
+                await _x.Media.ExtractFrameAsync(Path.Combine(stockDir, x.File), x.Duration * marks[i].Item1, f, 480, c.Ct).ConfigureAwait(false);
+                tiles.Add(new SheetTile(f, marks[i].Item2, row, i));
+            }
+            row++;
+        }
+        var rel = $"{scene.Id}/sheet.jpg";
+        await _x.Media.ContactSheetAsync(tiles, tw, th, Path.Combine(stockDir, rel), c.Ct).ConfigureAwait(false);
+        return rel;
+    }
+
+    /// <summary>
+    /// Nomzodlar film/assets/stock/ ga (Claude dizaynda ishlatishi uchun), kontakt varaqlar edit/stock_review/ ga ko'chiriladi.
+    /// Katta video fayllar o'zgarmagan bo'lsa qayta nusxalanmaydi. Natija - film/ ga nisbiy yo'llar bilan (instructions.md va record uchun).
+    /// </summary>
+    private StockCandidates PlaceStockInFilm(JobContext c, StockCandidates stock)
+    {
+        var view = StockCandidates.FromJson(stock.ToJson());
+        var reviewDir = Path.Combine(c.EditDir, StockReviewDir);
+        Directory.CreateDirectory(reviewDir);
+        foreach (var s in view.Scenes)
+        {
+            foreach (var x in s.Candidates)
+            {
+                var src = Path.Combine(StockCacheDir(c), x.File);
+                var dst = Path.Combine(c.FilmDir, "assets", "stock", x.File);
+                Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+                if (!File.Exists(dst) || new FileInfo(dst).Length != new FileInfo(src).Length) File.Copy(src, dst, true);
+                x.File = "assets/stock/" + x.File;
+            }
+            if (s.Sheet.Length > 0 && File.Exists(Path.Combine(StockCacheDir(c), s.Sheet)))
+            {
+                File.Copy(Path.Combine(StockCacheDir(c), s.Sheet), Path.Combine(reviewDir, $"{s.Id}.jpg"), true);
+                s.Sheet = $"{StockReviewDir}/{s.Id}.jpg";
+            }
+            else s.Sheet = "";
+        }
+        File.WriteAllText(Path.Combine(c.RecordDir, "stock.json"), view.ToJson(), new UTF8Encoding(false));
+        c.StageMetrics["stock_scenes"] = view.Scenes.Count(s => s.Candidates.Count > 0);
+        c.StageMetrics["stock_candidates"] = view.Total;
+        return view;
+    }
+
+    /// <summary>
+    /// Claude tugagach: film/media_selection.json (tanlov) va film'da haqiqatda ishlatilgan stok fayllar solishtiriladi. Faqat log va
+    /// metrika (video to'xtatilmaydi): nechta nomzoddan nechtasi tanlandi, rad etilganlardan biri ishlatilgan bo'lsa - ogohlantirish.
+    /// </summary>
+    internal void ReviewStockSelection(JobContext c, StockCandidates stock)
+    {
+        var known = stock.Scenes.SelectMany(s => s.Candidates).Select(x => x.File).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var used = StockReferences(c.FilmDir).Where(known.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var path = Path.Combine(c.FilmDir, StockSelectionFile);
+        var sel = File.Exists(path) ? StockSelection.TryParse(File.ReadAllText(path)) : null;
+        c.StageMetrics["stock_used"] = used.Count;
+        if (sel is null)
+        {
+            c.Log.Warn($"Claude {StockSelectionFile} yozmadi (yoki JSON buzilgan): {known.Count} stok nomzoddan {used.Count} tasi videoda ishlatilgan.", "Edit");
+            return;
+        }
+        File.Copy(path, Path.Combine(c.RecordDir, StockSelectionFile), true);
+        var chosen = sel.ChosenFiles.Where(known.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var rejected = sel.RejectedFiles.Where(known.Contains).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        c.StageMetrics["stock_chosen"] = chosen.Count;
+        c.StageMetrics["stock_rejected"] = rejected.Count;
+        var reasons = sel.Scenes.SelectMany(s => s.Rejected).Where(p => p.Reason.Length > 0).Select(p => p.Reason.Trim()).Take(4).ToList();
+        c.Log.Info($"Stok tanlovi (Claude): {known.Count} nomzoddan {chosen.Count} tasi tanlandi, {rejected.Count} tasi rad etildi, videoda {used.Count} tasi ishlatilgan" +
+                   (reasons.Count > 0 ? $". Rad etish sabablari: {string.Join("; ", reasons)}" : "") + ".", "Edit");
+        var bad = used.Where(rejected.Contains).ToList();
+        if (bad.Count > 0) c.Log.Warn($"Claude o'zi rad etgan stok faylni ishlatgan: {string.Join(", ", bad)}.", "Edit");
+        var unchecked_ = used.Where(f => !chosen.Contains(f) && !rejected.Contains(f)).ToList();
+        if (unchecked_.Count > 0) c.Log.Warn($"Stok fayl tanlov ro'yxatisiz ishlatilgan: {string.Join(", ", unchecked_)}.", "Edit");
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex StockRef = new(@"assets/stock/[A-Za-z0-9_\-]+/[A-Za-z0-9_\-]+\.[A-Za-z0-9]+", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>film/ ichidagi HTML/CSS/JS fayllarda tilga olingan stok fayllar (assets/stock/sNN/...).</summary>
+    internal static IReadOnlyCollection<string> StockReferences(string filmDir)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!Directory.Exists(filmDir)) return set;
+        foreach (var f in Directory.EnumerateFiles(filmDir, "*.*", SearchOption.AllDirectories))
+        {
+            var ext = Path.GetExtension(f).ToLowerInvariant();
+            if (ext is not (".html" or ".htm" or ".css" or ".js" or ".mjs")) continue;
+            var rel = Path.GetRelativePath(filmDir, f).Replace('\\', '/');
+            if (rel.StartsWith(".film/") || rel.StartsWith("assets/")) continue;
+            foreach (System.Text.RegularExpressions.Match m in StockRef.Matches(File.ReadAllText(f))) set.Add(m.Value);
+        }
+        return set;
     }
 
     /// <summary>YouTube tavsifi uchun: CC BY rasmlar mualliflari (bo'lmasa "").</summary>

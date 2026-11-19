@@ -8,6 +8,7 @@ import VoiceProfiles from "./VoiceProfiles";
 import VoiceClone from "./VoiceClone";
 import Library from "./Library";
 import Guests from "./Guests";
+import GeminiLimits from "./GeminiLimits";
 
 type Sch = { enabled: boolean; startTime: string; endTime: string; timeZoneId: string; wakeToRun: boolean; executionLimitHours: number };
 type Draft = BotConfigInput;
@@ -40,6 +41,8 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
   const [cfgSaved, setCfgSaved] = useState<BotConfig | null>(null);
   /** Yangi Gemini kalitlari: har qatorga bittasi (saqlanganda qo'shiladi). */
   const [newKeys, setNewKeys] = useState("");
+  /** Gemini model zanjiri matni: har qatorga bitta model (birinchisi asosiy). */
+  const [modelsText, setModelsText] = useState("");
   const [voiceInfo, setVoiceInfo] = useState<VoiceInfo[]>([]);
   const [saving, setSaving] = useState(false);
   const [yt, setYt] = useState<{ connected: boolean; channelTitle: string; connectedAt: string | null; clientConfigured: boolean; redirectUri: string } | null>(null);
@@ -78,7 +81,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
     api<Sch>("/api/schedule").then((s) => { setSch(s); setSchSaved(s); cache.set("schedule", s); }).catch((e) => toast(e instanceof Error ? e.message : String(e), true));
     api<NonNullable<typeof yt>>("/api/youtube").then(setYt).catch(() => {});
     api<{ voice: VoiceInfo[] }>("/api/library").then((d) => setVoiceInfo(d.voice)).catch(() => {});
-    api<BotConfig>("/api/config").then((c) => { setCfgSaved(c); setCfg(toDraft(c)); }).catch((e) => toast(e instanceof Error ? e.message : String(e), true));
+    api<BotConfig>("/api/config").then((c) => { setCfgSaved(c); setCfg(toDraft(c)); setModelsText(c.gemini.models.join("\n")); }).catch((e) => toast(e instanceof Error ? e.message : String(e), true));
   }, [toast]);
 
   const schDirty = !!sch && !!schSaved && JSON.stringify(sch) !== JSON.stringify(schSaved);
@@ -95,7 +98,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
       if (cfgDirty && cfg) {
         const newApiKeys = newKeys.split(/[\s,;]+/).map((k) => k.trim()).filter(Boolean);
         const c = await api<BotConfig>("/api/config", { ...cfg, gemini: { ...cfg.gemini, newApiKeys } });
-        setCfgSaved(c); setCfg(toDraft(c)); setNewKeys("");
+        setCfgSaved(c); setCfg(toDraft(c)); setNewKeys(""); setModelsText(c.gemini.models.join("\n"));
         onSaved?.(); // Gemini kaliti qo'shilgan bo'lsa mavzular va AI yordamchi ochiladi
       }
       toast("Sozlamalar saqlandi.");
@@ -163,13 +166,18 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
                 <textarea className="textarea" rows={2} autoComplete="off" spellCheck={false} value={newKeys} placeholder={"Yangi kalit(lar): AIza…\nhar qatorga bittadan"} onChange={(e) => setNewKeys(e.target.value)} />
               </div>
               <div className="hint">Kalitlar tartib bilan ishlatiladi: biri limitga (429) tushsa keyingisi bilan davom etiladi, hammasi tugasa ish to&apos;xtaydi. AI yordamchi ham shu kalitlardan foydalanadi.</div>
+              <div className="field"><label>Modellar (tartib bilan: birinchisi asosiy, qolganlari zaxira)</label>
+                <textarea className="textarea" rows={6} spellCheck={false} value={modelsText} placeholder={"Gemini 3.8 Flash\nGemini 3 Flash\nGemini 3.5 Flash Lite"}
+                  onChange={(e) => { setModelsText(e.target.value); G({ models: e.target.value.split("\n").map((m) => m.trim()).filter(Boolean) }); }} />
+              </div>
+              <div className="hint">Har qatorga bitta model — AI Studio&apos;dagi nomi («Gemini 3.8 Flash») yoki API id. Model limiti tugasa (kunlik yoki daqiqalik), topilmasa yoki ishlamasa, keyingisi ishlatiladi; tavsif, teg va rasm rejasi kabi kichik ishlar avval Lite modellarda bajariladi. Bo&apos;sh qoldirilsa — bepul kalitdagi barcha matn modellari.</div>
               <div className="grid2">
-                <div className="field"><label>Model</label><input className="input" value={cfg.gemini.model} onChange={(e) => G({ model: e.target.value })} /></div>
                 <div className="field"><label>Temperature</label><input className="input" inputMode="decimal" value={cfg.gemini.temperature} onChange={(e) => G({ temperature: num(e.target.value) })} /></div>
                 <div className="field"><label>Timeout (soniya)</label><input className="input" inputMode="numeric" value={cfg.gemini.timeoutSec} onChange={(e) => G({ timeoutSec: num(e.target.value) })} /></div>
               </div>
               <label className="chk"><input type="checkbox" checked={cfg.gemini.useSearchGrounding} onChange={(e) => G({ useSearchGrounding: e.target.checked })} /><span>Hozirgi faktlar uchun Google Search</span></label>
             </div>
+            {!guest ? <GeminiLimits toast={toast} /> : null}
 
             {!guest ? <>
             <div className="sect">Claude (montaj)</div>
@@ -270,7 +278,13 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
                     {cfg.visuals.pixabayKeySet ? <button className="btn danger" type="button" onClick={() => V({ pixabayKeySet: false, pixabayApiKey: "" })}>O&apos;chirish</button> : null}
                   </div></div>
               </div>
-              <div className="hint">Fotolar sifat tartibida olinadi: Pexels → Pixabay (kalit kiritilgan bo&apos;lsa) → Openverse → Wikimedia Commons. Ikon va logolar — Iconify. Faqat bepul litsenziyalar (Pexels/Pixabay License, CC0, Public domain, CC BY); CC BY mualliflari video tavsifiga avtomatik yoziladi.</div>
+              <label className="chk"><input type="checkbox" checked={cfg.visuals.openFilmStock} onChange={(e) => V({ openFilmStock: e.target.checked })} /><span>Stok video va rasmlarni OpenFilm qidirsin, Claude eng sifatli va mosini tanlasin (Pexels/Pixabay kaliti kerak)</span></label>
+              {cfg.visuals.openFilmStock ? <div className="grid3">
+                <div className="field"><label>Sahnaga rasm (1–8)</label><input className="input" inputMode="numeric" value={cfg.visuals.stockImages} onChange={(e) => V({ stockImages: num(e.target.value) })} /></div>
+                <div className="field"><label>Sahnaga video (0–4)</label><input className="input" inputMode="numeric" value={cfg.visuals.stockClips} onChange={(e) => V({ stockClips: num(e.target.value) })} /></div>
+                <div className="field"><label>Sahnalar (0–20)</label><input className="input" inputMode="numeric" value={cfg.visuals.stockScenes} onChange={(e) => V({ stockScenes: num(e.target.value) })} /></div>
+              </div> : null}
+              <div className="hint">Kalit kiritilgan bo&apos;lsa OpenFilm har sahna uchun Pexels → Pixabay&apos;dan bir nechta rasm va qisqa video parcha yuklaydi; Claude ularni mavzuga mosligi, sifati (xiralik, o&apos;lcham), suv belgisi va matn bo&apos;yicha tekshirib, yaroqlilari bilan animatsiyali dizayn qiladi. Video parchalar katta (har biri ~5–30 MB). Kalit bo&apos;lmasa yoki hech narsa topilmasa fotolar Openverse/Wikimedia&apos;dan olinadi. Ikon va logolar — Iconify. Faqat bepul litsenziyalar (Pexels/Pixabay License, CC0, Public domain, CC BY); CC BY mualliflari video tavsifiga avtomatik yoziladi.</div>
             </div>
 
             <div className="sect">YouTube</div>

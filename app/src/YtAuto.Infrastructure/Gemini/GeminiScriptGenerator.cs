@@ -36,6 +36,13 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
     /// <summary>Oxirgi muvaffaqiyatli kalit: keyingi chaqiruvlar limiti tugagan kalitni qayta-qayta urmasdan shundan boshlaydi.</summary>
     private int _active;
 
+    /// <summary>Model router: zanjirdagi modellar, limit/mavjudlik holati va sarf (AppServices faylga yozadigan bilan almashtiradi).</summary>
+    public GeminiModelRouter Router { get; set; } = new();
+
+    /// <summary>So'rovda model zanjiri berilmasa: bitta model (eski sozlama) yoki standart zanjir.</summary>
+    internal static IReadOnlyList<string> Chain(IReadOnlyList<string>? models, string? single) =>
+        new GeminiSettings { Models = (models ?? Array.Empty<string>()).ToList(), Model = single ?? "" }.ModelChain(GeminiModelRouter.DefaultChain);
+
     /// <summary>Kamida bitta Gemini kaliti bormi (tarmoqqa chiqmaydi; kalit ishlashini <see cref="CheckAsync"/> tekshiradi).</summary>
     public int KeyCount { get { try { return Keys().Count; } catch (PipelineException) { return 0; } } }
 
@@ -58,13 +65,13 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
     public async Task<ScriptResult> GenerateAsync(ScriptRequest req, IJobLog log, CancellationToken ct)
     {
         var keys = Keys();
-        var model = string.IsNullOrWhiteSpace(req.Model) ? "gemini-2.5-flash" : req.Model.Trim();
+        var models = Chain(req.Models, req.Model);
         string factSheet = ""; var grounded = new List<SourceRef>();
         if (req.UseSearchGrounding)
         {
             try
             {
-                (factSheet, grounded) = await FactSheetAsync(keys, model, req, log, ct).ConfigureAwait(false);
+                (factSheet, grounded) = await FactSheetAsync(keys, models, req, log, ct).ConfigureAwait(false);
                 log.Info($"Fakt varag'i Google Search grounding bilan olindi: {grounded.Count} manba.", "Script");
             }
             catch (PipelineException e) when (e.Category == ErrorCategory.Transient) { throw; }
@@ -91,7 +98,7 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
                 ["responseSchema"] = ScriptSchema(req.WriteDescription, req.WriteTags),
             },
         };
-        var (json, raw) = await CallAsync(keys, model, body, TimeSpan.FromSeconds(240), log, ct).ConfigureAwait(false);
+        var (json, raw, model) = await CallAsync(keys, models, GeminiTask.Script, body, TimeSpan.FromSeconds(240), log, ct).ConfigureAwait(false);
         var text = ExtractText(json);
         VideoScript script;
         try { script = VideoScript.FromJson(text); }
@@ -138,7 +145,7 @@ SPOKEN TEXT:
     {
         if (!req.WriteDescription && !req.WriteTags) return new MetadataResult();
         var keys = Keys();
-        var model = string.IsNullOrWhiteSpace(req.Model) ? "gemini-2.5-flash" : req.Model.Trim();
+        var models = Chain(req.Models, req.Model);
         var prompt = MetadataPrompt.Replace("{title}", req.Title.Trim()).Replace("{language}", req.Language)
             .Replace("{instructions}", MetadataInstruction(req.WriteDescription, req.WriteTags).TrimStart()).Replace("{text}", req.Text.Trim());
         var schema = ScriptSchema(req.WriteDescription, req.WriteTags);
@@ -154,7 +161,7 @@ SPOKEN TEXT:
                 ["temperature"] = 0.4, ["maxOutputTokens"] = 4096, ["responseMimeType"] = "application/json", ["responseSchema"] = schema,
             },
         };
-        var (json, _) = await CallAsync(keys, model, body, TimeSpan.FromSeconds(120), log, ct).ConfigureAwait(false);
+        var (json, _, _) = await CallAsync(keys, models, GeminiTask.Light, body, TimeSpan.FromSeconds(120), log, ct).ConfigureAwait(false);
         try
         {
             var n = JsonNode.Parse(ExtractText(json));
@@ -167,7 +174,7 @@ SPOKEN TEXT:
         catch (Exception e) when (e is JsonException or InvalidOperationException) { throw PipelineException.Transient("gemini_bad_json", "Tavsif/tag javobi JSON emas: " + e.Message); }
     }
 
-    private async Task<(string, List<SourceRef>)> FactSheetAsync(List<string> keys, string model, ScriptRequest req, IJobLog log, CancellationToken ct)
+    private async Task<(string, List<SourceRef>)> FactSheetAsync(List<string> keys, IReadOnlyList<string> models, ScriptRequest req, IJobLog log, CancellationToken ct)
     {
         var prompt = Fill(string.IsNullOrWhiteSpace(req.FactSheetPromptTemplate) ? DefaultPrompts.FactSheet : req.FactSheetPromptTemplate, req, "");
         var body = new JsonObject
@@ -176,7 +183,7 @@ SPOKEN TEXT:
             ["tools"] = new JsonArray(new JsonObject { ["google_search"] = new JsonObject() }),
             ["generationConfig"] = new JsonObject { ["temperature"] = 0.2, ["maxOutputTokens"] = 4096 },
         };
-        var (json, _) = await CallAsync(keys, model, body, TimeSpan.FromSeconds(120), log, ct).ConfigureAwait(false);
+        var (json, _, _) = await CallAsync(keys, models, GeminiTask.Grounded, body, TimeSpan.FromSeconds(120), log, ct).ConfigureAwait(false);
         var text = ExtractText(json);
         var sources = new List<SourceRef>();
         var chunks = json["candidates"]?[0]?["groundingMetadata"]?["groundingChunks"] as JsonArray;
@@ -233,37 +240,149 @@ SPOKEN TEXT:
             .Replace(Core.Pipeline.ChannelPrompt.Placeholder, ""); // kontekst JobRunner'da qo'yiladi; qolib ketgan placeholder modelga bormaydi
     }
 
-    /// <summary>
-    /// Kalitlarni navbat bilan sinaydi: 429 (limit tugadi) yoki kalit yaroqsiz bo'lsa keyingisiga o'tadi.
-    /// Hammasi limitda bo'lsa - Configuration xatosi: ish to'xtaydi (NeedsAttention), ko'r-ko'rona qayta urinilmaydi.
-    /// </summary>
+    /// <summary>Bitta model bilan (eski chaqiruvlar va testlar uchun).</summary>
     internal async Task<(JsonNode Json, string Raw)> CallAsync(List<string> keys, string model, JsonObject body, TimeSpan timeout, IJobLog? log, CancellationToken ct)
     {
+        var (json, raw, _) = await CallAsync(keys, new[] { model }, GeminiTask.Script, body, timeout, log, ct).ConfigureAwait(false);
+        return (json, raw);
+    }
+
+    /// <summary>
+    /// Model router: zanjirdagi modellarni (vazifa turiga qarab tartiblangan) navbat bilan, har birini barcha kalitlar bilan sinaydi.
+    /// 429 - shu kalit+model juftligi sovutiladi (kunlik limit - Tinch okeani yarim tunigacha) va keyingi kalit/modelga o'tiladi;
+    /// 404 - model bu kalitda yo'q, 400 - model bu vazifani qila olmaydi, 5xx/tarmoq - model hozir javob bermayapti: keyingi model.
+    /// Hammasi limitda bo'lsa - Configuration xatosi (ish to'xtaydi, eng yaqin tiklanish vaqti aytiladi).
+    /// </summary>
+    internal async Task<(JsonNode Json, string Raw, string Model)> CallAsync(List<string> keys, IReadOnlyList<string> names, GeminiTask task, JsonObject body, TimeSpan timeout, IJobLog? log, CancellationToken ct)
+    {
+        // AI Studio nomlari ("Gemini 3.8 Flash") API id'ga Google'ning models ro'yxati orqali aylantiriladi.
+        if (names.Any(n => n.Contains(' ')) && !Router.CatalogFresh) await RefreshCatalogAsync(keys, log, ct).ConfigureAwait(false);
+        var keyIds = keys.Select(GeminiModelRouter.KeyId).ToList();
         var start = Math.Clamp(Volatile.Read(ref _active), 0, keys.Count - 1);
-        PipelineException? lastAuth = null; string? lastLimit = null; int limited = 0;
-        for (int i = 0; i < keys.Count; i++)
+        PipelineException? lastAuth = null, lastOther = null; string? lastLimit = null; int limited = 0;
+        var badKeys = new HashSet<int>(); var skipped = new List<string>(); var tried = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var catalogRetried = false;
+        List<(string Id, string Display)> order;
+    again:
+        var (chain, missing) = Router.Resolve(names);
+        Router.SetChain(chain, keys.Count);
+        if (missing.Count > 0) log?.Debug($"Gemini: bu kalitlarda yo'q modellar o'tkazib yuborildi: {string.Join(", ", missing)}.", "Script");
+        order = GeminiModelRouter.Order(chain, task);
+        string? first = null;
+        foreach (var (model, display) in order)
         {
-            var idx = (start + i) % keys.Count;
-            try
+            if (!tried.Add(model)) continue;
+            if (!Router.ModelUsable(model, task, out var why)) { skipped.Add($"{display}: {why}"); continue; }
+            first ??= display;
+            var modelFailed = false;
+            for (int i = 0; i < keys.Count && !modelFailed; i++)
             {
-                var r = await CallOnceAsync(keys[idx], model, body, timeout, ct).ConfigureAwait(false);
-                Volatile.Write(ref _active, idx);
-                return r;
-            }
-            catch (PipelineException e) when (e.Code is "gemini_rate_limit" or "gemini_auth")
-            {
-                if (e.Code == "gemini_rate_limit") { limited++; lastLimit = e.Message; } else lastAuth = e;
-                var why = e.Code == "gemini_rate_limit" ? "limiti tugadi (429)" : "yaroqsiz";
-                if (i + 1 < keys.Count)
-                    log?.Warn($"Gemini {idx + 1}-kaliti {why}, {(idx + 1) % keys.Count + 1}-kalit bilan davom etiladi.", "Script");
-                else if (keys.Count > 1)
-                    log?.Warn($"Gemini {idx + 1}-kaliti ham {why}: boshqa kalit qolmadi.", "Script");
+                var idx = (start + i) % keys.Count;
+                if (badKeys.Contains(idx)) continue;
+                if (!Router.PairReady(keyIds[idx], model, out _)) { limited++; continue; }
+                try
+                {
+                    var r = await CallOnceAsync(keys[idx], model, body, timeout, ct).ConfigureAwait(false);
+                    Volatile.Write(ref _active, idx);
+                    Router.Success(keyIds[idx], model, display, r.Json["usageMetadata"]?["totalTokenCount"]?.GetValue<long>() ?? 0, keys.Count);
+                    if (first != display) log?.Info($"Gemini: {first} ishlatib bo'lmadi, so'rov {display} bilan bajarildi.", "Script");
+                    return (r.Json, r.Raw, model);
+                }
+                catch (GeminiRateLimitException e)
+                {
+                    limited++; lastLimit = e.Message;
+                    Router.RateLimited(keyIds[idx], model, display, e, keyIds);
+                    var why2 = e.PerDay ? "kunlik limiti tugadi (429)" : "limiti tugadi (429)";
+                    if (keys.Count > 1)
+                        log?.Warn(i + 1 < keys.Count ? $"Gemini {idx + 1}-kaliti {display} uchun {why2}, {(idx + 1) % keys.Count + 1}-kalit bilan davom etiladi."
+                                                     : $"Gemini {idx + 1}-kaliti ham {display} uchun {why2}.", "Script");
+                    else log?.Warn($"Gemini {display}: {why2}, keyingi model sinaladi.", "Script");
+                }
+                catch (PipelineException e) when (e.Code == "gemini_auth")
+                {
+                    lastAuth = e; badKeys.Add(idx);
+                    if (i + 1 < keys.Count) log?.Warn($"Gemini {idx + 1}-kaliti yaroqsiz, {(idx + 1) % keys.Count + 1}-kalit bilan davom etiladi.", "Script");
+                }
+                catch (PipelineException e) when (e.Code == "gemini_model")
+                {
+                    lastOther = e; modelFailed = true;
+                    if (!catalogRetried && !Router.CatalogFresh)
+                    {
+                        // Nom taxmin qilingan id bo'lishi mumkin (masalan -preview qo'shimchasisiz): ro'yxatni olib qayta aniqlaymiz.
+                        catalogRetried = true;
+                        await RefreshCatalogAsync(keys, log, ct).ConfigureAwait(false);
+                        if (Router.CatalogFresh) { tried.Remove(model); goto again; }
+                    }
+                    Router.MarkDown(model, display, TimeSpan.FromHours(6), "bu kalitda mavjud emas", keys.Count);
+                    log?.Warn($"Gemini {display} topilmadi, keyingi model sinaladi.", "Script");
+                }
+                catch (PipelineException e) when (e.Code == "gemini_request")
+                {
+                    lastOther = e; modelFailed = true;
+                    Router.MarkUnsupported(model, task);
+                    log?.Warn($"Gemini {display} bu so'rovni qabul qilmadi ({e.Message}); keyingi model sinaladi.", "Script");
+                }
+                catch (PipelineException e) when (e.Code is "gemini_server" or "gemini_timeout" or "gemini_network" or "gemini_empty")
+                {
+                    lastOther = e; modelFailed = true;
+                    log?.Warn($"Gemini {display} hozir javob bermayapti ({e.Message}); keyingi model sinaladi.", "Script");
+                }
             }
         }
-        if (limited == 0 && lastAuth is not null) throw lastAuth;
-        throw PipelineException.Config("gemini_quota_exhausted", keys.Count == 1
-            ? $"Gemini kalitining limiti tugadi (429), ish to'xtatildi. Botda (Sozlamalar → Gemini) yana kalit qo'shing yoki limit tiklanishini kuting. {lastLimit}"
-            : $"Barcha {keys.Count} ta Gemini kalitining limiti tugadi (429), ish to'xtatildi. Botda yangi kalit qo'shing yoki limit tiklanishini kuting. {lastLimit}");
+        if (badKeys.Count == keys.Count && lastAuth is not null) throw lastAuth;
+        if (limited > 0 && lastOther is not { Category: ErrorCategory.Transient })
+        {
+            var at = Router.EarliestReady(keyIds, order.Select(o => o.Id));
+            var when = at is { } t ? $" Eng yaqin tiklanish: {t.ToLocalTime():HH:mm}." : "";
+            throw PipelineException.Config("gemini_quota_exhausted",
+                $"Barcha Gemini modellari ({order.Count} ta) va {(keys.Count == 1 ? "kalitning" : $"{keys.Count} ta kalitning")} limiti tugadi (429), ish to'xtatildi.{when} " +
+                $"Botda yana kalit qo'shing yoki limit tiklanishini kuting. {lastLimit}");
+        }
+        if (lastOther is not null) throw lastOther;
+        if (lastAuth is not null) throw lastAuth;
+        throw PipelineException.Config("gemini_model", order.Count == 0
+            ? $"Sozlangan Gemini modellaridan birortasi bu kalitda mavjud emas: {string.Join(", ", names)}."
+            : "Ishlaydigan Gemini modeli qolmadi: " + string.Join("; ", skipped));
+    }
+
+    /// <summary>Google'ning models ro'yxati (generateContent qiladiganlari): nom -> API id aniqlash uchun. Xato bo'lsa - nomlardan id yasaladi.</summary>
+    private async Task RefreshCatalogAsync(List<string> keys, IJobLog? log, CancellationToken ct)
+    {
+        foreach (var key in keys)
+        {
+            try
+            {
+                var list = await ListModelsAsync(key, ct).ConfigureAwait(false);
+                if (list.Count > 0) { Router.SetCatalog(list); return; }
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+            { log?.Debug("Gemini models ro'yxati olinmadi: " + e.Message, "Script"); }
+        }
+    }
+
+    internal async Task<List<(string Id, string Display)>> ListModelsAsync(string key, CancellationToken ct)
+    {
+        var all = new List<(string, string)>(); string? page = null;
+        for (int n = 0; n < 10; n++)
+        {
+            using var msg = new HttpRequestMessage(HttpMethod.Get, $"{Base}models?pageSize=1000" + (page is null ? "" : "&pageToken=" + Uri.EscapeDataString(page)));
+            msg.Headers.Add("x-goog-api-key", key);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct); cts.CancelAfter(TimeSpan.FromSeconds(20));
+            using var resp = await _http.SendAsync(msg, cts.Token).ConfigureAwait(false);
+            var raw = await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode) throw MapError(resp.StatusCode, raw, "models");
+            var j = JsonNode.Parse(raw);
+            foreach (var m in (j?["models"] as JsonArray) ?? new JsonArray())
+            {
+                var methods = (m?["supportedGenerationMethods"] as JsonArray)?.Select(x => x?.GetValue<string>() ?? "") ?? Array.Empty<string>();
+                if (!methods.Contains("generateContent")) continue;
+                var id = m?["name"]?.GetValue<string>()?.Replace("models/", "") ?? "";
+                if (id.Length > 0) all.Add((id, m?["displayName"]?.GetValue<string>() ?? id));
+            }
+            page = j?["nextPageToken"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(page)) break;
+        }
+        return all;
     }
 
     private async Task<(JsonNode Json, string Raw)> CallOnceAsync(string key, string model, JsonObject body, TimeSpan timeout, CancellationToken ct)
@@ -296,7 +415,7 @@ SPOKEN TEXT:
         try { msg = JsonNode.Parse(raw)?["error"]?["message"]?.GetValue<string>() ?? msg; } catch { }
         return (int)code switch
         {
-            429 => PipelineException.Transient("gemini_rate_limit", $"Gemini limiti: {msg}"),
+            429 => GeminiRateLimitException.Parse(raw, $"Gemini limiti ({model}): {msg}"),
             >= 500 => PipelineException.Transient("gemini_server", $"Gemini server xatosi {(int)code}: {msg}"),
             401 or 403 => PipelineException.Config("gemini_auth", $"Gemini API kaliti yaroqsiz yoki ruxsat yo'q: {msg}"),
             404 => PipelineException.Config("gemini_model", $"Gemini modeli topilmadi ({model}): {msg}"),
@@ -350,40 +469,32 @@ SPOKEN TEXT:
         };
     }
 
-    /// <summary>Integratsiya tekshiruvi: har kalit va model mavjudligini tekshiradi (generatsiya qilmaydi).</summary>
-    public async Task<(bool Ok, string Message, List<string> Models)> CheckAsync(string model, CancellationToken ct)
+    /// <summary>Integratsiya tekshiruvi: har kalit ishlaydimi va zanjirdagi qaysi modellar mavjud (generatsiya qilmaydi).</summary>
+    public async Task<(bool Ok, string Message, List<string> Models)> CheckAsync(IReadOnlyList<string> chain, CancellationToken ct)
     {
         List<string> keys;
         try { keys = Keys(); } catch (PipelineException e) { return (false, e.Message, new()); }
-        var models = new List<string>(); var problems = new List<string>(); int working = 0;
+        List<(string Id, string Display)>? catalog = null; var problems = new List<string>(); int working = 0;
         for (int i = 0; i < keys.Count; i++)
         {
-            var (ok, msg, list) = await CheckKeyAsync(keys[i], model, ct).ConfigureAwait(false);
-            if (ok) { working++; if (models.Count == 0) models = list; }
-            else problems.Add(keys.Count > 1 ? $"{i + 1}-kalit: {msg}" : msg);
+            try
+            {
+                var list = await ListModelsAsync(keys[i], ct).ConfigureAwait(false);
+                working++; catalog ??= list;
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+            { problems.Add((keys.Count > 1 ? $"{i + 1}-kalit: " : "") + (e is PipelineException ? e.Message : "Gemini'ga ulanib bo'lmadi: " + e.Message)); }
         }
-        if (working == 0) return (false, string.Join(" | ", problems), models);
-        var has = models.Contains(model, StringComparer.OrdinalIgnoreCase);
+        if (working == 0 || catalog is null) return (false, string.Join(" | ", problems), new());
+        Router.SetCatalog(catalog);
+        var (found, missing) = Router.Resolve(chain);
         var head = keys.Count > 1 ? $"{working}/{keys.Count} kalit ishlaydi" : "Kalit ishlaydi";
         var tail = problems.Count > 0 ? " (" + string.Join(" | ", problems) + ")" : "";
-        return (has, has ? $"{head}, model mavjud: {model}{tail}" : $"{head}, lekin '{model}' modeli ro'yxatda yo'q.{tail}", models);
-    }
-
-    private async Task<(bool Ok, string Message, List<string> Models)> CheckKeyAsync(string key, string model, CancellationToken ct)
-    {
-        using var msg = new HttpRequestMessage(HttpMethod.Get, $"{Base}models?pageSize=200");
-        msg.Headers.Add("x-goog-api-key", key);
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct); cts.CancelAfter(TimeSpan.FromSeconds(20));
-        try
-        {
-            using var resp = await _http.SendAsync(msg, cts.Token).ConfigureAwait(false);
-            var raw = await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
-            if (!resp.IsSuccessStatusCode) return (false, MapError(resp.StatusCode, raw, model).Message, new());
-            var models = (JsonNode.Parse(raw)?["models"] as JsonArray ?? new JsonArray())
-                .Select(m => m?["name"]?.GetValue<string>()?.Replace("models/", "") ?? "")
-                .Where(n => n.StartsWith("gemini", StringComparison.OrdinalIgnoreCase)).ToList();
-            return (true, "ok", models);
-        }
-        catch (Exception e) { return (false, "Gemini'ga ulanib bo'lmadi: " + e.Message, new()); }
+        var msg = found.Count == 0
+            ? $"{head}, lekin zanjirdagi modellardan birortasi ro'yxatda yo'q: {string.Join(", ", chain)}.{tail}"
+            : $"{head}, zanjirda {found.Count}/{chain.Count} model mavjud: {string.Join(", ", found.Select(f => f.Display))}" +
+              (missing.Count > 0 ? $"; yo'q: {string.Join(", ", missing)}" : "") + $".{tail}";
+        return (found.Count > 0, msg, found.Select(f => f.Id).ToList());
     }
 }
+
