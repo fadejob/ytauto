@@ -112,6 +112,16 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
             Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','5')", tx);
             tx.Commit();
         }
+        if (version < 6)
+        {
+            // v6: MCP orqali demo video (online bazadagi kabi; lokal rejim va testlar uchun).
+            using var tx = c.BeginTransaction();
+            Exec(c, "ALTER TABLE jobs ADD COLUMN kind TEXT NOT NULL DEFAULT ''", tx);
+            Exec(c, "ALTER TABLE jobs ADD COLUMN demo_spec TEXT", tx);
+            Exec(c, "ALTER TABLE jobs ADD COLUMN demo_result TEXT", tx);
+            Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','6')", tx);
+            tx.Commit();
+        }
     }
 
     // ------------------------------------------------------------------ helpers
@@ -134,7 +144,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
     private static DateTimeOffset? ParseTs(object? o) => o is string s && s.Length > 0 ? DateTimeOffset.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind) : null;
     private static string? Str(SqliteDataReader r, string n) { var i = r.GetOrdinal(n); return r.IsDBNull(i) ? null : r.GetString(i); }
 
-    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url";
+    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url, kind, demo_spec, demo_result";
 
     private static VideoJob ReadJob(SqliteDataReader r) => new()
     {
@@ -157,6 +167,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
         PublishedAtUtc = ParseTs(Str(r, "published_at_utc")), WorkDir = Str(r, "work_dir"), WorkDirCleaned = r.GetInt32(r.GetOrdinal("work_dir_cleaned")) != 0,
         PublishNow = r.GetInt32(r.GetOrdinal("publish_now")) != 0,
         ManualScript = Str(r, "manual_script"), ManualTitle = Str(r, "manual_title"), ManualAudioUrl = Str(r, "manual_audio_url"),
+        Kind = Str(r, "kind") ?? "", DemoSpecJson = Str(r, "demo_spec"), DemoResultJson = Str(r, "demo_result"),
     };
 
     private static void BindJob(SqliteCommand cmd, VideoJob j)
@@ -190,15 +201,18 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
 INSERT INTO jobs(topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc,
  run_attempts, next_attempt_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description,
  thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status,
- youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url)
+ youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url,
+ kind, demo_spec)
 VALUES($topic,$notes,$language,$dur,$format,$tpl,$voice,$pub,$status,$created,$updated,$attempts,$next,$cancel,$qa,$errc,$errm,$attn,$snap,$title,$desc,
- $thumb,$va,$aa,$sa,$adur,$yid,$ypriv,$yup,$yproc,$ychk,$pubd,$wd,$wdc,$pn,$ms,$mt,$ma) RETURNING id;
+ $thumb,$va,$aa,$sa,$adur,$yid,$ypriv,$yup,$yproc,$ychk,$pubd,$wd,$wdc,$pn,$ms,$mt,$ma,$kind,$dspec) RETURNING id;
 """;
         BindJob(cmd, job);
         cmd.Parameters.AddWithValue("$pn", job.PublishNow ? 1 : 0);
         cmd.Parameters.AddWithValue("$ms", (object?)job.ManualScript ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$mt", (object?)job.ManualTitle ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$ma", (object?)job.ManualAudioUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$kind", job.Kind ?? "");
+        cmd.Parameters.AddWithValue("$dspec", (object?)job.DemoSpecJson ?? DBNull.Value);
         job.Id = (long)cmd.ExecuteScalar()!;
         return job.Id;
     }
@@ -315,6 +329,39 @@ RETURNING {JobColumns};
         using var c = Open();
         Exec(c, "UPDATE jobs SET upload_requested=$v, updated_at_utc=$now WHERE id=$id", null,
             ("$v", value ? 1 : 0), ("$now", Ts(DateTimeOffset.UtcNow)), ("$id", jobId));
+    }
+
+    public VideoJob? ClaimDemo(string runId, DateTimeOffset nowUtc)
+    {
+        using var c = Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = $"""
+UPDATE jobs SET claimed_by=$run, claimed_at_utc=$now, updated_at_utc=$now
+WHERE id = (
+  SELECT id FROM jobs
+  WHERE kind = 'demo' AND status IN ({ClaimableIn}) AND claimed_by IS NULL AND cancel_requested = 0
+    AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= $now)
+  ORDER BY created_at_utc, id LIMIT 1)
+  AND claimed_by IS NULL
+RETURNING {JobColumns};
+""";
+        cmd.Parameters.AddWithValue("$run", runId);
+        cmd.Parameters.AddWithValue("$now", Ts(nowUtc));
+        using var r = cmd.ExecuteReader();
+        return r.Read() ? ReadJob(r) : null;
+    }
+
+    public int CountDemo(DateTimeOffset nowUtc)
+    {
+        using var c = Open();
+        return Convert.ToInt32(Scalar(c, $"SELECT COUNT(*) FROM jobs WHERE kind = 'demo' AND status IN ({ClaimableIn}) AND claimed_by IS NULL AND cancel_requested = 0 AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= $now)",
+            ("$now", Ts(nowUtc))));
+    }
+
+    public void SetDemoResult(long jobId, string json)
+    {
+        using var c = Open();
+        Exec(c, "UPDATE jobs SET demo_result=$v, updated_at_utc=$now WHERE id=$id", null, ("$v", json), ("$now", Ts(DateTimeOffset.UtcNow)), ("$id", jobId));
     }
 
     public bool TryClaim(long jobId, string runId, DateTimeOffset nowUtc)

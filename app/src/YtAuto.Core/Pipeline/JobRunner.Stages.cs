@@ -13,7 +13,7 @@ public sealed partial class JobRunner
     // ---------------------------------------------------------------- input hashes
     // Format bu yerga kirmaydi: format (yoki shablon) o'zgarsa ssenariy va ovoz saqlanadi, faqat subtitr qatorlari va montaj qayta qilinadi.
     // Qo'lda kiritilgan matn/ovoz uchun alohida hash: oddiy vazifalarning hash'i o'zgarmaydi (tayyor bosqichlar qayta bajarilmaydi).
-    private static string ScriptInputHash(JobContext c) => c.Job.HasManualScript
+    private static string ScriptInputHash(JobContext c) => c.Job.IsDemo ? DemoScriptHash(c) : c.Job.HasManualScript
         ? Hashing.Sha256Text("script-manual-v1", c.Job.ManualTitle, c.Job.ManualScript)
           // Avval qo'lda kiritilgan matnga metadata yozilmasdi: yozish kerak bo'lgandagina hash o'zgaradi.
           + (WriteDescription(c) || WriteTags(c) ? $":meta-d{WriteDescription(c)}-t{WriteTags(c)}" : "")
@@ -47,7 +47,8 @@ public sealed partial class JobRunner
     private string EditInputHash(JobContext c, VideoScript s) => Hashing.Sha256Text("edit-v2",
         OutputSha(c, StageKind.Voice, "voice"), OutputSha(c, StageKind.Align, "vtt"),
         s.SubtitleText, c.S.Claude.MontagePrompt, c.Snapshot.TemplateVersion, c.Job.Format.ToString(), c.Job.QaFixCycles.ToString())
-        + ChannelHashSuffix(c.S.ChannelContext.MontageBlock);
+        + ChannelHashSuffix(c.S.ChannelContext.MontageBlock)
+        + (c.Job.IsDemo ? ":demo-" + OutputSha(c, StageKind.Script, "demo_media") + "-" + OutputSha(c, StageKind.Script, "demo_scenes") : "");
 
     private string RenderInputHash(JobContext c) => Hashing.Sha256Text("render-v1",
         StageValue(c, StageKind.Edit, "film_manifest"), c.S.OpenFilm.Fps.ToString(), c.S.OpenFilm.LoudnessLufs.ToString(), c.S.OpenFilm.BurnSubtitles.ToString(), c.Job.QaFixCycles.ToString());
@@ -67,6 +68,7 @@ public sealed partial class JobRunner
     // ---------------------------------------------------------------- B: Gemini
     private async Task<StageOutputs> ScriptStageAsync(JobContext c)
     {
+        if (c.Job.IsDemo) return await DemoScriptStageAsync(c).ConfigureAwait(false);
         if (c.Job.HasManualScript) return await ManualScriptStageAsync(c).ConfigureAwait(false);
         bool writeDesc = WriteDescription(c), writeTags = WriteTags(c);
         var req = new ScriptRequest
@@ -386,14 +388,17 @@ public sealed partial class JobRunner
         // Claude'ga: subtitr (matn + vaqtli cue'lar), ovoz, shablon (bo'lsa) va saqlangan Claude prompti.
         var duration = c.Job.AudioDurationSec ?? Wav.ReadInfo(c.VoiceWav).Duration;
         var cues = VttParser.Parse(File.ReadAllText(c.VoiceVtt));
-        var media = await PrepareMediaAsync(c, script, cues).ConfigureAwait(false);
+        // Demo video: stok rasmlar o'rniga loyihaning o'z screenshot/videolari (sahna rejasi ovoz vaqtlaridan).
+        var demo = c.Job.IsDemo ? PrepareDemoPlan(c, duration) : null;
+        var media = demo is null ? await PrepareMediaAsync(c, script, cues).ConfigureAwait(false) : null;
         var music = await PrepareMusicAsync(c, duration).ConfigureAwait(false);
         File.WriteAllText(Path.Combine(c.EditDir, "subtitles.txt"), script.SubtitleText, new UTF8Encoding(false));
         File.Copy(c.VoiceSrt, Path.Combine(c.EditDir, "subtitles.srt"), true);
         var stale = Path.Combine(c.EditDir, "script.json");
         if (File.Exists(stale)) File.Delete(stale);
         File.WriteAllText(Path.Combine(c.EditDir, "instructions.md"),
-            EditorInstructions.Build(c, script, cues, duration, tpl, style.Frames, style.Guide.Length > 0, media, style.Motion.Length > 0, music), new UTF8Encoding(false));
+            EditorInstructions.Build(c, script, cues, duration, tpl, style.Frames, style.Guide.Length > 0, media, style.Motion.Length > 0, music,
+                demo is null ? null : new DemoBrief(DemoSpecOf(c), demo)), new UTF8Encoding(false));
         File.Copy(Path.Combine(c.EditDir, "instructions.md"), Path.Combine(c.RecordDir, "instructions.md"), true);
 
         var shimDir = _x.Film.WriteShims(Path.Combine(_x.Paths.ToolsDir, "openfilm-shim"));

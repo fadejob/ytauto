@@ -56,10 +56,12 @@ public static class JobStateMachine
         return to switch
         {
             // UI: retry / qayta navbatga qo'yish
-            JobStatus.Queued => from is JobStatus.Failed or JobStatus.NeedsAttention || IsInProgress(from),
+            JobStatus.Queued => from is JobStatus.Failed or JobStatus.NeedsAttention or JobStatus.Ready || IsInProgress(from),
+            // Demo video tayyor: arxiv va natija yuborilgandan keyin (yoki qayta urinishda) - chiqarish buyrug'i kutiladi.
+            JobStatus.Ready => from is JobStatus.Archived or JobStatus.Uploading or JobStatus.NeedsAttention or JobStatus.Failed,
             JobStatus.Failed => IsInProgress(from) || from == JobStatus.Queued,
             JobStatus.NeedsAttention => true,
-            JobStatus.Processing => from is JobStatus.Uploading or JobStatus.Archived or JobStatus.NeedsAttention or JobStatus.Failed,
+            JobStatus.Processing => from is JobStatus.Uploading or JobStatus.Archived or JobStatus.NeedsAttention or JobStatus.Failed or JobStatus.Ready,
             JobStatus.Scheduled => from is JobStatus.Processing or JobStatus.Uploading or JobStatus.Scheduled or JobStatus.NeedsAttention,
             JobStatus.Published => from is JobStatus.Processing or JobStatus.Scheduled or JobStatus.Uploading or JobStatus.NeedsAttention,
             _ when IsInProgress(to) => from == JobStatus.Queued || from == JobStatus.Failed || IsInProgress(from),
@@ -93,6 +95,7 @@ public static class JobStateMachine
         JobStatus.Failed => "Xato (qayta urinadi)",
         JobStatus.NeedsAttention => "E'tibor kerak",
         JobStatus.Cancelled => "Bekor qilindi",
+        JobStatus.Ready => "Tayyor (chiqarish kutilmoqda)",
         _ => s.ToString(),
     };
 }

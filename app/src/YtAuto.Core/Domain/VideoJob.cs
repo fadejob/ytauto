@@ -48,6 +48,15 @@ public sealed class VideoJob
     /// <summary>Botdan yuklangan tayyor ovoz (Supabase Storage imzolangan havolasi). Berilgan bo'lsa VoiceStudio TTS o'tkazib yuboriladi.</summary>
     public string? ManualAudioUrl { get; set; }
 
+    /// <summary>Vazifa turi: "" - oddiy mavzu, <see cref="DemoKind"/> - Claude Code MCP orqali yuborgan loyiha demo videosi.</summary>
+    public string Kind { get; set; } = "";
+    /// <summary>Demo video so'rovi (JSON, <see cref="YtAuto.Core.Demo.DemoSpec"/>): faqat bot (MCP) yozadi, Update() tegmaydi.</summary>
+    public string? DemoSpecJson { get; set; }
+    /// <summary>Tayyor demo video natijasi (JSON, <see cref="YtAuto.Core.Demo.DemoResult"/>): worker alohida amal bilan yozadi.</summary>
+    public string? DemoResultJson { get; set; }
+    public const string DemoKind = "demo";
+    public bool IsDemo => Kind == DemoKind && !string.IsNullOrWhiteSpace(DemoSpecJson);
+
     public bool HasManualScript => !string.IsNullOrWhiteSpace(ManualScript) && !string.IsNullOrWhiteSpace(ManualTitle);
     public bool HasManualAudio => !string.IsNullOrWhiteSpace(ManualAudioUrl);
 

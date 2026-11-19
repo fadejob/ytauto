@@ -23,6 +23,12 @@ public sealed class PipelineServices
     public Visuals.IMediaLibrary? MediaLibrary { get; init; }
     /// <summary>Fon musiqasi fayllarini (bot serveridan) yuklab, lokal keshda saqlaydi (berilmasa - musiqasiz).</summary>
     public IMusicCache? Music { get; init; }
+    /// <summary>Demo video (MCP): ssenariy yozuvchi (Gemini, 2 bosqich), materiallarni yuklab oluvchi va natijani serverga yuboruvchi.</summary>
+    public Demo.IDemoScriptWriter? DemoWriter { get; init; }
+    public Demo.IDemoMediaFetcher? DemoMedia { get; init; }
+    public Demo.IDemoResultSink? DemoResults { get; init; }
+    /// <summary>Joriy hisob (vazifa egasi) uchun MCP so'ragan avtomatik YouTube chiqarishga ruxsat bormi (mehmon hisoblarida - yo'q).</summary>
+    public Func<bool>? PublishAllowed { get; init; }
     public required IVideoUploader Uploader { get; init; }
     public required IResourceMonitor Resources { get; init; }
     public required ISecretStore Secrets { get; init; }
@@ -69,18 +75,24 @@ public sealed partial class JobRunner
     /// Bitta vazifa. "Hozir chiqarish" so'rovlari har doim birinchi olinadi; <paramref name="publishNowOnly"/> bo'lsa oddiy navbatga tegilmaydi
     /// (masofaviy buyruqni kutuvchi --poll rejimi).
     /// </summary>
-    public async Task<RunSummary> RunOnceAsync(string runId, bool publishNowOnly, CancellationToken ct)
+    public Task<RunSummary> RunOnceAsync(string runId, bool publishNowOnly, CancellationToken ct) => RunOnceAsync(runId, publishNowOnly, demoOnly: false, ct);
+
+    /// <summary>Faqat MCP orqali so'ralgan demo videolar navbatidan bitta (yaratilgan tartibda): botdan buyruq kelgach jadvalni kutmaydi.</summary>
+    public Task<RunSummary> RunDemoOnceAsync(string runId, CancellationToken ct) => RunOnceAsync(runId, publishNowOnly: false, demoOnly: true, ct);
+
+    private async Task<RunSummary> RunOnceAsync(string runId, bool publishNowOnly, bool demoOnly, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
         var summary = new RunSummary();
         var released = _x.Store.ReleaseStaleClaims(runId);
         if (released > 0) _x.RunLog.Warn($"{released} ta eskirgan band qilish bo'shatildi (oldingi worker kutilmaganda to'xtagan).");
 
-        var job = _x.Store.ClaimPublishNow(runId, _x.Clock.UtcNow);
-        if (job is null && !publishNowOnly) job = _x.Store.ClaimNext(runId, _x.Clock.UtcNow);
+        var job = demoOnly ? _x.Store.ClaimDemo(runId, _x.Clock.UtcNow) : _x.Store.ClaimPublishNow(runId, _x.Clock.UtcNow);
+        if (job is null && !publishNowOnly && !demoOnly) job = _x.Store.ClaimNext(runId, _x.Clock.UtcNow);
         if (job is null)
         {
-            if (publishNowOnly) _x.RunLog.Debug("\"Hozir chiqarish\" so'rovi yo'q.");
+            if (demoOnly) _x.RunLog.Debug("Navbatda demo video so'rovi yo'q.");
+            else if (publishNowOnly) _x.RunLog.Debug("\"Hozir chiqarish\" so'rovi yo'q.");
             else _x.RunLog.Info("Navbatda bajariladigan vazifa yo'q. Og'ir dasturlar ochilmaydi.");
             summary.Outcome = RunOutcome.QueueEmpty;
             return summary;
@@ -338,6 +350,8 @@ public sealed partial class JobRunner
             Paths = s.Paths, Templates = s.Templates, VoiceProfiles = s.VoiceProfiles,
         };
         bool Pending(StageKind k) => _x.Store.GetStage(ctx.Job.Id, k).State != StageState.Done;
+        if (ctx.Job.IsDemo && Pending(StageKind.Script) && (_x.DemoWriter is null || _x.DemoMedia is null))
+            problems.Add("Demo video servislari ulanmagan (bu kompyuterdagi YtAuto versiyasini yangilang).");
         if (Pending(StageKind.Voice) && !ctx.Job.HasManualAudio && !File.Exists(s.VoiceStudio.ExePath) && string.IsNullOrWhiteSpace(s.VoiceStudio.BaseUrl))
             problems.Add($"VoiceStudio topilmadi: {s.VoiceStudio.ExePath}");
         if (Pending(StageKind.Voice) && ctx.Job.HasManualAudio && _x.AudioImporter is null)
@@ -397,6 +411,8 @@ public sealed partial class JobRunner
         }
 
         await RunStageAsync(ctx, StageKind.Archive, ArchiveInputHash(ctx), () => ArchiveStageAsync(ctx, script)).ConfigureAwait(false);
+        // Demo video: natija serverga; chiqarish so'ralmagan bo'lsa "Tayyor" holatida to'xtaydi.
+        if (ctx.Job.IsDemo && await FinishDemoAsync(ctx).ConfigureAwait(false)) return;
         if (_x.StopBeforeUpload)
         {
             ctx.Log.Info("Self-test rejimi: upload bosqichi o'tkazib yuborildi.");

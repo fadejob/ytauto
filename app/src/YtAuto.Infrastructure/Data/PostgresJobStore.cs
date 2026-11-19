@@ -169,7 +169,7 @@ public sealed class PostgresJobStore : IAppStore
     private static DateTimeOffset? D(NpgsqlDataReader r, string col) { var i = r.GetOrdinal(col); return r.IsDBNull(i) ? null : r.GetFieldValue<DateTimeOffset>(i); }
     private static string? S(NpgsqlDataReader r, string col) { var i = r.GetOrdinal(col); return r.IsDBNull(i) ? null : r.GetString(i); }
 
-    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url";
+    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url, kind, demo_spec, demo_result";
 
     private static VideoJob ReadJob(NpgsqlDataReader r) => new()
     {
@@ -190,6 +190,7 @@ public sealed class PostgresJobStore : IAppStore
         PublishedAtUtc = D(r, "published_at_utc"), WorkDir = S(r, "work_dir"), WorkDirCleaned = r.GetBoolean(r.GetOrdinal("work_dir_cleaned")),
         PublishNow = r.GetBoolean(r.GetOrdinal("publish_now")),
         ManualScript = S(r, "manual_script"), ManualTitle = S(r, "manual_title"), ManualAudioUrl = S(r, "manual_audio_url"),
+        Kind = S(r, "kind") ?? "", DemoSpecJson = S(r, "demo_spec"), DemoResultJson = S(r, "demo_result"),
     };
 
     private static void BindJob(NpgsqlCommand cmd, VideoJob j)
@@ -229,9 +230,10 @@ public sealed class PostgresJobStore : IAppStore
 INSERT INTO {T("jobs")}(topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc,
  run_attempts, next_attempt_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description,
  thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status,
- youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url)
+ youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url,
+ kind, demo_spec)
 VALUES(@topic,@notes,@language,@dur,@format,@tpl,@voice,@pub,@status,@created,@updated,@attempts,@next,@cancel,@qa,@errc,@errm,@attn,@snap,@title,@desc,
- @thumb,@va,@aa,@sa,@adur,@yid,@ypriv,@yup,@yproc,@ychk,@pubd,@wd,@wdc,@pn,@ms,@mt,@ma) RETURNING id
+ @thumb,@va,@aa,@sa,@adur,@yid,@ypriv,@yup,@yproc,@ychk,@pubd,@wd,@wdc,@pn,@ms,@mt,@ma,@kind,@dspec) RETURNING id
 """, c);
         if (job.CreatedAtUtc == default) job.CreatedAtUtc = DateTimeOffset.UtcNow;
         BindJob(cmd, job);
@@ -239,6 +241,8 @@ VALUES(@topic,@notes,@language,@dur,@format,@tpl,@voice,@pub,@status,@created,@u
         cmd.Parameters.AddWithValue("ms", NpgsqlDbType.Text, N(job.ManualScript));
         cmd.Parameters.AddWithValue("mt", NpgsqlDbType.Text, N(job.ManualTitle));
         cmd.Parameters.AddWithValue("ma", NpgsqlDbType.Text, N(job.ManualAudioUrl));
+        cmd.Parameters.AddWithValue("kind", job.Kind ?? "");
+        cmd.Parameters.AddWithValue("dspec", NpgsqlDbType.Text, N(job.DemoSpecJson));
         job.Id = (long)cmd.ExecuteScalar()!;
         return job.Id;
     }
@@ -400,6 +404,40 @@ RETURNING {JobColumns}
     {
         using var c = Open();
         Exec(c, null, $"UPDATE {T("jobs")} SET upload_requested=@v, updated_at_utc=@now WHERE id=@id", ("v", value), ("now", DateTimeOffset.UtcNow), ("id", jobId));
+    }
+
+    /// <summary>
+    /// MCP demo videolari: faqat joriy (o'z yoki band qilingan mehmon) hisob doirasida, yaratilgan tartibda. Mehmon hisoblarining demo
+    /// so'rovlari oddiy navbat bilan (ClaimNext, ish vaqtida) bajariladi - mezbon kompyuter ularni navbatsiz olmaydi.
+    /// </summary>
+    public VideoJob? ClaimDemo(string runId, DateTimeOffset nowUtc)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+UPDATE {T("jobs")} SET claimed_by=@run, claimed_at_utc=@now, updated_at_utc=@now
+WHERE id = (
+  SELECT id FROM {T("jobs")}
+  WHERE kind = 'demo' AND status = ANY(@st) AND claimed_by IS NULL AND cancel_requested = FALSE
+    AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= @now)
+  ORDER BY created_at_utc, id LIMIT 1 FOR UPDATE SKIP LOCKED)
+  AND claimed_by IS NULL
+RETURNING {JobColumns}
+""", ("run", runId), ("now", U(nowUtc)), ("st", Claimable));
+        return ReadJobs(cmd).FirstOrDefault();
+    }
+
+    public int CountDemo(DateTimeOffset nowUtc)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"SELECT COUNT(*) FROM {T("jobs")} WHERE kind = 'demo' AND status = ANY(@st) AND claimed_by IS NULL AND cancel_requested = FALSE AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= @now)",
+            ("st", Claimable), ("now", U(nowUtc)));
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    public void SetDemoResult(long jobId, string json)
+    {
+        using var c = Open();
+        Exec(c, null, $"UPDATE {T("jobs")} SET demo_result=@v, updated_at_utc=@now WHERE id=@id", ("v", json), ("now", DateTimeOffset.UtcNow), ("id", jobId));
     }
 
     public bool TryClaim(long jobId, string runId, DateTimeOffset nowUtc)

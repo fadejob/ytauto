@@ -162,6 +162,21 @@ public sealed class FfmpegMediaProbe : IMediaProbe
             throw PipelineException.Transient("ffmpeg_cover", $"Muqova videoga qo'shilmadi: {err.Trim()}");
     }
 
+    /// <summary>
+    /// Ekran yozuvini montaj uchun bir xil formatga keltiradi: ovozsiz (o'z ovozi videoga aralashmasin), H.264 yuv420p, 30 fps,
+    /// kengligi ko'pi bilan 1920 px, ko'pi bilan <paramref name="maxSec"/> soniya, faststart.
+    /// </summary>
+    public async Task NormalizeScreenRecordingAsync(string input, string outMp4, double maxSec, CancellationToken ct)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(outMp4)!);
+        var args = new[] { "-hide_banner", "-v", "error", "-i", input, "-t", maxSec.ToString("0.###", CultureInfo.InvariantCulture), "-an",
+            "-vf", "scale='min(1920,iw)':-2:flags=lanczos,fps=30,format=yuv420p", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-movflags", "+faststart", "-y", outMp4 };
+        var (r, _, err) = await RunAsync(Ffmpeg, args, TimeSpan.FromMinutes(20), ct).ConfigureAwait(false);
+        if (r.ExitCode != 0 || !File.Exists(outMp4) || new FileInfo(outMp4).Length == 0)
+            throw PipelineException.Config("demo_video_convert", $"Ekran yozuvini o'qib bo'lmadi (ffmpeg): {err.Trim()}");
+    }
+
     public async Task MakeAnalysisClipAsync(string video, double startSec, double durationSec, string outMp4, int width, CancellationToken ct)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outMp4)!);

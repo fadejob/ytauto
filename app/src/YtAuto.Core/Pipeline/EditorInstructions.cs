@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using YtAuto.Core.Demo;
 using YtAuto.Core.Domain;
 using YtAuto.Core.Script;
 using YtAuto.Core.Visuals;
@@ -10,6 +11,9 @@ namespace YtAuto.Core.Pipeline;
 /// Claude uchun instructions.md: saqlangan Claude (montaj) prompti + subtitr + ovoz + shablon (bo'lsa) + worker tekshiradigan
 /// texnik talablar. Sahnalarni Claude subtitr ma'nosiga qarab o'zi belgilaydi.
 /// </summary>
+/// <summary>Demo video uchun montaj ma'lumoti: so'rov (loyiha konteksti) va ovozga bog'langan sahna rejasi.</summary>
+internal sealed record DemoBrief(DemoSpec Spec, IReadOnlyList<DemoPlanScene> Scenes);
+
 internal static class EditorInstructions
 {
     /// <summary>Kanal tahlilidan (bot) montaj uslubi: shablon/brief bilan birga Claude'ga beriladi.</summary>
@@ -17,7 +21,7 @@ internal static class EditorInstructions
 
     public static string Build(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues, double audioSec,
         TemplateDefinition? tpl, IReadOnlyList<string> refFrames, bool hasStyleGuide = false, MediaManifest? media = null, bool hasMotionGuide = false,
-        MusicPick? music = null)
+        MusicPick? music = null, DemoBrief? demo = null)
     {
         var (w, h) = c.StageSize;
         var inv = CultureInfo.InvariantCulture;
@@ -78,6 +82,7 @@ internal static class EditorInstructions
         sb.AppendLine();
         if (refFrames.Count > 0 || hasStyleGuide || hasMotionGuide) AppendTemplateFidelity(sb, hasMotionGuide);
         if (media is { Assets.Count: > 0 }) AppendMedia(sb, media, inv);
+        if (demo is not null) AppendDemo(sb, demo, inv, w, h);
         AppendDesignBar(sb, w, h, tpl is not null || refFrames.Count > 0, hasMotionGuide);
         sb.AppendLine("## Hard requirements (the worker checks them automatically)");
         sb.AppendLine();
@@ -93,11 +98,16 @@ internal static class EditorInstructions
             sb.AppendLine(music.DurationSec > 0 && music.DurationSec < audioSec
                 ? $"   It is shorter than the video: place it again end to end (same file, same volume) until the video end, and trim the last clip so it ends exactly at {audioSec.ToString("0.00", inv)} s."
                 : $"   Trim it so it ends exactly at {audioSec.ToString("0.00", inv)} s (the video end). If OpenFilm supports audio fades, fade it out over the last 1.5 s.");
-            sb.AppendLine("   No other music or sound files. Do not write the music credit on screen; the worker adds it to the video description.");
+            sb.AppendLine(demo is null
+                ? "   No other music or sound files. Do not write the music credit on screen; the worker adds it to the video description."
+                : "   No other music. Sound effects only from `assets/sfx/` (see the demo section). Do not write the music credit on screen; the worker adds it to the video description.");
         }
+        if (demo is not null)
+            sb.AppendLine("   Sound effects: `assets/sfx/*.wav` on a THIRD audio track, each clip at its moment, volume 0.15–0.3, never on the voice or music track.");
         sb.AppendLine("4. No subtitles drawn in pages (they are burned in from voice.vtt). Keep the lower 22% of the frame free of key text.");
         sb.AppendLine("5. Every page follows \"the picture depends only on t\". No external network resources (no CDN fonts or images); everything local" +
-            (media is { Assets.Count: > 0 } ? " (the real images are already in `film/assets/media/`; do not download others)." : "."));
+            (media is { Assets.Count: > 0 } ? " (the real images are already in `film/assets/media/`; do not download others)."
+             : demo is not null ? " (the product screenshots and recordings are already in `film/assets/demo/`; do not download or invent other product images)." : "."));
         sb.AppendLine("6. All text inside the safe area and readable on a phone. Nothing cut off at the edges.");
         sb.AppendLine("7. Leave `film/assets/voice.wav` and `film/assets/voice.vtt` untouched.");
         sb.AppendLine("8. `film/cover.html`: the video cover (see below). It is NOT on the timeline.");
@@ -150,6 +160,50 @@ internal static class EditorInstructions
         sb.AppendLine("- Icons are single-colour SVGs that use `currentColor`: inline the SVG markup in the page (or use it as a CSS `mask-image`) and colour it with the template's accent; keep one stroke weight and size system across the video.");
         sb.AppendLine("- Do not write credits or watermarks on screen; the worker adds the required credits to the video description.");
         sb.AppendLine();
+    }
+
+    /// <summary>
+    /// Demo video: loyihaning o'z screenshot va action videolari, sahna vaqtlari ovozdan (bo'lish Claude'ga qoldirilmaydi),
+    /// zoom/pan/harakat, o'tishlar va SFX qoidalari.
+    /// </summary>
+    private static void AppendDemo(StringBuilder sb, DemoBrief demo, CultureInfo inv, int w, int h)
+    {
+        var p = demo.Spec.Project;
+        sb.AppendLine("## Product demo (this video shows a real software project; this section overrides \"group these lines into scenes\" above)");
+        sb.AppendLine();
+        sb.AppendLine($"Project: **{p.Name}** — {OneLine(p.Summary, 400)}");
+        if (!string.IsNullOrWhiteSpace(demo.Spec.Requirements.Audience)) sb.AppendLine($"Audience: {OneLine(demo.Spec.Requirements.Audience, 200)}");
+        if (!string.IsNullOrWhiteSpace(demo.Spec.Requirements.Tone)) sb.AppendLine($"Tone: {OneLine(demo.Spec.Requirements.Tone, 120)}");
+        if (!string.IsNullOrWhiteSpace(demo.Spec.Requirements.Notes)) sb.AppendLine($"User requirements: {OneLine(demo.Spec.Requirements.Notes, 600)}");
+        sb.AppendLine();
+        sb.AppendLine("The scenes below are FIXED: one page per scene, in this order, exactly at these times (they come from the real voice timings). Each scene shows its own product material.");
+        sb.AppendLine();
+        foreach (var s in demo.Scenes)
+        {
+            var kind = s.Kind == DemoMediaKinds.Video ? $"screen recording, {s.MediaDurationSec.ToString("0.0", inv)} s" : "screenshot";
+            sb.AppendLine($"{s.Index}. **{s.Start.ToString("0.00", inv)}–{s.End.ToString("0.00", inv)} s** · `film/{s.File}` ({kind}, {s.Width}x{s.Height}) — {OneLine(s.MediaTitle, 120)}");
+            if (!string.IsNullOrWhiteSpace(s.MediaDescription)) sb.AppendLine($"   - Shows: {OneLine(s.MediaDescription, 300)}");
+            if (!string.IsNullOrWhiteSpace(s.Focus)) sb.AppendLine($"   - Focus (zoom/pan target): {OneLine(s.Focus, 200)}");
+            if (!string.IsNullOrWhiteSpace(s.OnScreenText)) sb.AppendLine($"   - On-screen label: \"{OneLine(s.OnScreenText, 60)}\"");
+            sb.AppendLine($"   - Voice says: \"{OneLine(s.Narration, 400)}\"");
+        }
+        sb.AppendLine();
+        sb.AppendLine("How to present the product (it must look like a polished product launch video, not a slideshow):");
+        sb.AppendLine($"- Put each screenshot/recording inside a clean device or app-window frame (rounded corners, soft shadow, subtle title bar) on the video's background, large: it fills 75–90% of the free area above the subtitle zone. Never stretch or crop away the UI the narration talks about; keep the aspect ratio (`object-fit: contain` inside the frame).");
+        sb.AppendLine("- Camera motion on every scene (the picture depends only on t): start on the whole screen, then a smooth push-in (scale 1.0→1.6–2.2, translate) onto the Focus area while the voice talks about it, hold, and ease out before the cut. Screens with no Focus get a slow Ken Burns drift (scale 1.00→1.08). Use ease-in-out curves; no jerky jumps.");
+        sb.AppendLine("- Highlight what the voice names: a soft spotlight (dim everything except the Focus region), an outline box or a short animated cursor/click ripple on the exact UI element. Keep highlights in the accent colour.");
+        sb.AppendLine("- Screen recordings: a `<video>` clip with `muted` (never its own sound), starting at the scene start. If the recording is shorter than the scene, hold its last frame (freeze) — do not loop visibly; if longer, trim it. Recordings may also get a gentle zoom on the action.");
+        sb.AppendLine("- Transitions between scenes: 0.3–0.6 s (slide, zoom-through or crossfade between frames), consistent across the video, finished exactly at the scene boundary so the clips still cover the timeline end to end.");
+        sb.AppendLine("- First scene: open on the product name as a short title over the first screen (1–2 s). Last scene: end card with the project name" + (string.IsNullOrWhiteSpace(p.Url) ? "" : $" and `{OneLine(p.Url!, 80)}` as plain text") + ".");
+        sb.AppendLine("- Sound effects (optional, tasteful, at most one every few seconds): " + string.Join("; ", Media.Sfx.Catalog.Select(kv => $"`assets/sfx/{kv.Key}` = {kv.Value}")) + ". Place each as its own audio clip at the exact moment (volume 0.15–0.3).");
+        sb.AppendLine($"- Do not draw fake UI or invent features: everything about the product comes from these materials. Text you add (labels, titles) is short and matches the narration.");
+        sb.AppendLine();
+    }
+
+    private static string OneLine(string? s, int max)
+    {
+        var t = System.Text.RegularExpressions.Regex.Replace(s ?? "", @"\s+", " ").Trim();
+        return t.Length > max ? t[..max] + "…" : t;
     }
 
     /// <summary>

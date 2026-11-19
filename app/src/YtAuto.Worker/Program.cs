@@ -10,7 +10,8 @@ namespace YtAuto.Worker;
 /// <summary>
 /// YtAuto worker. Oynasiz. Rejimlar:
 /// --scheduled: bazadan sinxronlash → navbatdagi barcha mavzular, ish oynasi tugaguncha (chiqish vaqti faqat YouTube uchun, <see cref="BatchPlanner"/>);
-/// --poll: faqat masofaviy (bot) so'rovlar: "Tayyor videoni YouTube'ga yuklash" va "Hozir chiqarish" (so'rov bo'lmasa darhol jim chiqadi);
+/// --poll: faqat masofaviy (bot) so'rovlar: "Tayyor videoni YouTube'ga yuklash", "Hozir chiqarish" va Claude Code (MCP) so'ragan
+/// demo videolar (so'rov bo'lmasa darhol jim chiqadi);
 /// --manual: bitta vazifa. Har rejimda "Hozir chiqarish" so'rovlari birinchi bajariladi.
 /// Exit kodlar: 0 - muvaffaqiyatli yoki navbat bo'sh, 1 - xato (keyingi safar qayta uriniladi), 2 - e'tibor kerak,
 /// 3 - boshqa worker ishlamoqda, 4 - kutilmagan xato.
@@ -317,6 +318,7 @@ public static class Program
     private static bool HasRemoteRequests(AppServices svc)
     {
         if (svc.Store.CountPublishNow(DateTimeOffset.UtcNow) > 0 || JobRunner.LocalUploadRequests(svc.Store).Count > 0) return true;
+        if (svc.Store.CountDemo(DateTimeOffset.UtcNow) > 0) return true; // MCP demo video (faqat asosiy hisob; mehmonlarniki - ish vaqtida)
         try
         {
             foreach (var (account, _) in AccountScopes(svc).Skip(1))
@@ -354,6 +356,34 @@ public static class Program
             if (r.Outcome == RunOutcome.QueueEmpty) break;
             list.Add(r);
             svc.Log.Info($"Hozir chiqarish: #{r.JobId} {r.Outcome} ({r.Elapsed.TotalMinutes:0.0} daqiqa).");
+            if (r.Outcome == RunOutcome.Failed) break;
+        }
+        list.AddRange(await RunDemoRequestsAsync(svc, runner, ct));
+        return list;
+    }
+
+    /// <summary>
+    /// Claude Code (MCP) so'ragan demo videolar: jadvalni kutmasdan, yaratilgan tartibda, bittadan (OS mutex - bir vaqtda bitta og'ir ish).
+    /// Har videodan oldin resurslar tekshiriladi: disk yoki RAM yetmasa navbat saqlanadi va keyingi poll'da davom etadi.
+    /// Navbat bazada: worker yoki kompyuter qayta ishga tushsa ham so'rovlar yo'qolmaydi (uzilgan vazifa tayyor bosqichidan davom etadi).
+    /// </summary>
+    private static async Task<List<RunSummary>> RunDemoRequestsAsync(AppServices svc, JobRunner runner, CancellationToken ct)
+    {
+        var list = new List<RunSummary>();
+        for (int i = 0; i < 5 && svc.Store.CountDemo(DateTimeOffset.UtcNow) > 0; i++)
+        {
+            var s = svc.Settings.Load();
+            var disk = string.IsNullOrWhiteSpace(s.Paths.WorkDir) ? double.MaxValue : svc.Resources.FreeDiskGb(Path.GetPathRoot(Path.GetFullPath(s.Paths.WorkDir))!);
+            var ram = svc.Resources.AvailableRamGb();
+            if (disk < s.Limits.MinFreeDiskGb || ram < s.Limits.MinFreeRamGbForTts)
+            {
+                svc.Log.Warn($"Demo video navbatda kutadi: resurs yetarli emas (bo'sh disk {disk:0.0} GB, kerak {s.Limits.MinFreeDiskGb}; bo'sh RAM {ram:0.0} GB, kerak {s.Limits.MinFreeRamGbForTts}). Keyingi tekshiruvda davom etadi.");
+                break;
+            }
+            var r = await runner.RunDemoOnceAsync(svc.RunId, ct);
+            if (r.Outcome == RunOutcome.QueueEmpty) break;
+            list.Add(r);
+            svc.Log.Info($"Demo video (MCP): #{r.JobId} {r.Outcome} ({r.Elapsed.TotalMinutes:0.0} daqiqa){(r.Message is null ? "" : " — " + r.Message)}.");
             if (r.Outcome == RunOutcome.Failed) break;
         }
         return list;

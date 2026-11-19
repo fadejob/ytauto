@@ -50,6 +50,12 @@ public interface IJobStore
     IReadOnlyList<long> UploadRequestIds();
     /// <summary>"Tayyor videoni yuklash" so'rovi bayrog'i (Update()'dan alohida, poyga bo'lmasligi uchun).</summary>
     void SetUploadRequested(long jobId, bool value);
+    /// <summary>MCP orqali so'ralgan, navbatdagi eng eski demo videoni atomar band qiladi (faqat joriy hisob).</summary>
+    VideoJob? ClaimDemo(string runId, DateTimeOffset nowUtc) => null;
+    /// <summary>Navbatda kutayotgan demo video so'rovlari soni (joriy hisob).</summary>
+    int CountDemo(DateTimeOffset nowUtc) => 0;
+    /// <summary>Tayyor demo video natijasi (Storage yo'llari, JSON) - Update()'dan alohida.</summary>
+    void SetDemoResult(long jobId, string json) { }
 }
 
 public sealed class OwnedProcessRecord

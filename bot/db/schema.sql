@@ -1,4 +1,4 @@
--- ytauto-schema-version: 4
+-- ytauto-schema-version: 5
 -- YtAuto online bazasi (Supabase PostgreSQL, "ytauto" sxemasi) - YAGONA manba. Bot (bot/src/lib/schema.ts) ham, desktop ilova
 -- (PostgresJobStore, egasi huquqi bilan ulanganda) ham shu faylni ishga tushiradi. Fayl idempotent: qayta ishga tushirish xavfsiz.
 -- Yuqoridagi versiya o'zgarmasa, fayl qayta bajarilmaydi (ytauto.schema_meta). O'zgartirganda versiyani oshiring.
@@ -100,6 +100,15 @@ CREATE TABLE IF NOT EXISTS ytauto.topic_suggestions (
   id BIGSERIAL PRIMARY KEY, for_date DATE NOT NULL, topic TEXT NOT NULL, notes TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'new', job_id BIGINT, created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ------------------------------------------------------------------ v5: MCP orqali demo video (Claude Code)
+-- kind = 'demo': Claude Code loyihani o'rganib, screenshot/action videolarni MCP orqali yuboradi; ssenariy (Gemini, 2 bosqich),
+-- ovoz, montaj va render YtAuto ichida. demo_spec - MCP so'rovi (loyiha, media va ularning imzolangan havolalari, talablar),
+-- demo_result - tayyor video Storage'dagi yo'llari (worker yozadi). Holat 15 = "Tayyor" (YouTube'ga chiqarish kutilmoqda).
+ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT '';
+ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS demo_spec TEXT;
+ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS demo_result TEXT;
+CREATE INDEX IF NOT EXISTS ix_jobs_demo ON ytauto.jobs(created_at_utc, id) WHERE kind = 'demo';
 
 -- ------------------------------------------------------------------ v2: hisoblar va izolyatsiya
 CREATE TABLE IF NOT EXISTS ytauto.accounts (
@@ -321,4 +330,4 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ytauto.jobs, ytauto.job_stages, ytauto.j
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ytauto TO ytauto_device, ytauto_bot;
 REVOKE ALL ON ytauto.accounts, ytauto.account_roles, ytauto.telegram_links, ytauto.login_attempts, ytauto.schema_meta FROM ytauto_device, ytauto_bot;
 
-INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '4') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '5') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

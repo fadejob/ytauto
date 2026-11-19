@@ -18,6 +18,11 @@ public enum JobStatus
     Failed = 12,
     NeedsAttention = 13,
     Cancelled = 14,
+    /// <summary>
+    /// Video tayyor (arxivda va natija serverga yuborilgan), lekin YouTube'ga chiqarish so'ralmagan: MCP orqali yaratilgan demo videolar
+    /// shu holatda to'xtaydi. Navbatdan olinmaydi; chiqarish - alohida buyruq ("Hozir chiqarish" yoki "YouTube'ga yuklash").
+    /// </summary>
+    Ready = 15,
 }
 
 /// <summary>Pipeline bosqichlari. Tartib muhim: resume shu tartibda tekshiradi.</summary>

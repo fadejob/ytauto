@@ -104,6 +104,27 @@ public sealed class AppServices
         return s;
     }
 
+    /// <summary>Bot manzili va hisob tokeni (natijani serverga yuborish uchun); hisob sozlanmagan bo'lsa null.</summary>
+    private (string BotUrl, string Token)? DemoAccount()
+    {
+        var acc = Accounts.DeviceAccount.Load(LocalDb);
+        var token = Accounts.DeviceAccount.Token(Secrets);
+        var url = string.IsNullOrWhiteSpace(acc?.BotUrl) ? Accounts.DeviceAccount.DefaultBotUrl : acc!.BotUrl;
+        return string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(token) ? null : (url, token!);
+    }
+
+    /// <summary>
+    /// Demo materiallari faqat Storage'dan: https://*.supabase.co. Sinov uchun YTAUTO_STORAGE_TEST_ORIGIN (masalan http://127.0.0.1:54321)
+    /// - faqat lokal manzil qabul qilinadi.
+    /// </summary>
+    internal static bool StorageAllowed(Uri u)
+    {
+        if (YtAuto.Infrastructure.Media.DemoMediaFetcher.DefaultAllowed(u)) return true;
+        var test = Environment.GetEnvironmentVariable("YTAUTO_STORAGE_TEST_ORIGIN");
+        return !string.IsNullOrWhiteSpace(test) && Uri.TryCreate(test, UriKind.Absolute, out var t) && u.IsLoopback && t.IsLoopback
+               && u.Scheme == t.Scheme && u.Port == t.Port;
+    }
+
     public OpenFilmTool FilmTool(Func<OpenFilmSettings>? s = null) => new(s ?? (() => Settings.Load().OpenFilm), Store, RunId);
     public FfmpegMediaProbe Media(OpenFilmTool film) => new(() => film.FfmpegDir);
     public WhisperAligner Aligner(Func<VoiceStudioSettings>? s = null) => new(s ?? (() => Settings.Load().VoiceStudio));
@@ -129,6 +150,12 @@ public sealed class AppServices
             MediaLibrary = new Media.OpenMediaLibrary(keys: () => { var v = Settings.Load().Visuals; return new Media.StockPhotoKeys(v.PexelsApiKey, v.PixabayApiKey); }),
             // Fon musiqasi: botda tanlangan treklar kompyuterda bir marta yuklab olinib keshlanadi.
             Music = new Media.MusicCache(Http, Path.Combine(Paths.DataRoot, "music")),
+            // Demo video (Claude Code MCP): ssenariy Gemini'da 2 bosqich, materiallar Storage'dan, natija bot orqali Storage'ga.
+            DemoWriter = new Gemini.GeminiDemoWriter(Gemini),
+            DemoMedia = new Media.DemoMediaFetcher(Http, media, StorageAllowed),
+            DemoResults = new Media.BotDemoResultSink(Http, DemoAccount, () => (Store as PostgresJobStore)?.Scope),
+            // MCP so'ragan avtomatik YouTube chiqarish faqat asosiy hisob kanaliga (mehmon - qo'shimcha token - hisoblariga emas).
+            PublishAllowed = () => !Store.InGuestScope,
             Uploader = Uploader, Resources = Resources, Paths = Paths, Clock = new SystemClock(),
             JobLogFactory = id => new JobLog(id, Paths.RecordDirFor(id), Store, Log),
             RunLog = Log, AppVersion = typeof(AppServices).Assembly.GetName().Version?.ToString() ?? "1.0.0",
