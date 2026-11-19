@@ -121,6 +121,10 @@ public class StockMediaTests
         Assert.Contains("film/media_selection.json", ins);
         Assert.Contains("watermark", ins);
         Assert.Contains("muted", ins);
+        Assert.Contains("there is NO fixed number", ins);
+        Assert.Contains("up to 5 photos and up to 3 clips per scene", ins);
+        Assert.Contains("- This part of the narration lasts about 3.0 s: room for about 1 shot", ins); // s01: 3 s → 6 s
+        Assert.DoesNotContain("at most 2", ins);
         Assert.Contains("film/assets/media/logo_00.svg", ins); // logo bo'limi ham bor
 
         // Kontakt varaq: 5 rasm (1-qator) + 3 video x 3 kadr.
@@ -194,7 +198,7 @@ public class StockMediaTests
         Assert.Single(stock.Requests);
         var ins = h.Editor.LastInstructions!;
         Assert.Contains("film/assets/stock/s01/img2.jpg", ins);
-        Assert.DoesNotContain("img3", ins); // buzilgan fayl ro'yxatga kirmadi
+        Assert.DoesNotContain("`film/assets/stock/s01/img3.jpg`", ins); // buzilgan fayl ro'yxatga kirmadi
         Assert.Contains(h.Log.Lines, l => l.Contains("1/1 sahna, 2 rasm, 1 video"));
     }
 
@@ -259,6 +263,21 @@ public class StockMediaTests
         File.WriteAllText(Path.Combine(t.Path, "resources", "app.asar"), "asar"); // CLI skripti arxiv ichida - alohida fayl emas
         Assert.True(src.IsConfigured);
         Assert.False(new OpenFilmStockSearch(tool, () => StockPhotoKeys.None, Path.Combine(t.Path, "home")).IsConfigured);
+    }
+
+    [Fact]
+    public void StockRoom_ShotsFollowSceneLength_CappedAtFivePhotosPlusThreeClips()
+    {
+        var c = new StockCandidates();
+        foreach (var (id, at) in new[] { ("s01", 0.0), ("s02", 2.0), ("s03", 12.0), ("s04", 40.0) })
+            c.Scenes.Add(new StockScene { Id = id, At = at, Candidates = { new StockCandidate { Type = StockTypes.Image } } });
+        c.Scenes.Add(new StockScene { Id = "s05", At = 5 }); // nomzodsiz sahna hisobga olinmaydi
+        var room = EditorInstructions.StockRoom(c, 90);
+        Assert.Equal((2.0, 1), room["s01"]);   // qisqa sahna - bitta kadr
+        Assert.Equal((10.0, 4), room["s02"]);  // 10 s - to'rtta
+        Assert.Equal((28.0, 8), room["s03"]);  // uzun - ko'pi bilan 5 rasm + 3 video
+        Assert.Equal((50.0, 8), room["s04"]);  // oxirgisi ovoz oxirigacha
+        Assert.False(room.ContainsKey("s05"));
     }
 
     [Fact]
