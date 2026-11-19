@@ -102,6 +102,8 @@ export default function Topics({ state, loading, refresh, run, locked }: { state
               {t.publishNow ? <span className="chip warn">⚡ hozir chiqarish kutilmoqda</span> : null}
               {t.uploadRequested ? <span className="chip warn">⬆ YouTube'ga yuklash kutilmoqda</span> : null}
               {t.hasAudio ? <span className="chip mute">🎙 tayyor audio</span> : t.manualScript ? <span className="chip mute">✍ o&apos;z matni</span> : null}
+              {t.music === "none" ? <span className="chip mute">🔇 musiqasiz</span>
+                : t.music ? <span className="chip mute">🎵 {state?.catalog.music?.tracks.find((m) => m.id === t.music)?.title ?? "tanlangan musiqa"}</span> : null}
               <span>📅 {fmt(t.publishLocal)}</span>
             </div>
             {t.error ? <div className="err">{t.error}</div> : null}
@@ -189,6 +191,9 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
   const [template, setTemplate] = useState(edit ? edit.template : catalog.defaults.template);
   const [format, setFormat] = useState(edit ? edit.format : catalog.defaults.format);
   const [voice, setVoice] = useState(edit ? edit.voice : catalog.defaults.voiceProfile || catalog.voiceProfiles[0] || "");
+  // Fon musiqasi: "" - avtomatik (kutubxonadan navbat bilan), "none" - musiqasiz, aks holda tanlangan trek.
+  const lib = catalog.music ?? { enabled: false, tracks: [] };
+  const [music, setMusic] = useState(edit?.music ?? "");
   const [rows, setRows] = useState<Row[]>(
     edit
       ? [{
@@ -228,11 +233,11 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
       setSaving("Saqlanmoqda…");
       const manual = (r: Row) => (r.source === "gemini" ? { script: "", title: "" } : { script: r.script, title: r.title });
       const results = await run(edit
-        ? [{ type: "update_topic", id: edit.id, topic: topicOf(filled[0]), notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice, ...manual(filled[0]) }]
+        ? [{ type: "update_topic", id: edit.id, topic: topicOf(filled[0]), notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice, music, ...manual(filled[0]) }]
         : [{
             type: "create_topics",
             topics: filled.map((r, i) => ({
-              topic: topicOf(r), notes: r.source === "gemini" ? r.notes : "", publishAt: at(r), template, format, voice,
+              topic: topicOf(r), notes: r.source === "gemini" ? r.notes : "", publishAt: at(r), template, format, voice, music,
               ...(r.source === "gemini" ? {} : { script: r.script, title: r.title }), audioPath: audioPaths[i],
             })),
           }]);
@@ -341,6 +346,17 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
               </select>
             </div>
           )}
+          <div className="field">
+            <label>Fon musiqasi</label>
+            <select className="input" value={music} onChange={(e) => setMusic(e.target.value)}>
+              <option value="">{lib.enabled && lib.tracks.length > 0 ? "Avtomatik — kutubxonadan navbat bilan" : "Avtomatik (hozir musiqasiz)"}</option>
+              <option value="none">Musiqasiz</option>
+              {lib.tracks.map((m) => <option key={m.id} value={m.id}>🎵 {m.title}{m.creator ? ` — ${m.creator}` : ""}</option>)}
+              {music && music !== "none" && !lib.tracks.some((m) => m.id === music) ? <option value={music}>O&apos;chirilgan trek</option> : null}
+            </select>
+            {lib.tracks.length === 0 ? <div className="hint">Kutubxona bo&apos;sh: Sozlamalar → Fon musiqasi&apos;dan trek qo&apos;shing.</div>
+              : music && music !== "none" && !lib.enabled ? <div className="hint">Umumiy fon musiqasi o&apos;chiq, lekin shu mavzuga tanlangan trek baribir qo&apos;yiladi.</div> : null}
+          </div>
           {templatePending ? (
             <div className="hint" style={{ color: "var(--danger)" }}>«{template}» shabloni hali serverga yuklanmoqda: kompyuterga tushib o&apos;rnatilgach tanlash mumkin bo&apos;ladi.</div>
           ) : pending.length > 0 ? (

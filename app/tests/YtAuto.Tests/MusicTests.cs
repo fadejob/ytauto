@@ -146,3 +146,53 @@ public class MusicTests
         }
     }
 }
+
+/// <summary>Har mavzuning o'z musiqasi (bot mavzu oynasi).</summary>
+public class TopicMusicTests
+{
+    private const string A = "caf821fe-95c0-4108-9e28-aeba217d747c";
+    private const string B = "0b6c2b1e-1a2b-4c3d-8e9f-0123456789ab";
+
+    private static MusicSettings Lib(bool enabled) => new()
+    {
+        Enabled = enabled,
+        Tracks = { new MusicTrack { Id = A, Title = "A", License = "by", Url = "https://x.supabase.co/a" }, new MusicTrack { Id = B, Title = "B", License = "by", Url = "https://x.supabase.co/b" } },
+    };
+
+    [Fact]
+    public void ReadMusic_ParsesTopicChoices_AndIgnoresJunk()
+    {
+        var m = SqliteSettingsStore.ReadMusic($$$"""{"enabled":true,"tracks":[],"topics":{"101":"{{{B}}}","102":"none","abc":"{{{A}}}","103":"../x","104":5}}""");
+        Assert.Equal(2, m.Topics.Count);
+        Assert.Equal(B, m.Topics[101]);
+        Assert.Equal("none", m.Topics[102]);
+    }
+
+    [Fact]
+    public void PickFor_TopicChoiceWins()
+    {
+        var m = Lib(enabled: true);
+        m.Topics[10] = B;   // navbat bo'yicha A bo'lardi
+        m.Topics[11] = "none";
+        Assert.Equal("B", m.PickFor(10)!.Title);
+        Assert.Null(m.PickFor(11));
+        Assert.Equal("A", m.PickFor(12)!.Title); // tanlov yo'q - navbat
+    }
+
+    [Fact]
+    public void PickFor_ChosenTrackPlays_EvenWhenAutoIsOff()
+    {
+        var m = Lib(enabled: false);
+        m.Topics[7] = A;
+        Assert.Equal("A", m.PickFor(7)!.Title);
+        Assert.Null(m.PickFor(8));
+    }
+
+    [Fact]
+    public void PickFor_RemovedTrack_FallsBackToAuto()
+    {
+        var m = Lib(enabled: true);
+        m.Topics[11] = "11111111-2222-3333-4444-555555555555";
+        Assert.Equal("B", m.PickFor(11)!.Title);
+    }
+}

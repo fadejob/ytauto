@@ -23,6 +23,8 @@ export type Topic = {
   publishNow: boolean;
   claimed: boolean;
   error: string | null;
+  /** Fon musiqasi tanlovi: "" - avtomatik, "none" - musiqasiz, aks holda kutubxonadagi trek id. */
+  music: string;
   /** Video hali tayyorlanmagan: tahrirlash/o'chirish mumkin. */
   editable: boolean;
   deletable: boolean;
@@ -102,6 +104,8 @@ export type BotConfigInput = {
 export type Catalog = {
   voiceProfiles: string[];
   templates: { name: string; kind: string }[];
+  /** Fon musiqasi kutubxonasi (mavzu oynasidagi tanlov uchun). */
+  music: { enabled: boolean; tracks: { id: string; title: string; creator: string }[] };
   /** Botdan yuklangan, lekin hali birorta kompyuterga tushib o'rnatilmagan shablonlar: tanlab bo'lmaydi, "serverga yuklanmoqda" deb ko'rinadi. */
   pendingTemplates: PendingTemplate[];
   defaults: { voiceProfile: string; template: string; format: number };
@@ -178,12 +182,14 @@ export type NewTopic = {
   script?: string; title?: string;
   /** /api/audio orqali Storage'ga yuklangan tayyor ovoz yo'li: VoiceStudio chaqirilmaydi (script va title majburiy). */
   audioPath?: string;
+  /** Fon musiqasi: "" yoki yo'q - avtomatik, "none" - musiqasiz, aks holda kutubxonadagi trek id. */
+  music?: string;
 };
 
 /** UI va AI bir xil amallardan foydalanadi; AI taklifi foydalanuvchi ruxsat bermaguncha bajarilmaydi. */
 export type Action =
   | { type: "create_topics"; topics: NewTopic[] }
-  | { type: "update_topic"; id: number; topic?: string; notes?: string; publishAt?: string; template?: string; format?: number; voice?: string; script?: string; title?: string }
+  | { type: "update_topic"; id: number; topic?: string; notes?: string; publishAt?: string; template?: string; format?: number; voice?: string; script?: string; title?: string; music?: string }
   | { type: "delete_topic"; id: number }
   | { type: "publish_now"; id: number }
   | { type: "cancel_publish_now"; id: number }
@@ -255,6 +261,10 @@ export type MusicTrack = {
   /** previewUrl - asl manba (tinglash uchun); url - Storage'dagi nusxa (desktop yuklab oladi), urlExpiresAt - havola muddati. */
   previewUrl: string; storagePath: string; url: string; urlExpiresAt: string;
 };
-export type MusicLibrary = { enabled: boolean; volume: number; tracks: MusicTrack[] };
+/**
+ * topics - har mavzuning o'z tanlovi (mavzu id → trek id yoki "none" = musiqasiz). Yo'q bo'lsa - avtomatik (yoqilgan bo'lsa
+ * kutubxonadan navbat bilan). Bazaga ustun qo'shilmadi: jonli bazani migratsiyasiz ishlaydi, eski desktop'lar buzilmaydi.
+ */
+export type MusicLibrary = { enabled: boolean; volume: number; tracks: MusicTrack[]; topics?: Record<string, string> };
 /** Openverse qidiruv natijasi (brauzer to'g'ridan-to'g'ri oladi). */
 export type MusicCandidate = { id: string; title: string; creator: string; license: string; licenseVersion: string; durationSec: number; genres: string[]; previewUrl: string; landingUrl: string };

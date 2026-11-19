@@ -152,9 +152,22 @@ public sealed class MusicSettings
     /// <summary>Musiqa ovozi (0.03–0.2): nutq aniq eshitilishi uchun past.</summary>
     public double Volume { get; set; } = 0.12;
     public List<MusicTrack> Tracks { get; set; } = new();
+    /// <summary>Har mavzuning o'z tanlovi (bot mavzu oynasi): vazifa id → trek id yoki "none" (musiqasiz).</summary>
+    public Dictionary<long, string> Topics { get; set; } = new();
 
-    /// <summary>Vazifa uchun trek: vazifa raqami bo'yicha navbat bilan (ketma-ket videolar turli musiqa oladi). Yo'q bo'lsa - null.</summary>
-    public MusicTrack? PickFor(long jobId) => !Enabled || Tracks.Count == 0 ? null : Tracks[(int)(Math.Abs(jobId) % Tracks.Count)];
+    /// <summary>
+    /// Vazifa uchun trek. Mavzuga tanlangan bo'lsa - o'sha ("none" - musiqasiz; umumiy kalit o'chiq bo'lsa ham tanlangan trek qo'yiladi).
+    /// Aks holda (yoki tanlangan trek kutubxonadan o'chirilgan bo'lsa) yoqilgan bo'lsa vazifa raqami bo'yicha navbat bilan. Yo'q - null.
+    /// </summary>
+    public MusicTrack? PickFor(long jobId)
+    {
+        if (Topics.TryGetValue(jobId, out var choice))
+        {
+            if (string.Equals(choice, "none", StringComparison.OrdinalIgnoreCase)) return null;
+            if (Tracks.FirstOrDefault(t => string.Equals(t.Id, choice, StringComparison.OrdinalIgnoreCase)) is { } chosen) return chosen;
+        }
+        return !Enabled || Tracks.Count == 0 ? null : Tracks[(int)(Math.Abs(jobId) % Tracks.Count)];
+    }
 }
 
 public sealed class MusicTrack

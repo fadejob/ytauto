@@ -26,22 +26,27 @@ const OK_LICENSES = new Set(["cc0", "by"]);
 const AUDIO_HOSTS = [/^prod-\d+\.storage\.jamendo\.com$/i, /^(.+\.)?jamendo\.com$/i, /^upload\.wikimedia\.org$/i, /^cdn\.freesound\.org$/i];
 
 const DEFAULT: MusicLibrary = { enabled: true, volume: 0.12, tracks: [] };
-let demoLib: MusicLibrary = { ...DEFAULT, tracks: [] };
+// Demo: barcha API marshrutlari bitta holatni ko'rishi uchun globalThis'da (har marshrut alohida bundle bo'ladi).
+const g = globalThis as unknown as { __ytautoDemoMusic?: MusicLibrary };
+const demo = () => (g.__ytautoDemoMusic ??= { ...DEFAULT, tracks: [], topics: {} });
 
 async function read(lock = false): Promise<MusicLibrary> {
-  if (isDemo()) return demoLib;
+  if (isDemo()) return structuredClone(demo());
   const [row] = lock
     ? await sql()`SELECT value FROM ytauto.shared_settings WHERE key = ${KEY} FOR UPDATE`
     : await sql()`SELECT value FROM ytauto.shared_settings WHERE key = ${KEY}`;
   if (!row) return { ...DEFAULT, tracks: [] };
   try {
     const v = JSON.parse(row.value as string) as Partial<MusicLibrary>;
-    return { enabled: v.enabled !== false, volume: clampVolume(v.volume), tracks: Array.isArray(v.tracks) ? v.tracks : [] };
+    const topics: Record<string, string> = {};
+    if (v.topics && typeof v.topics === "object")
+      for (const [k, val] of Object.entries(v.topics)) if (/^\d{1,12}$/.test(k) && typeof val === "string" && val) topics[k] = val;
+    return { enabled: v.enabled !== false, volume: clampVolume(v.volume), tracks: Array.isArray(v.tracks) ? v.tracks : [], topics };
   } catch { return { ...DEFAULT, tracks: [] }; }
 }
 
 async function write(lib: MusicLibrary) {
-  if (isDemo()) { demoLib = lib; return; }
+  if (isDemo()) { g.__ytautoDemoMusic = structuredClone(lib); return; }
   await sql()`
     INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${KEY}, ${JSON.stringify(lib)}, now())
     ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
@@ -163,7 +168,53 @@ export async function removeTrack(idRaw: string): Promise<MusicLibrary> {
   const t = lib.tracks.find((x) => x.id === id);
   if (!t) return lib;
   lib.tracks = lib.tracks.filter((x) => x.id !== id);
+  // Shu trek tanlangan mavzular avtomatik rejimga qaytadi.
+  for (const [k, v] of Object.entries(lib.topics ?? {})) if (v === id) delete lib.topics![k];
   await write(lib);
   if (t.storagePath && !isDemo()) { try { await removeObjects([t.storagePath]); } catch { /* fayl qolsa zarari yo'q */ } }
   return lib;
+}
+
+// ------------------------------------------------------------------ har mavzuning o'z musiqasi
+
+/** Mavzu oynasi uchun: kutubxona qisqacha (imzolangan havolalarsiz). */
+export async function musicCatalog(): Promise<{ enabled: boolean; tracks: { id: string; title: string; creator: string }[] }> {
+  const lib = await read();
+  return { enabled: lib.enabled, tracks: lib.tracks.map((t) => ({ id: t.id, title: t.title, creator: t.creator })) };
+}
+
+/** Mavzu id → tanlov ("none" yoki trek id). Yo'q - avtomatik. */
+export async function topicMusicMap(): Promise<Record<string, string>> {
+  return (await read()).topics ?? {};
+}
+
+/** Tanlovni tekshiradi: "" (avtomatik), "none" yoki kutubxonadagi trek. Xato bo'lsa matn. */
+export async function checkTopicMusic(values: (string | undefined)[]): Promise<string | null> {
+  const want = values.map((v) => (v ?? "").trim().toLowerCase()).filter((v) => v && v !== "none");
+  if (want.length === 0) return null;
+  const ids = new Set((await read()).tracks.map((t) => t.id));
+  return want.every((v) => ids.has(v)) ? null : "Tanlangan fon musiqasi kutubxonada yo'q (o'chirilgan bo'lishi mumkin) — boshqasini tanlang.";
+}
+
+/**
+ * Mavzular tanlovini yozadi ("" - avtomatik, ya'ni yozuv o'chiriladi). Mavzu amali bilan bitta tranzaksiyada.
+ * Bazada endi yo'q mavzularning yozuvlari shu yerda tozalanadi (JSON o'smasin).
+ */
+export async function setTopicMusic(entries: { id: number; music: string | undefined }[]) {
+  const todo = entries.filter((e) => e.music !== undefined);
+  if (todo.length === 0) return;
+  const lib = await read(true);
+  const topics = { ...(lib.topics ?? {}) };
+  for (const e of todo) {
+    const v = (e.music ?? "").trim().toLowerCase();
+    if (!v) delete topics[String(e.id)];
+    else topics[String(e.id)] = v;
+  }
+  const keys = Object.keys(topics).map(Number);
+  if (!isDemo() && keys.length > 0) {
+    const alive = new Set((await sql()`SELECT id::int AS id FROM ytauto.jobs WHERE id = ANY(${keys})`).map((r) => r.id as number));
+    for (const k of keys) if (!alive.has(k)) delete topics[String(k)];
+  }
+  lib.topics = topics;
+  await write(lib);
 }

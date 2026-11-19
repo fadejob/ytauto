@@ -10,7 +10,7 @@ export const isDemo = () => process.env.DEMO_MODE === "1";
 
 const TZ = "Asia/Tashkent";
 export const demoCatalog: Catalog = {
-  voiceProfiles: ["MOSS ayol", "MOSS erkak"], templates: [{ name: "Clean explainer", kind: "OpenFilmProject" }, { name: "Neon facts", kind: "Mp4Reference" }], pendingTemplates: [], defaults: { voiceProfile: "MOSS ayol", template: "", format: 0 },
+  voiceProfiles: ["MOSS ayol", "MOSS erkak"], templates: [{ name: "Clean explainer", kind: "OpenFilmProject" }, { name: "Neon facts", kind: "Mp4Reference" }], pendingTemplates: [], music: { enabled: true, tracks: [] }, defaults: { voiceProfile: "MOSS ayol", template: "", format: 0 },
   youtube: { publishTime: "18:00", timeZone: TZ }, known: true,
 };
 
@@ -43,7 +43,7 @@ const db = () => (g.__ytautoDemo ??= seed());
 
 export function demoTopics(): Topic[] {
   return db().rows.map((r) => ({
-    id: r.id, topic: r.topic, notes: r.notes, title: r.title, status: r.status, publishAt: r.at.toISOString(), publishLocal: utcToZoned(r.at, TZ),
+    id: r.id, topic: r.topic, notes: r.notes, title: r.title, status: r.status, publishAt: r.at.toISOString(), publishLocal: utcToZoned(r.at, TZ), music: "",
     youtubeUrl: r.yt ? `https://youtu.be/${r.yt}` : null, publishNow: r.publishNow, claimed: r.claimed, error: r.error,
     editable: !r.made && !r.claimed && [0, 12, 13].includes(r.status), deletable: !r.made && !r.claimed && [0, 12, 13, 14].includes(r.status),
     canPublishNow: !r.publishNow && ![11, 14].includes(r.status),

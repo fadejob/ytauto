@@ -4,6 +4,7 @@ import { queueForAll } from "./commands";
 import { GEMINI_REQUIRED, geminiReady, getConfig } from "./config";
 import { templateCatalog } from "./library";
 import { pendingTemplates } from "./templates";
+import { checkTopicMusic, musicCatalog, setTopicMusic, topicMusicMap } from "./music";
 import { attachAudio } from "./audio";
 import { removeObjects } from "./storage";
 import { readBlocks } from "./channel/store";
@@ -97,7 +98,7 @@ function notMade(r: Pick<Row, "claimed_by" | "youtube_video_id" | "video_archive
 function toTopic(r: Row, tz: string): Topic {
   const made = !notMade(r);
   return {
-    id: r.id, topic: r.topic, notes: r.notes, title: r.title, status: r.status,
+    id: r.id, topic: r.topic, notes: r.notes, title: r.title, status: r.status, music: "",
     publishAt: r.publish_at_utc.toISOString(), publishLocal: utcToZoned(r.publish_at_utc, tz),
     youtubeUrl: r.youtube_video_id ? `https://youtu.be/${r.youtube_video_id}` : null,
     publishNow: r.publish_now, claimed: !!r.claimed_by,
@@ -128,7 +129,7 @@ export async function getCatalog(): Promise<Catalog> {
   // Kompyuterga hali tushmagan yuklashlar (bir kompyuterda o'rnatilgan bo'lsa, u allaqachon tanlanadi).
   const pendingOf = async (templates: { name: string }[]) =>
     (await pendingTemplates()).filter((p) => !templates.some((t) => t.name === p.name));
-  if (isDemo()) return { ...demoCatalog, pendingTemplates: await pendingOf(demoCatalog.templates) };
+  if (isDemo()) return { ...demoCatalog, pendingTemplates: await pendingOf(demoCatalog.templates), music: await musicCatalog() };
   const [row] = await sql()`SELECT value FROM ytauto.shared_settings WHERE key = 'bot.catalog'`;
   const c = row ? (JSON.parse(row.value as string) as CatalogJson) : null;
   const templates = (await templateCatalog()) ?? c?.templates ?? [];
@@ -136,6 +137,7 @@ export async function getCatalog(): Promise<Catalog> {
     voiceProfiles: c?.voice_profiles ?? [],
     templates,
     pendingTemplates: await pendingOf(templates),
+    music: await musicCatalog(),
     defaults: { voiceProfile: c?.defaults?.voice_profile ?? "", template: c?.defaults?.template ?? "", format: c?.defaults?.format ?? 0 },
     youtube: { publishTime: c?.youtube?.publish_time ?? "18:00", timeZone: c?.youtube?.time_zone ?? "Asia/Tashkent" },
     known: !!c,
@@ -143,14 +145,16 @@ export async function getCatalog(): Promise<Catalog> {
 }
 
 export async function listTopics(tz: string): Promise<Topic[]> {
-  if (isDemo()) return demoTopics();
+  const music = await topicMusicMap();
+  const withMusic = (t: Topic): Topic => ({ ...t, music: music[String(t.id)] ?? "" });
+  if (isDemo()) return demoTopics().map(withMusic);
   try { await cleanupAudio(); } catch (e) { console.warn("[audio] tozalash:", e instanceof Error ? e.message : e); }
   // Chiqmaganlar hammasi + oxirgi 30 ta chiqqan.
   const rows = await sql()<Row[]>`
     (SELECT ${cols()} FROM ytauto.jobs WHERE status <> ${Status.Published} ORDER BY publish_at_utc, id LIMIT 300)
     UNION ALL
     (SELECT ${cols()} FROM ytauto.jobs WHERE status = ${Status.Published} ORDER BY publish_at_utc DESC LIMIT 30)`;
-  return rows.map((r) => toTopic(r, tz));
+  return rows.map((r) => withMusic(toTopic(r, tz)));
 }
 
 async function getRow(id: number): Promise<Row | undefined> {
@@ -188,6 +192,13 @@ const clean = (s: string | undefined | null) => (s ?? "").replace(/\s+\n/g, "\n"
 export async function applyAction(a: Action): Promise<ActionResult> {
   if (isDemo()) {
     if (a.type === "update_prompt") { const p = await previewPrompt(a); if ("error" in p) return { ok: false, message: p.error }; }
+    if (a.type === "update_topic" && a.music !== undefined) {
+      const bad = await checkTopicMusic([a.music]);
+      if (bad) return { ok: false, message: bad };
+      const r = demoApply(a);
+      if (r.ok) await setTopicMusic([{ id: a.id, music: a.music }]);
+      return r;
+    }
     return demoApply(a);
   }
   const cat = await getCatalog();
@@ -202,6 +213,8 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       }).filter((t) => t.topic);
       if (items.length === 0) return { ok: false, message: "Mavzu kiritilmagan." };
       if (items.length > MAX_TOPICS_PER_REQUEST) return { ok: false, message: `Bir vaqtda eng ko'pi ${MAX_TOPICS_PER_REQUEST} ta mavzu qo'shiladi.` };
+      const badMusic = await checkTopicMusic(items.map((t) => (t as NewTopic).music));
+      if (badMusic) return { ok: false, message: badMusic };
       const auto = await suggestDates(items.length, cat);
       const rows = [];
       for (let i = 0; i < items.length; i++) {
@@ -227,6 +240,8 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       // Hamma tekshiruv o'tgach: yuklangan audio joyida ekani tekshiriladi va kompyuter uchun havola yoziladi.
       for (const r of rows) if (r.manual_audio_path) r.manual_audio_url = await attachAudio(r.manual_audio_path);
       const ids = await sql()`INSERT INTO ytauto.jobs ${sql()(rows)} RETURNING id::int AS id`;
+      // Fon musiqasi tanlovi (INSERT tartibi saqlanadi) - shu tranzaksiyada.
+      await setTopicMusic(ids.map((r, i) => ({ id: r.id as number, music: (items[i] as NewTopic).music || undefined })));
       const manual = rows.filter((r) => r.manual_script).length, audio = rows.filter((r) => r.manual_audio_url).length;
       const note = manual ? ` ${manual} tasida matn qo'lda — Gemini ishlatilmaydi${audio ? `, ${audio} tasida tayyor audio — VoiceStudio ishlatilmaydi` : ""}.` : "";
       return { ok: true, message: `${ids.length} ta mavzu qo'shildi (#${ids.map((r) => r.id).join(", #")}).${note}` };
@@ -249,7 +264,11 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       if (given && at.getTime() <= Date.now() + MIN_LEAD_MS) return { ok: false, message: "Chiqish vaqti kamida 30 daqiqa kelajakda bo'lsin." };
       const tf = await pickTemplateFormat(cat, a.template ?? r.template_name, a.format ?? r.format, a.voice ?? r.voice_profile);
       if ("error" in tf) return { ok: false, message: tf.error };
-      const contentChanged = topic !== r.topic || notes !== r.notes || tf.template !== r.template_name || tf.format !== r.format || tf.voice !== r.voice_profile
+      // Fon musiqasi vazifa snapshot'iga tushadi: o'zgarsa snapshot tozalanadi (shablon o'zgargandek).
+      const oldMusic = (await topicMusicMap())[String(a.id)] ?? "";
+      const newMusic = a.music !== undefined ? a.music.trim().toLowerCase() : oldMusic;
+      if (newMusic !== oldMusic) { const bad = await checkTopicMusic([newMusic]); if (bad) return { ok: false, message: bad }; }
+      const contentChanged = newMusic !== oldMusic || topic !== r.topic || notes !== r.notes || tf.template !== r.template_name || tf.format !== r.format || tf.voice !== r.voice_profile
         || script !== (r.manual_script ?? "") || title !== (r.manual_title ?? "");
       // Mazmun o'zgarsa: desktop ilovadagi kabi snapshot va title tozalanadi, vazifa navbatga qaytadi.
       const n = await sql()`
@@ -262,6 +281,7 @@ export async function applyAction(a: Action): Promise<ActionResult> {
           qa_fix_cycles = CASE WHEN ${contentChanged} THEN 0 ELSE qa_fix_cycles END,
           attention_reason = NULL, next_attempt_at_utc = NULL
         WHERE id = ${a.id} AND claimed_by IS NULL AND youtube_video_id IS NULL AND video_archive_path IS NULL`;
+      if (n.count && newMusic !== oldMusic) await setTopicMusic([{ id: a.id, music: newMusic }]);
       return n.count ? { ok: true, message: `#${a.id} yangilandi.` } : { ok: false, message: `#${a.id}: worker shu payt band qildi — keyinroq urinib ko'ring.` };
     }
     case "delete_topic": {

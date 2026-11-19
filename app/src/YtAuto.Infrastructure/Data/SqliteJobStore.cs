@@ -720,6 +720,11 @@ public sealed class SqliteSettingsStore : ISettingsStore
                         DurationSec = t?["durationSec"] is System.Text.Json.Nodes.JsonValue d && d.TryGetValue<int>(out var ds) ? Math.Max(0, ds) : 0,
                     });
                 }
+            if (n?["topics"] is System.Text.Json.Nodes.JsonObject topics)
+                foreach (var (k, v) in topics)
+                    if (long.TryParse(k, out var jobId) && v is System.Text.Json.Nodes.JsonValue jv && jv.TryGetValue<string>(out var choice)
+                        && (string.Equals(choice, "none", StringComparison.OrdinalIgnoreCase) || Guid.TryParse(choice, out _)))
+                        m.Topics[jobId] = choice.Trim().ToLowerInvariant();
             return m;
         }
         catch { return new(); }
