@@ -192,9 +192,13 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public SettingsViewModel(AppServices svc) => _svc = svc;
 
+    /// <summary>Oyna ochilgandagi (oxirgi Load) holat: saqlashda faqat foydalanuvchi o'zgartirgan maydonlar botga yoziladi.</summary>
+    private AppSettings? _loaded;
+
     public SettingsViewModel Load()
     {
         S = _svc.Settings.Load();
+        _loaded = AppSettings.FromJson(S.ToJson());
         Voices.Clear(); foreach (var v in S.VoiceProfiles) Voices.Add(v);
         Templates.Clear(); foreach (var t in S.Templates) Templates.Add(t);
         var cached = new Infrastructure.Voice.VoiceCatalogService(_svc.LocalDb).Cached();
@@ -250,7 +254,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         S.Templates = Templates.Where(t => !string.IsNullOrWhiteSpace(t.Name)).ToList();
         var errors = Validate(S);
         if (errors.Count > 0) { Message = "Saqlanmadi: " + string.Join(" ", errors); return; }
+        // Bot boshqaradigan maydonlar (Gemini, Claude, YouTube, ovoz, render, limitlar) bot konfigiga ham yoziladi: aks holda keyingi
+        // Load() bot qiymatini ustiga qo'yib, o'zgarish qaytib qolardi. Faqat o'zgargan maydonlar yoziladi.
+        var before = _loaded ?? _svc.Settings.Load();
         _svc.Settings.Save(S);
+        try { _svc.Settings.PushBotConfig(S, before); }
+        catch (Exception ex) { Message = "Lokal saqlandi, lekin botga yozilmadi (internetni tekshiring): " + ex.Message; Load(); return; }
         if (ClientSecretInput.Length > 0) { _svc.Secrets.Set(SecretNames.YouTubeClientSecret, ClientSecretInput.Trim()); ClientSecretInput = ""; }
         var msg = "Saqlandi. Ishlayotgan/boshlangan vazifalar o'z snapshot'idagi sozlamalar bilan davom etadi.";
         Load();

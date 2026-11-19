@@ -247,4 +247,32 @@ public class FlowTests
         store.Save(s);
         Assert.Equal("Mening o'z promptim {topic}", store.Load().Gemini.ScriptPrompt);
     }
+
+    [Fact]
+    public void DesktopSettingsEdit_SurvivesReload_AndKeepsBotOnlyChanges()
+    {
+        using var t = new TempDir();
+        var db = new SqliteJobStore(Path.Combine(t.Path, "db.sqlite"));
+        var shared = new SqliteJobStore(Path.Combine(t.Path, "shared.sqlite")); // online baza o'rnida
+        shared.SetSetting(SqliteSettingsStore.ConfigKey, """{"gemini":{"apiKeys":["AIzaSECRET"],"temperature":0.7},"openFilm":{"renderWorkers":1,"fps":30},"claude":{"model":"","timeoutMinutes":45}}""");
+        var store = new SqliteSettingsStore(db, () => new AppSettings(), shared);
+
+        var loaded = store.Load();                       // oyna ochildi
+        var edited = store.Load();
+        edited.OpenFilm.RenderWorkers = 2;               // foydalanuvchi desktop'da o'zgartirdi
+        edited.Claude.TimeoutMinutes = 90;
+        // Shu orada botda boshqa maydon o'zgardi: desktop uni eski qiymat bilan bosib ketmasligi kerak.
+        var cfg = System.Text.Json.Nodes.JsonNode.Parse(shared.GetSetting(SqliteSettingsStore.ConfigKey)!)!;
+        cfg["claude"]!["model"] = "claude-opus-5-5";
+        shared.SetSetting(SqliteSettingsStore.ConfigKey, cfg.ToJsonString());
+
+        store.Save(edited);
+        Assert.True(store.PushBotConfig(edited, loaded) >= 2);
+
+        var after = store.Load();                         // "refresh"
+        Assert.Equal(2, after.OpenFilm.RenderWorkers);
+        Assert.Equal(90, after.Claude.TimeoutMinutes);
+        Assert.Equal("claude-opus-5-5", after.Claude.Model);
+        Assert.Contains("AIzaSECRET", shared.GetSetting(SqliteSettingsStore.ConfigKey)); // sirlar saqlanib qoldi
+    }
 }

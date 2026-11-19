@@ -1074,6 +1074,96 @@ public sealed class SqliteSettingsStore : ISettingsStore
         _shared.SetSetting(ConfigKey, root.ToJsonString());
     }
 
+    /// <summary>
+    /// Bot konfigi (shared "config") boshqaradigan, sirsiz maydonlar - ApplyBotConfig o'qiydigan yo'llar bilan bir xil.
+    /// Desktop'dagi Sozlamalar oynasi shularni o'zgartirsa, ular botga ham yozilishi kerak: aks holda keyingi Load() bot qiymatini
+    /// lokal ustiga qo'yadi va o'zgarish "qaytib qoladi".
+    /// </summary>
+    internal static System.Text.Json.Nodes.JsonObject BotFields(AppSettings s)
+    {
+        System.Text.Json.Nodes.JsonArray Arr(IEnumerable<string> xs) => new(xs.Select(x => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(x)).ToArray());
+        return new()
+        {
+            ["gemini"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["model"] = s.Gemini.Model, ["models"] = Arr(s.Gemini.Models), ["temperature"] = s.Gemini.Temperature,
+                ["useSearchGrounding"] = s.Gemini.UseSearchGrounding, ["timeoutSec"] = s.Gemini.TimeoutSec,
+            },
+            ["youtube"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["clientId"] = s.YouTube.ClientId, ["publishTime"] = s.YouTube.PublishTime, ["timeZoneId"] = s.YouTube.TimeZoneId,
+                ["categoryId"] = s.YouTube.CategoryId, ["regionCode"] = s.YouTube.RegionCode, ["madeForKids"] = s.YouTube.MadeForKids,
+                ["containsSyntheticMedia"] = s.YouTube.ContainsSyntheticMedia, ["license"] = s.YouTube.License, ["embeddable"] = s.YouTube.Embeddable,
+                ["publicStatsViewable"] = s.YouTube.PublicStatsViewable, ["notifySubscribers"] = s.YouTube.NotifySubscribers,
+                ["setRecordingDate"] = s.YouTube.SetRecordingDate, ["locationDescription"] = s.YouTube.LocationDescription,
+                ["defaultTags"] = s.YouTube.DefaultTags, ["defaultDescription"] = s.YouTube.DefaultDescription, ["minLeadMinutes"] = s.YouTube.MinLeadMinutes,
+            },
+            ["claude"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["model"] = s.Claude.Model, ["timeoutMinutes"] = s.Claude.TimeoutMinutes, ["maxBudgetUsd"] = s.Claude.MaxBudgetUsd,
+            },
+            ["visuals"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["realMedia"] = s.Visuals.RealMedia, ["maxMedia"] = s.Visuals.MaxMedia, ["styleReview"] = s.Visuals.StyleReview,
+                ["minStyleScore"] = s.Visuals.MinStyleScore, ["stockImages"] = s.Visuals.StockImagesPerScene, ["stockClips"] = s.Visuals.StockClipsPerScene,
+            },
+            ["voice.settings"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["baseUrl"] = s.VoiceStudio.BaseUrl, ["startupTimeoutSec"] = s.VoiceStudio.StartupTimeoutSec, ["requestTimeoutSec"] = s.VoiceStudio.RequestTimeoutSec,
+                ["chunkChars"] = s.VoiceStudio.ChunkChars, ["pauseBetweenChunksSec"] = s.VoiceStudio.PauseBetweenChunksSec,
+                ["whisperModel"] = s.VoiceStudio.WhisperModel, ["alignTimeoutSec"] = s.VoiceStudio.AlignTimeoutSec,
+            },
+            ["openFilm"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["renderWorkers"] = s.OpenFilm.RenderWorkers, ["fps"] = s.OpenFilm.Fps, ["loudnessLufs"] = s.OpenFilm.LoudnessLufs,
+                ["burnSubtitles"] = s.OpenFilm.BurnSubtitles, ["lookFullAfterRender"] = s.OpenFilm.LookFullAfterRender, ["renderTimeoutMinutes"] = s.OpenFilm.RenderTimeoutMinutes,
+            },
+            ["limits"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["maxRunAttempts"] = s.Limits.MaxRunAttempts, ["maxQaFixCycles"] = s.Limits.MaxQaFixCycles,
+                ["minFreeDiskGb"] = s.Limits.MinFreeDiskGb, ["minFreeRamGbForTts"] = s.Limits.MinFreeRamGbForTts,
+            },
+            ["defaults"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["language"] = s.Defaults.Language, ["format"] = (int)s.Defaults.Format, ["template"] = s.Defaults.Template ?? "", ["voiceProfile"] = s.Defaults.VoiceProfile,
+            },
+        };
+    }
+
+    /// <summary>
+    /// Desktop Sozlamalar oynasidagi o'zgarishlarni bot konfigiga yozadi: faqat foydalanuvchi o'zgartirgan maydonlar (before bilan farq),
+    /// shuning uchun shu orada botda o'zgargan boshqa maydonlar ustidan yozilmaydi. Sirlar (kalitlar, client secret) tegilmaydi.
+    /// Ovoz profillari ro'yxati o'zgargan bo'lsa ular ham yoziladi. Mehmon doirasida hech narsa yozilmaydi. Nechta maydon yozilganini qaytaradi.
+    /// </summary>
+    public int PushBotConfig(AppSettings after, AppSettings before)
+    {
+        if (_shared is null || _shared.InGuestScope) return 0;
+        var a = BotFields(after); var b = BotFields(before);
+        var root = System.Text.Json.Nodes.JsonNode.Parse(_shared.GetSetting(ConfigKey) ?? "{}") as System.Text.Json.Nodes.JsonObject ?? new();
+        var changed = 0;
+        foreach (var (section, node) in a)
+        {
+            var path = section.Split('.');
+            var target = root;
+            foreach (var part in path)
+            {
+                if (target[part] is not System.Text.Json.Nodes.JsonObject next) { next = new(); target[part] = next; }
+                target = next;
+            }
+            var was = b[section] as System.Text.Json.Nodes.JsonObject;
+            foreach (var (key, value) in (System.Text.Json.Nodes.JsonObject)node!)
+            {
+                if (System.Text.Json.Nodes.JsonNode.DeepEquals(value, was?[key])) continue;
+                target[key] = value?.DeepClone();
+                changed++;
+            }
+        }
+        if (changed > 0) _shared.SetSetting(ConfigKey, root.ToJsonString());
+        static string Sig(AppSettings s) => string.Join("|", s.VoiceProfiles.Select(v => $"{v.Name}/{v.Model}/{v.Voice}/{v.Language}/{v.Speed}"));
+        if (Sig(after) != Sig(before)) { PushVoiceProfiles(after.VoiceProfiles); changed++; }
+        return changed;
+    }
+
     /// <summary>Shablonlar ro'yxati (nom, tur, hajm, manba) shu kompyuter uchun online bazaga yoziladi: bot ko'rsatadi. Fayllar yuklanmaydi.</summary>
     private void PublishTemplates(AppSettings s)
     {
