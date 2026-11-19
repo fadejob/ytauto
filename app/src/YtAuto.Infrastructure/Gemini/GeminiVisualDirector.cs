@@ -15,10 +15,13 @@ namespace YtAuto.Infrastructure.Gemini;
 public sealed class GeminiVisualDirector : IVisualDirector
 {
     private readonly GeminiScriptGenerator _gen;
-    private readonly Func<string> _model;
-    public GeminiVisualDirector(GeminiScriptGenerator gen, Func<string> model) { _gen = gen; _model = model; }
+    private readonly Func<IReadOnlyList<string>> _models;
+    /// <summary>Bitta model (eski chaqiruvlar va testlar uchun).</summary>
+    public GeminiVisualDirector(GeminiScriptGenerator gen, Func<string> model) : this(gen, () => new[] { model() }) { }
+    /// <summary>Model zanjiri: router limit/mavjudlik/vazifa turiga qarab tanlaydi.</summary>
+    public GeminiVisualDirector(GeminiScriptGenerator gen, Func<IReadOnlyList<string>> models) { _gen = gen; _models = models; }
 
-    private string Model { get { var m = _model()?.Trim(); return string.IsNullOrEmpty(m) ? "gemini-2.5-flash" : m; } }
+    private IReadOnlyList<string> Models { get { var m = _models(); return GeminiScriptGenerator.Chain(m?.Where(x => !string.IsNullOrWhiteSpace(x)).ToList(), null); } }
 
     public const string StyleGuidePrompt = """
 You are the art director of a YouTube channel. The images are frames from the channel's template video "{name}".
@@ -116,11 +119,11 @@ Output only the markdown document.
             return g;
         }
         JsonNode json;
-        try { json = await CallAsync(Parts(true), Config(true), log, ct).ConfigureAwait(false); }
+        try { json = await CallAsync(Parts(true), Config(true), log, ct, GeminiTask.VideoLowRes).ConfigureAwait(false); }
         catch (PipelineException e) when (e.Code == "gemini_request")
         {
             log.Warn($"Gemini video sozlamalarini (fps, past o'lcham) qabul qilmadi, standart rejimda qayta so'raladi: {e.Message}", "Edit");
-            json = await CallAsync(Parts(false), Config(false), log, ct).ConfigureAwait(false);
+            json = await CallAsync(Parts(false), Config(false), log, ct, GeminiTask.Video).ConfigureAwait(false);
         }
         var text = GeminiScriptGenerator.TextOf(json).Trim();
         if (text.StartsWith("```")) text = text.Trim('`').Replace("markdown\n", "", StringComparison.OrdinalIgnoreCase).Trim();
@@ -183,7 +186,7 @@ NARRATION:
             ["required"] = new JsonArray("items"),
         };
         var json = await CallAsync(new JsonArray(new JsonObject { ["text"] = prompt }),
-            new JsonObject { ["temperature"] = 0.2, ["maxOutputTokens"] = 4096, ["responseMimeType"] = "application/json", ["responseSchema"] = schema }, log, ct).ConfigureAwait(false);
+            new JsonObject { ["temperature"] = 0.2, ["maxOutputTokens"] = 4096, ["responseMimeType"] = "application/json", ["responseSchema"] = schema }, log, ct, GeminiTask.Light).ConfigureAwait(false);
         try { return (JsonSerializer.Deserialize<MediaPlan>(GeminiScriptGenerator.TextOf(json)) ?? new()).Clean(maxItems); }
         catch (JsonException e) { throw PipelineException.Transient("gemini_bad_json", "Rasm rejasi JSON emas: " + e.Message); }
     }
@@ -223,7 +226,7 @@ STYLE GUIDE:
             ["required"] = new JsonArray("score", "summary", "problems"),
         };
         var json = await CallAsync(parts,
-            new JsonObject { ["temperature"] = 0.1, ["maxOutputTokens"] = 4096, ["responseMimeType"] = "application/json", ["responseSchema"] = schema }, log, ct).ConfigureAwait(false);
+            new JsonObject { ["temperature"] = 0.1, ["maxOutputTokens"] = 4096, ["responseMimeType"] = "application/json", ["responseSchema"] = schema }, log, ct, GeminiTask.Light).ConfigureAwait(false);
         try
         {
             var r = JsonSerializer.Deserialize<StyleReview>(GeminiScriptGenerator.TextOf(json)) ?? new();
@@ -248,7 +251,7 @@ STYLE GUIDE:
         return new JsonObject { ["inline_data"] = new JsonObject { ["mime_type"] = mime, ["data"] = Convert.ToBase64String(File.ReadAllBytes(path)) } };
     }
 
-    private async Task<JsonNode> CallAsync(JsonArray parts, JsonObject generationConfig, IJobLog log, CancellationToken ct)
+    private async Task<JsonNode> CallAsync(JsonArray parts, JsonObject generationConfig, IJobLog log, CancellationToken ct, GeminiTask task = GeminiTask.Vision)
     {
         var body = new JsonObject
         {
@@ -260,7 +263,7 @@ STYLE GUIDE:
         {
             try
             {
-                var (json, _) = await _gen.CallAsync(_gen.KeysForCall(), Model, body, TimeSpan.FromSeconds(180), log, ct).ConfigureAwait(false);
+                var (json, _, _) = await _gen.CallAsync(_gen.KeysForCall(), Models, task, body, TimeSpan.FromSeconds(180), log, ct).ConfigureAwait(false);
                 return json;
             }
             catch (PipelineException e) when (attempt < 3 && e.Code is "gemini_server" or "gemini_network" or "gemini_timeout" or "gemini_empty")

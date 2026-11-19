@@ -75,7 +75,7 @@ public sealed partial class JobRunner
             Format = c.Job.Format switch { VideoFormat.Shorts9x16 => "vertical 9:16 short", VideoFormat.Square1x1 => "square 1:1", _ => "horizontal 16:9" },
             PromptTemplate = ChannelPrompt.ApplyToScript(string.IsNullOrWhiteSpace(c.S.Gemini.ScriptPrompt) ? DefaultPrompts.Script : c.S.Gemini.ScriptPrompt, c.S.ChannelContext),
             FactSheetPromptTemplate = DefaultPrompts.FactSheet,
-            UseSearchGrounding = c.S.Gemini.UseSearchGrounding, Model = c.S.Gemini.Model, Temperature = c.S.Gemini.Temperature,
+            UseSearchGrounding = c.S.Gemini.UseSearchGrounding, Model = c.S.Gemini.Model, Models = c.S.Gemini.Models, Temperature = c.S.Gemini.Temperature,
             WriteDescription = writeDesc, WriteTags = writeTags,
         };
         VideoScript? script = null; List<string> problems = new(); ScriptResult? last = null;
@@ -148,7 +148,7 @@ public sealed partial class JobRunner
             {
                 var meta = await Retry.TransientAsync(_ => _x.ScriptGenerator.DescribeAsync(new MetadataRequest
                 {
-                    Title = script.YouTubeTitle, Text = script.SubtitleText, Language = c.Job.Language, Model = c.S.Gemini.Model,
+                    Title = script.YouTubeTitle, Text = script.SubtitleText, Language = c.Job.Language, Model = c.S.Gemini.Model, Models = c.S.Gemini.Models,
                     WriteDescription = writeDesc, WriteTags = writeTags,
                 }, c.Log, c.Ct), c.S.Limits.MaxTransientRetries, (n, e) => c.Log.Warn($"Gemini (tavsif/tag) vaqtinchalik xato ({n}): {e.Message}", "Script"), c.Ct).ConfigureAwait(false);
                 script.YouTubeDescription = meta.Description.Replace("<", "‹").Replace(">", "›");

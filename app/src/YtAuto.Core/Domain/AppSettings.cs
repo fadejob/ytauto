@@ -115,6 +115,11 @@ public sealed class ScheduleSettings
 public sealed class GeminiSettings
 {
     public string Model { get; set; } = "gemini-2.5-flash";
+    /// <summary>
+    /// Model zanjiri (bot: Sozlamalar -> Gemini): birinchisi asosiy, qolganlari - limiti tugasa yoki ishlamasa navbat bilan ishlatiladi.
+    /// AI Studio nomi ("Gemini 3.8 Flash") yoki API id. Bo'sh - standart zanjir (bepul kalitdagi barcha matn modellari).
+    /// </summary>
+    public List<string> Models { get; set; } = new();
     public string ScriptPrompt { get; set; } = "";
     /// <summary>Hozirgi faktlar uchun Google Search grounding bilan alohida fakt varag'i olinadi.</summary>
     public bool UseSearchGrounding { get; set; } = true;
@@ -127,6 +132,15 @@ public sealed class GeminiSettings
     [JsonIgnore] public List<string> RemoteApiKeys { get; set; } = new();
     /// <summary>Mehmon hisobi vazifasi: faqat uning bot orqali kiritgan kalitlari (kompyuter egasining lokal kaliti ishlatilmaydi).</summary>
     [JsonIgnore] public bool RemoteOnly { get; set; }
+
+    /// <summary>Ishlatiladigan zanjir: sozlangan ro'yxat (bo'lmasa standart) va oxirida eski bitta model (takrorlanmasa).</summary>
+    public IReadOnlyList<string> ModelChain(IReadOnlyList<string> defaults)
+    {
+        var list = Models.Select(m => (m ?? "").Trim()).Where(m => m.Length > 0).ToList();
+        if (list.Count == 0) list.AddRange(defaults);
+        if (!string.IsNullOrWhiteSpace(Model) && !list.Contains(Model.Trim(), StringComparer.OrdinalIgnoreCase)) list.Add(Model.Trim());
+        return list.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
 }
 
 public sealed class ClaudeSettings

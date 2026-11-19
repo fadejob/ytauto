@@ -747,6 +747,10 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 if (g["apiKey"]?.GetValue<string>()?.Trim() is { Length: > 0 } k && !keys.Contains(k)) keys.Add(k);
                 s.Gemini.RemoteApiKeys = keys;
                 if (g["model"]?.GetValue<string>() is { Length: > 0 } m) s.Gemini.Model = m.Trim();
+                // Model zanjiri (asosiy + fallback'lar): bo'sh bo'lsa worker standart zanjirni ishlatadi.
+                if (g["models"] is System.Text.Json.Nodes.JsonArray ms)
+                    s.Gemini.Models = ms.Select(n => n is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var x) ? x.Trim() : "")
+                        .Where(x => x.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Take(30).ToList();
                 if (g["temperature"] is { } t) s.Gemini.Temperature = t.GetValue<double>();
                 if (g["useSearchGrounding"] is { } sg) s.Gemini.UseSearchGrounding = sg.GetValue<bool>();
             }

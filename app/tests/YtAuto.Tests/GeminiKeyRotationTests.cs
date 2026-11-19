@@ -37,7 +37,7 @@ public class GeminiKeyRotationTests
         }
     }
 
-    private static ScriptRequest Req() => new() { Topic = "Why water boils", PromptTemplate = "{topic}", Model = "gemini-2.5-flash", UseSearchGrounding = false };
+    private static ScriptRequest Req() => new() { Topic = "Why water boils", PromptTemplate = "{topic}", Model = "gemini-2.5-flash", Models = new[] { "gemini-2.5-flash" }, UseSearchGrounding = false };
 
     [Fact]
     public async Task RateLimitedKey_SwitchesToNextKey_AndRemembersIt()
@@ -49,7 +49,7 @@ public class GeminiKeyRotationTests
         var r = await gen.GenerateAsync(Req(), log, CancellationToken.None);
         Assert.Equal("Why water boils", r.Script.YouTubeTitle);
         Assert.Equal(new[] { "A", "B" }, fake.Calls);
-        Assert.Contains(log.Lines, l => l.Contains("1-kaliti limiti tugadi") && l.Contains("2-kalit"));
+        Assert.Contains(log.Lines, l => l.Contains("1-kaliti") && l.Contains("limiti tugadi") && l.Contains("2-kalit"));
 
         // Keyingi chaqiruv limitdagi kalitni qayta urmasdan, ishlagan kalitdan boshlanadi.
         fake.Calls.Clear();
