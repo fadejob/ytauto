@@ -13,7 +13,7 @@ type Sch = { enabled: boolean; startTime: string; endTime: string; timeZoneId: s
 type Draft = BotConfigInput;
 
 const toDraft = (c: BotConfig): Draft => ({
-  gemini: { ...c.gemini, apiKeys: c.gemini.apiKeys.map((k) => ({ ...k })) },
+  gemini: { ...c.gemini, fallbackModels: [...c.gemini.fallbackModels], apiKeys: c.gemini.apiKeys.map((k) => ({ ...k })) },
   limits: { ...c.limits },
   defaults: { ...c.defaults },
   youtube: { ...c.youtube, clientSecret: "" },
@@ -40,6 +40,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
   const [cfgSaved, setCfgSaved] = useState<BotConfig | null>(null);
   /** Yangi Gemini kalitlari: har qatorga bittasi (saqlanganda qo'shiladi). */
   const [newKeys, setNewKeys] = useState("");
+  const [fallbackText, setFallbackText] = useState(""); // zaxira modellar maydoni (yozish paytida vergul/bo'sh joy saqlanadi)
   const [voiceInfo, setVoiceInfo] = useState<VoiceInfo[]>([]);
   const [saving, setSaving] = useState(false);
   const [yt, setYt] = useState<{ connected: boolean; channelTitle: string; connectedAt: string | null; clientConfigured: boolean; redirectUri: string } | null>(null);
@@ -78,7 +79,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
     api<Sch>("/api/schedule").then((s) => { setSch(s); setSchSaved(s); cache.set("schedule", s); }).catch((e) => toast(e instanceof Error ? e.message : String(e), true));
     api<NonNullable<typeof yt>>("/api/youtube").then(setYt).catch(() => {});
     api<{ voice: VoiceInfo[] }>("/api/library").then((d) => setVoiceInfo(d.voice)).catch(() => {});
-    api<BotConfig>("/api/config").then((c) => { setCfgSaved(c); setCfg(toDraft(c)); }).catch((e) => toast(e instanceof Error ? e.message : String(e), true));
+    api<BotConfig>("/api/config").then((c) => { setCfgSaved(c); setCfg(toDraft(c)); setFallbackText(c.gemini.fallbackModels.join(", ")); }).catch((e) => toast(e instanceof Error ? e.message : String(e), true));
   }, [toast]);
 
   const schDirty = !!sch && !!schSaved && JSON.stringify(sch) !== JSON.stringify(schSaved);
@@ -95,7 +96,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
       if (cfgDirty && cfg) {
         const newApiKeys = newKeys.split(/[\s,;]+/).map((k) => k.trim()).filter(Boolean);
         const c = await api<BotConfig>("/api/config", { ...cfg, gemini: { ...cfg.gemini, newApiKeys } });
-        setCfgSaved(c); setCfg(toDraft(c)); setNewKeys("");
+        setCfgSaved(c); setCfg(toDraft(c)); setNewKeys(""); setFallbackText(c.gemini.fallbackModels.join(", "));
         onSaved?.(); // Gemini kaliti qo'shilgan bo'lsa mavzular va AI yordamchi ochiladi
       }
       toast("Sozlamalar saqlandi.");
@@ -162,12 +163,19 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
                 ))}
                 <textarea className="textarea" rows={2} autoComplete="off" spellCheck={false} value={newKeys} placeholder={"Yangi kalit(lar): AIza…\nhar qatorga bittadan"} onChange={(e) => setNewKeys(e.target.value)} />
               </div>
-              <div className="hint">Kalitlar tartib bilan ishlatiladi: biri limitga (429) tushsa keyingisi bilan davom etiladi, hammasi tugasa ish to&apos;xtaydi. AI yordamchi ham shu kalitlardan foydalanadi.</div>
+              <div className="hint">
+                Model router: avval asosiy model barcha kalitlar bilan sinaladi (biri limitga tushsa keyingisi). Hammasi limitda bo&apos;lsa, model band yoki
+                topilmasa — zaxira modellarga tartib bilan o&apos;tiladi va ish to&apos;xtamaydi (limit har model uchun alohida). Ssenariy, rasm/shablon tahlili,
+                kanal tahlili, mavzu tavsiyalari va AI yordamchi — hammasi shu tartibda ishlaydi.
+              </div>
               <div className="grid2">
-                <div className="field"><label>Model</label><input className="input" value={cfg.gemini.model} onChange={(e) => G({ model: e.target.value })} /></div>
+                <div className="field"><label>Asosiy model</label><input className="input" value={cfg.gemini.model} onChange={(e) => G({ model: e.target.value })} /></div>
                 <div className="field"><label>Temperature</label><input className="input" inputMode="decimal" value={cfg.gemini.temperature} onChange={(e) => G({ temperature: num(e.target.value) })} /></div>
                 <div className="field"><label>Timeout (soniya)</label><input className="input" inputMode="numeric" value={cfg.gemini.timeoutSec} onChange={(e) => G({ timeoutSec: num(e.target.value) })} /></div>
               </div>
+              <div className="field"><label>Zaxira modellar (tartib bilan, vergul bilan; bo&apos;sh — zaxirasiz)</label>
+                <input className="input" autoComplete="off" spellCheck={false} value={fallbackText} placeholder="gemini-flash-latest, gemini-2.5-flash-lite"
+                  onChange={(e) => { setFallbackText(e.target.value); G({ fallbackModels: e.target.value.split(/[\s,;]+/).map((m) => m.trim()).filter(Boolean) }); }} /></div>
               <label className="chk"><input type="checkbox" checked={cfg.gemini.useSearchGrounding} onChange={(e) => G({ useSearchGrounding: e.target.checked })} /><span>Hozirgi faktlar uchun Google Search</span></label>
             </div>
 

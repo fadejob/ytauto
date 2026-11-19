@@ -116,7 +116,12 @@ public sealed class ScheduleSettings
 
 public sealed class GeminiSettings
 {
+    /// <summary>Model router zaxirasi (bot bilan bir xil standart): asosiy model limitga tushsa/ishlamasa shu tartibda sinaladi.</summary>
+    public static readonly string[] DefaultFallbackModels = { "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.0-flash" };
+
     public string Model { get; set; } = "gemini-2.5-flash";
+    /// <summary>Zaxira modellar (bot: config.gemini.fallbackModels). Bo'sh - zaxirasiz.</summary>
+    public List<string> FallbackModels { get; set; } = new(DefaultFallbackModels);
     public string ScriptPrompt { get; set; } = "";
     /// <summary>Hozirgi faktlar uchun Google Search grounding bilan alohida fakt varag'i olinadi.</summary>
     public bool UseSearchGrounding { get; set; } = true;
