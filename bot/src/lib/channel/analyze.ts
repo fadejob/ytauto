@@ -18,7 +18,7 @@ import { fetchChannel, fetchRecentIds, fetchVideos, type VideoMeta } from "./you
 const LATEST = 3;
 const MAX_VIDEO_SEC = 480; // uzun videoning boshidagi 8 daqiqasi yetarli (token va vaqt tejaladi)
 
-type GeminiKeys = { keys: string[]; model: string };
+type GeminiKeys = Awaited<ReturnType<typeof getGeminiKeys>>;
 
 const S = (description?: string) => ({ type: "STRING", ...(description ? { description } : {}) });
 const A = (description: string) => ({ type: "ARRAY", items: { type: "STRING" }, description });

@@ -64,7 +64,8 @@ export type JobLogs = { id: number; topic: string; status: number; events: JobEv
 export type VoiceProfileCfg = { name: string; model: string; voice: string; language: string; speed: number };
 export type BotConfig = {
   /** apiKeys - saqlangan kalitlar tartib bilan (faqat id va qisqa ko'rinish; kalitning o'zi qaytarilmaydi). */
-  gemini: { model: string; temperature: number; useSearchGrounding: boolean; timeoutSec: number; apiKeys: GeminiKeyInfo[] };
+  /** models - router zanjiri: birinchisi asosiy, qolganlari limiti tugasa yoki ishlamasa navbat bilan. model - eski bitta model. */
+  gemini: { model: string; models: string[]; temperature: number; useSearchGrounding: boolean; timeoutSec: number; apiKeys: GeminiKeyInfo[] };
   claude: { model: string; timeoutMinutes: number; maxBudgetUsd: number };
   /** Ovoz profillari (asosiy manba shu) va VoiceStudio sozlamalari. profiles bo'sh bo'lsa kompyuterdagi lokal ro'yxat ishlatiladi. */
   voice: { profiles: VoiceProfileCfg[]; settings: { baseUrl: string; startupTimeoutSec: number; requestTimeoutSec: number; chunkChars: number; pauseBetweenChunksSec: number; whisperModel: string; alignTimeoutSec: number } };

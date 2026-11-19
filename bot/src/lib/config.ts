@@ -1,7 +1,9 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { sql } from "./db";
+import { currentAccountId, isGuest, sql } from "./db";
 import { isDemo } from "./demo";
+import { DEFAULT_GEMINI_CHAIN, modelChain } from "./gemini-models";
+import { limitedModels, readUsageDocs } from "./gemini-usage";
 import type { BotConfig, BotConfigInput, GeminiKeyInfo } from "./types";
 
 const KEY = "config";
@@ -24,7 +26,7 @@ type Stored = {
 };
 
 const DEF: BotConfig = {
-  gemini: { model: "gemini-2.5-flash", temperature: 0.7, useSearchGrounding: true, timeoutSec: 180, apiKeys: [] },
+  gemini: { model: "gemini-2.5-flash", models: [...DEFAULT_GEMINI_CHAIN], temperature: 0.7, useSearchGrounding: true, timeoutSec: 180, apiKeys: [] },
   claude: { model: "", timeoutMinutes: 45, maxBudgetUsd: 0 },
   voice: {
     profiles: [],
@@ -62,11 +64,28 @@ const keyInfo = (k: string): GeminiKeyInfo => ({ id: keyId(k), hint: k.length > 
  * Faqat server ichida: shu hisobning Gemini kalitlari (AI yordamchi uchun). Brauzerga qaytarilmaydi.
  * Har foydalanuvchi o'z kalitini ishlatadi; GEMINI_API_KEY (server kaliti) faqat demo rejimda.
  */
-export async function getGeminiKeys(): Promise<{ keys: string[]; model: string }> {
+export type GeminiKeys = {
+  keys: string[]; model: string;
+  /** Model zanjiri (asosiy + zaxiralar): router shu tartibda sinaydi. */
+  models: string[];
+  /** Sarf shu hisobga yoziladi (mehmon hisobi - yozilmaydi). */
+  account: { id: string; guest: boolean } | null;
+  /** Bugun limiti tugagan modellar (worker va bot sarf yozuvlaridan): id → qachongacha (ms). */
+  limited: Map<string, number>;
+};
+
+export async function getGeminiKeys(): Promise<GeminiKeys> {
   const s = await readStored();
   const keys = storedKeys(s);
   const env = isDemo() ? process.env.GEMINI_API_KEY?.trim() : undefined;
-  return { keys: keys.length ? keys : env ? [env] : [], model: s.gemini?.model?.trim() || DEF.gemini.model };
+  const model = s.gemini?.model?.trim() || DEF.gemini.model;
+  let account: GeminiKeys["account"] = null;
+  let limited = new Map<string, number>();
+  if (!isDemo()) {
+    try { account = { id: currentAccountId(), guest: isGuest() }; } catch { /* hisob kontekstisiz */ }
+    if (account && !account.guest) try { limited = limitedModels(await readUsageDocs()); } catch { /* yozuv yo'q */ }
+  }
+  return { keys: keys.length ? keys : env ? [env] : [], model, models: modelChain(s.gemini?.models, model), account, limited };
 }
 
 /** Gemini kaliti kiritilganmi: yo'q bo'lsa mavzu qo'shib bo'lmaydi, AI yordamchi o'chiq, mavjud mavzular muzlatilgan. */
@@ -154,7 +173,9 @@ function stockKey(next: string | undefined, keep: boolean | undefined, cur: stri
 export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
   const cur = await readStored();
   const g = input.gemini, l = input.limits, d = input.defaults, y = input.youtube;
-  if (!g.model.trim()) throw new Error("Gemini modeli bo'sh bo'lmasin.");
+  const models = (g.models ?? []).map((m) => String(m).trim()).filter(Boolean).filter((m, i, a) => a.findIndex((x) => x.toLowerCase() === m.toLowerCase()) === i);
+  if (models.length > 30) throw new Error("Gemini modellari 30 tadan oshmasin.");
+  if (models.some((m) => m.length > 80)) throw new Error("Gemini model nomi juda uzun.");
   try { new Intl.DateTimeFormat("en", { timeZone: y.timeZoneId }); } catch { throw new Error("YouTube vaqt zonasi noto'g'ri (masalan Asia/Tashkent)."); }
   if (![0, 1, 2].includes(Number(d.format))) throw new Error("Format noto'g'ri.");
   // Kalitlar: qoldirilganlari (id bo'yicha, kelgan tartibda) + yangilari. Hech biri brauzerdan to'liq kelmaydi.
@@ -170,7 +191,9 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
   if (keys.length > 50) throw new Error("Gemini kalitlari 50 tadan oshmasin.");
   const next: Stored = {
     gemini: {
-      model: g.model.trim(), temperature: num(g.temperature, 0, 2, "Temperature"), useSearchGrounding: !!g.useSearchGrounding,
+      // model - eski desktop versiyalari uchun bitta model (o'zgarmaydi); models - router zanjiri (bo'sh - standart).
+      model: (g.model ?? "").trim() || cur.gemini?.model || DEF.gemini.model, models: models.length ? models : [...DEFAULT_GEMINI_CHAIN],
+      temperature: num(g.temperature, 0, 2, "Temperature"), useSearchGrounding: !!g.useSearchGrounding,
       apiKeys: keys, apiKey: keys[0], // apiKey - faqat eski desktop versiyalari uchun
       timeoutSec: Math.round(num(g.timeoutSec ?? 180, 30, 1800, "Gemini timeout")),
     },
