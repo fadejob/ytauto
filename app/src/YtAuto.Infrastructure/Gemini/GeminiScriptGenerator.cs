@@ -36,30 +36,6 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
     /// <summary>Oxirgi muvaffaqiyatli kalit: keyingi chaqiruvlar limiti tugagan kalitni qayta-qayta urmasdan shundan boshlaydi.</summary>
     private int _active;
 
-    /// <summary>
-    /// Model router zaxirasi (asosiy model limitga tushsa, band yoki topilmasa shu tartibda sinaladi). null - zaxirasiz.
-    /// Bepul limitlar har model uchun alohida: o'sha kalit boshqa modelda odatda ishlaydi va ish to'xtamaydi.
-    /// </summary>
-    public Func<IReadOnlyList<string>?>? FallbackModels { get; set; }
-
-    /// <summary>Limitga tushgan model qachongacha chetlab o'tiladi (Gemini retryDelay yoki 60 s; kunlik limitda 1 soat).</summary>
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _cooldown = new(StringComparer.OrdinalIgnoreCase);
-    /// <summary>Bu kalitlarda mavjud bo'lmagan model (404) - 6 soat so'ralmaydi.</summary>
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _missing = new(StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>Router tartibi: asosiy model, so'ng zaxiralar; limitdagilar oxiriga, mavjud emaslar tashlanadi.</summary>
-    internal List<string> RouteModels(string primary, DateTimeOffset now)
-    {
-        IReadOnlyList<string>? fb = null;
-        try { fb = FallbackModels?.Invoke(); } catch { }
-        var all = new[] { primary }.Concat(fb ?? Array.Empty<string>()).Select(m => m?.Trim() ?? "").Where(m => m.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var avail = all.Where(m => !(_missing.TryGetValue(m, out var until) && until > now)).ToList();
-        if (avail.Count == 0) avail = all;
-        DateTimeOffset Cool(string m) => _cooldown.TryGetValue(m, out var u) ? u : DateTimeOffset.MinValue;
-        return avail.Where(m => Cool(m) <= now).Concat(avail.Where(m => Cool(m) > now).OrderBy(Cool)).ToList();
-    }
-
     /// <summary>Kamida bitta Gemini kaliti bormi (tarmoqqa chiqmaydi; kalit ishlashini <see cref="CheckAsync"/> tekshiradi).</summary>
     public int KeyCount { get { try { return Keys().Count; } catch (PipelineException) { return 0; } } }
 
@@ -258,65 +234,13 @@ SPOKEN TEXT:
     }
 
     /// <summary>
-    /// Model router: avval asosiy model barcha kalitlar bilan; hammasi limitda (429), model band (5xx / vaqt tugashi), topilmasa (404)
-    /// yoki zaxira model so'rovni qabul qilmasa - keyingi model. Barcha Gemini chaqiruvlari (ssenariy, fakt varag'i, tavsif,
-    /// shablon/rasm tahlili, moslik tekshiruvi) shu yerdan o'tadi. Hammasi limitda bo'lsagina ish to'xtaydi (NeedsAttention).
+    /// Kalitlarni navbat bilan sinaydi: 429 (limit tugadi) yoki kalit yaroqsiz bo'lsa keyingisiga o'tadi.
+    /// Hammasi limitda bo'lsa - Configuration xatosi: ish to'xtaydi (NeedsAttention), ko'r-ko'rona qayta urinilmaydi.
     /// </summary>
     internal async Task<(JsonNode Json, string Raw)> CallAsync(List<string> keys, string model, JsonObject body, TimeSpan timeout, IJobLog? log, CancellationToken ct)
     {
-        var chain = RouteModels(model, DateTimeOffset.UtcNow);
-        PipelineException? limitErr = null, lastErr = null;
-        var problems = new List<string>();
-        for (int i = 0; i < chain.Count; i++)
-        {
-            var m = chain[i];
-            string why;
-            try
-            {
-                var r = await CallWithKeysAsync(keys, m, body, timeout, log, ct).ConfigureAwait(false);
-                _cooldown.TryRemove(m, out _);
-                if (!string.Equals(m, model, StringComparison.OrdinalIgnoreCase))
-                    log?.Info($"Gemini javobi zaxira modeldan: «{m}» ({string.Join("; ", problems)}).", "Gemini");
-                return r;
-            }
-            catch (PipelineException e) when (e.Code == "gemini_quota_exhausted")
-            {
-                limitErr ??= e;
-                var daily = e.Data["daily"] is true;
-                var wait = e.Data["retryMs"] is int ms ? TimeSpan.FromMilliseconds(Math.Clamp(ms, 5_000, 600_000)) : TimeSpan.FromSeconds(60);
-                _cooldown[m] = DateTimeOffset.UtcNow + (daily ? TimeSpan.FromHours(1) : wait);
-                why = daily ? "kunlik limiti tugadi (429)" : "limiti tugadi (429)";
-            }
-            catch (PipelineException e) when (e.Code == "gemini_model")
-            {
-                _missing[m] = DateTimeOffset.UtcNow.AddHours(6); lastErr = e; why = "mavjud emas (404)";
-            }
-            catch (PipelineException e) when (e.Code is "gemini_server" or "gemini_timeout")
-            {
-                lastErr = e; why = e.Code == "gemini_timeout" ? "vaqtida javob bermadi" : "band (server xatosi)";
-            }
-            catch (PipelineException e) when (e.Code == "gemini_request" && !string.Equals(m, model, StringComparison.OrdinalIgnoreCase))
-            {
-                lastErr ??= e; why = "so'rovni qabul qilmadi";
-            }
-            problems.Add($"{m}: {why}");
-            if (i + 1 < chain.Count) log?.Warn($"Gemini «{m}» modeli {why} — «{chain[i + 1]}» modeliga o'tildi.", "Gemini");
-        }
-        if (limitErr is not null)
-            throw PipelineException.Config("gemini_quota_exhausted", chain.Count == 1 ? limitErr.Message
-                : $"Barcha kalitlar {chain.Count} ta modelda ham limitga tushdi (429), ish to'xtatildi: {string.Join("; ", problems)}. Botda (Sozlamalar → Gemini) yangi kalit yoki zaxira model qo'shing, yoki limit tiklanishini kuting.");
-        throw lastErr ?? PipelineException.Transient("gemini_unavailable", $"Gemini javob bermadi: {string.Join("; ", problems)}");
-    }
-
-    /// <summary>
-    /// Bitta model: kalitlarni navbat bilan sinaydi - 429 (limit tugadi) yoki kalit yaroqsiz bo'lsa keyingisiga o'tadi.
-    /// Hammasi limitda bo'lsa - gemini_quota_exhausted (Data: retryMs - eng qisqa kutish, daily - kunlik limit).
-    /// </summary>
-    private async Task<(JsonNode Json, string Raw)> CallWithKeysAsync(List<string> keys, string model, JsonObject body, TimeSpan timeout, IJobLog? log, CancellationToken ct)
-    {
         var start = Math.Clamp(Volatile.Read(ref _active), 0, keys.Count - 1);
         PipelineException? lastAuth = null; string? lastLimit = null; int limited = 0;
-        int? retryMs = null; var daily = false;
         for (int i = 0; i < keys.Count; i++)
         {
             var idx = (start + i) % keys.Count;
@@ -328,13 +252,7 @@ SPOKEN TEXT:
             }
             catch (PipelineException e) when (e.Code is "gemini_rate_limit" or "gemini_auth")
             {
-                if (e.Code == "gemini_rate_limit")
-                {
-                    limited++; lastLimit = e.Message;
-                    if (e.Data["retryMs"] is int r && (retryMs is null || r < retryMs)) retryMs = r;
-                    daily |= e.Data["daily"] is true;
-                }
-                else lastAuth = e;
+                if (e.Code == "gemini_rate_limit") { limited++; lastLimit = e.Message; } else lastAuth = e;
                 var why = e.Code == "gemini_rate_limit" ? "limiti tugadi (429)" : "yaroqsiz";
                 if (i + 1 < keys.Count)
                     log?.Warn($"Gemini {idx + 1}-kaliti {why}, {(idx + 1) % keys.Count + 1}-kalit bilan davom etiladi.", "Script");
@@ -343,32 +261,9 @@ SPOKEN TEXT:
             }
         }
         if (limited == 0 && lastAuth is not null) throw lastAuth;
-        var quota = PipelineException.Config("gemini_quota_exhausted", keys.Count == 1
+        throw PipelineException.Config("gemini_quota_exhausted", keys.Count == 1
             ? $"Gemini kalitining limiti tugadi (429), ish to'xtatildi. Botda (Sozlamalar → Gemini) yana kalit qo'shing yoki limit tiklanishini kuting. {lastLimit}"
             : $"Barcha {keys.Count} ta Gemini kalitining limiti tugadi (429), ish to'xtatildi. Botda yangi kalit qo'shing yoki limit tiklanishini kuting. {lastLimit}");
-        if (retryMs is int rm) quota.Data["retryMs"] = rm;
-        quota.Data["daily"] = daily;
-        throw quota;
-    }
-
-    /// <summary>429 javobidan: qancha kutish (RetryInfo.retryDelay) va kunlik limitmi (QuotaFailure quotaId ...PerDay...).</summary>
-    internal static (int? RetryMs, bool Daily) RateInfo(string raw)
-    {
-        try
-        {
-            if (JsonNode.Parse(raw)?["error"]?["details"] is not JsonArray details) return (null, false);
-            int? ms = null; var daily = false;
-            foreach (var d in details)
-            {
-                if (d?["retryDelay"]?.GetValue<string>() is { } delay && delay.EndsWith('s')
-                    && double.TryParse(delay[..^1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var sec))
-                    ms = (int)Math.Ceiling(sec * 1000);
-                if (d?["violations"] is JsonArray v && v.Any(x => (x?["quotaId"]?.GetValue<string>() ?? "").Contains("PerDay", StringComparison.OrdinalIgnoreCase)))
-                    daily = true;
-            }
-            return (ms, daily);
-        }
-        catch { return (null, false); }
     }
 
     private async Task<(JsonNode Json, string Raw)> CallOnceAsync(string key, string model, JsonObject body, TimeSpan timeout, CancellationToken ct)
@@ -401,22 +296,13 @@ SPOKEN TEXT:
         try { msg = JsonNode.Parse(raw)?["error"]?["message"]?.GetValue<string>() ?? msg; } catch { }
         return (int)code switch
         {
-            429 => RateLimit(raw, msg),
+            429 => PipelineException.Transient("gemini_rate_limit", $"Gemini limiti: {msg}"),
             >= 500 => PipelineException.Transient("gemini_server", $"Gemini server xatosi {(int)code}: {msg}"),
             401 or 403 => PipelineException.Config("gemini_auth", $"Gemini API kaliti yaroqsiz yoki ruxsat yo'q: {msg}"),
             404 => PipelineException.Config("gemini_model", $"Gemini modeli topilmadi ({model}): {msg}"),
             400 when msg.Contains("API key", StringComparison.OrdinalIgnoreCase) => PipelineException.Config("gemini_auth", $"Gemini API kaliti yaroqsiz: {msg}"),
             _ => PipelineException.Config("gemini_request", $"Gemini so'rovi rad etildi ({(int)code}): {msg}"),
         };
-    }
-
-    private static PipelineException RateLimit(string raw, string msg)
-    {
-        var e = PipelineException.Transient("gemini_rate_limit", $"Gemini limiti: {msg}");
-        var (ms, daily) = RateInfo(raw);
-        if (ms is int v) e.Data["retryMs"] = v;
-        e.Data["daily"] = daily;
-        return e;
     }
 
     private static string ExtractText(JsonNode json)

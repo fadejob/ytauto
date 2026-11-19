@@ -64,12 +64,7 @@ public sealed class AppServices
         Http = new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }) { Timeout = TimeSpan.FromMinutes(10) };
         YouTubeAuth = new YouTubeAuth(Secrets, () => Settings.Load().YouTube, Http);
         Uploader = new YouTubeUploader(YouTubeAuth, Http);
-        Gemini = new GeminiScriptGenerator(Secrets)
-        {
-            RemoteKeys = () => Settings.Load().Gemini.RemoteApiKeys, LocalKeyAllowed = () => !Store.InGuestScope,
-            // Model router: barcha Gemini chaqiruvlari (ssenariy, tavsif, rasm/shablon tahlili) limitda zaxira modellarga o'tadi.
-            FallbackModels = () => Settings.Load().Gemini.FallbackModels,
-        };
+        Gemini = new GeminiScriptGenerator(Secrets) { RemoteKeys = () => Settings.Load().Gemini.RemoteApiKeys, LocalKeyAllowed = () => !Store.InGuestScope };
         // Ma'lum sirlarni log redaktoriga oldindan ro'yxatga olamiz.
         Secrets.Get(SecretNames.GeminiApiKey); Secrets.Get(SecretNames.YouTubeClientSecret); Secrets.Get(SecretNames.YouTubeTokens);
         Secrets.Get(SecretNames.AccountToken); Secrets.Get(SecretNames.DeviceConnection);

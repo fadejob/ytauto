@@ -4,22 +4,6 @@ import { sql } from "./db";
 import { isDemo } from "./demo";
 import type { BotConfig, BotConfigInput, GeminiKeyInfo } from "./types";
 
-/** Model router zaxira ro'yxati (gemini.ts bilan bir xil; bu yerda - gemini.ts config'ni import qilgani uchun takror). */
-export const DEFAULT_FALLBACK_MODELS = ["gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-flash-lite-latest", "gemini-2.0-flash"];
-const MODEL_RE = /^[a-z0-9][a-z0-9.\-]{2,63}$/i;
-
-/** Zaxira modellar: satr (vergul/qator bilan) yoki massiv → tozalangan ro'yxat (asosiy model va takrorlarsiz, ko'pi bilan 8). */
-export function cleanFallbackModels(input: unknown, primary: string): string[] {
-  const raw = Array.isArray(input) ? input.map(String) : String(input ?? "").split(/[\s,;]+/);
-  const out: string[] = [];
-  for (const m of raw.map((x) => x.trim().replace(/^models\//, "")).filter(Boolean)) {
-    if (!MODEL_RE.test(m)) throw new Error(`Zaxira model nomi noto'g'ri: "${m}" (masalan gemini-2.5-flash-lite).`);
-    if (m !== primary && !out.includes(m)) out.push(m);
-  }
-  if (out.length > 8) throw new Error("Zaxira modellar 8 tadan oshmasin.");
-  return out;
-}
-
 const KEY = "config";
 
 /**
@@ -40,7 +24,7 @@ type Stored = {
 };
 
 const DEF: BotConfig = {
-  gemini: { model: "gemini-2.5-flash", fallbackModels: DEFAULT_FALLBACK_MODELS, temperature: 0.7, useSearchGrounding: true, timeoutSec: 180, apiKeys: [] },
+  gemini: { model: "gemini-2.5-flash", temperature: 0.7, useSearchGrounding: true, timeoutSec: 180, apiKeys: [] },
   claude: { model: "", timeoutMinutes: 45, maxBudgetUsd: 0 },
   voice: {
     profiles: [],
@@ -77,14 +61,11 @@ const keyInfo = (k: string): GeminiKeyInfo => ({ id: keyId(k), hint: k.length > 
  * Faqat server ichida: shu hisobning Gemini kalitlari (AI yordamchi uchun). Brauzerga qaytarilmaydi.
  * Har foydalanuvchi o'z kalitini ishlatadi; GEMINI_API_KEY (server kaliti) faqat demo rejimda.
  */
-export async function getGeminiKeys(): Promise<{ keys: string[]; model: string; fallbackModels: string[] }> {
+export async function getGeminiKeys(): Promise<{ keys: string[]; model: string }> {
   const s = await readStored();
   const keys = storedKeys(s);
   const env = isDemo() ? process.env.GEMINI_API_KEY?.trim() : undefined;
-  const model = s.gemini?.model?.trim() || DEF.gemini.model;
-  // Saqlanmagan bo'lsa (eski sozlama) - standart zaxira ro'yxati; foydalanuvchi bo'sh qoldirsa - zaxirasiz.
-  const fallbackModels = Array.isArray(s.gemini?.fallbackModels) ? s.gemini.fallbackModels.filter((m) => m && m !== model) : DEFAULT_FALLBACK_MODELS.filter((m) => m !== model);
-  return { keys: keys.length ? keys : env ? [env] : [], model, fallbackModels };
+  return { keys: keys.length ? keys : env ? [env] : [], model: s.gemini?.model?.trim() || DEF.gemini.model };
 }
 
 /** Gemini kaliti kiritilganmi: yo'q bo'lsa mavzu qo'shib bo'lmaydi, AI yordamchi o'chiq, mavjud mavzular muzlatilgan. */
@@ -100,7 +81,7 @@ function view(s: Stored): BotConfig {
   const { clientSecret, ...y } = s.youtube ?? {};
   const { pexelsApiKey, pixabayApiKey, ...vis } = s.visuals ?? {}; // stok foto kalitlari ham brauzerga qaytarilmaydi
   return {
-    gemini: { ...DEF.gemini, ...g, fallbackModels: Array.isArray(g.fallbackModels) ? g.fallbackModels : DEF.gemini.fallbackModels, apiKeys: storedKeys(s).map(keyInfo) },
+    gemini: { ...DEF.gemini, ...g, apiKeys: storedKeys(s).map(keyInfo) },
     limits: { ...DEF.limits, ...(s.limits ?? {}) },
     defaults: { ...DEF.defaults, ...(s.defaults ?? {}) },
     youtube: { ...DEF.youtube, ...y, clientSecretSet: !!clientSecret },
@@ -188,8 +169,7 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
   if (keys.length > 50) throw new Error("Gemini kalitlari 50 tadan oshmasin.");
   const next: Stored = {
     gemini: {
-      model: g.model.trim(), fallbackModels: cleanFallbackModels(g.fallbackModels ?? DEFAULT_FALLBACK_MODELS, g.model.trim()),
-      temperature: num(g.temperature, 0, 2, "Temperature"), useSearchGrounding: !!g.useSearchGrounding,
+      model: g.model.trim(), temperature: num(g.temperature, 0, 2, "Temperature"), useSearchGrounding: !!g.useSearchGrounding,
       apiKeys: keys, apiKey: keys[0], // apiKey - faqat eski desktop versiyalari uchun
       timeoutSec: Math.round(num(g.timeoutSec ?? 180, 30, 1800, "Gemini timeout")),
     },

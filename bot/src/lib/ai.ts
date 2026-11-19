@@ -1,7 +1,7 @@
 import "server-only";
 import { isGuest } from "./db";
 import { getCatalog, getPrompts, listTopics, previewPrompt } from "./topics";
-import { geminiGenerate, type GeminiContent, type GeminiPart } from "./gemini";
+import { geminiGenerate, type GeminiContent } from "./gemini";
 import { readBlocks } from "./channel/store";
 import { musicCatalog } from "./music";
 import { StatusText, type Action, type ChatMessage, type Proposal } from "./types";
@@ -242,17 +242,8 @@ export async function chat(history: ChatMessage[]): Promise<{ reply: string; pro
   // Agent sikli: model har aylanishda bitta-ikkita tool chaqirishi mumkin. Har taklif "ko'rsatildi" deb qaytariladi va model
   // so'rovdagi qolgan amallarni davom ettiradi. Hech narsa bajarilmaydi — faqat takliflar yig'iladi.
   // Kalit limiti (429) tugasa geminiGenerate keyingi kalit bilan davom etadi.
-  // Model router: limit tugasa zaxira modelga o'tiladi. Suhbat davom etar ekan javob bergan model saqlanadi (keyingi aylanishlar
-  // o'sha modeldan boshlanadi); almashganda boshqa model yozgan thought signature'lar olib tashlanadi (aks holda rad etiladi).
-  let model: string | undefined;
-  const strip = (b: Record<string, unknown>) => ({
-    ...b,
-    contents: (b.contents as GeminiContent[]).map((c) => ({ ...c, parts: c.parts.map((p) => { const { thoughtSignature: _s, ...rest } = p as GeminiPart & { thoughtSignature?: string }; void _s; return rest; }) })),
-  });
   for (let round = 0; round < 4; round++) {
-    const res = await geminiGenerate({ ...base, contents }, { model, onSwitch: strip });
-    const { data } = res;
-    model = res.model;
+    const { data } = await geminiGenerate({ ...base, contents });
     if (data.promptFeedback?.blockReason) throw new Error(`Gemini so'rovni blokladi: ${data.promptFeedback.blockReason}`);
     const content = data.candidates?.[0]?.content;
     const parts = content?.parts ?? [];
