@@ -139,6 +139,14 @@ CREATE INDEX IF NOT EXISTS ix_telegram_links_account ON ytauto.telegram_links(ac
 CREATE TABLE IF NOT EXISTS ytauto.login_attempts (
   key TEXT PRIMARY KEY, attempts INT NOT NULL DEFAULT 0, window_start_utc TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- v5: Claude Code (MCP) uchun alohida token - faqat /api/mcp ga kiradi (botga kirish, kompyuterni ulash yo'q), botda bekor qilinadi.
+-- Hisobga bittadan; yangisi yaratilsa eskisi ishlamay qoladi. Token o'zi saqlanmaydi - faqat xeshi.
+CREATE TABLE IF NOT EXISTS ytauto.mcp_tokens (
+  account_id UUID PRIMARY KEY REFERENCES ytauto.accounts(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at_utc TIMESTAMPTZ
+);
 
 -- Rollar:
 --  * ytauto_device - qurilma rollari guruhi (desktop/worker). Hisob faqat account_roles'dan olinadi.
@@ -227,6 +235,7 @@ ALTER TABLE ytauto.accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ytauto.account_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ytauto.telegram_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ytauto.login_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ytauto.mcp_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ytauto.schema_meta ENABLE ROW LEVEL SECURITY;
 
 -- ------------------------------------------------------------------ hisob funksiyalari (faqat egasi chaqiradi)
@@ -328,6 +337,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ytauto.jobs, ytauto.job_stages, ytauto.j
   ytauto.shared_settings, ytauto.machines, ytauto.machine_commands, ytauto.templates, ytauto.template_uploads,
   ytauto.channel_profile, ytauto.topic_suggestions TO ytauto_device, ytauto_bot;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ytauto TO ytauto_device, ytauto_bot;
-REVOKE ALL ON ytauto.accounts, ytauto.account_roles, ytauto.telegram_links, ytauto.login_attempts, ytauto.schema_meta FROM ytauto_device, ytauto_bot;
+REVOKE ALL ON ytauto.accounts, ytauto.account_roles, ytauto.telegram_links, ytauto.login_attempts, ytauto.schema_meta, ytauto.mcp_tokens FROM ytauto_device, ytauto_bot;
 
 INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '5') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

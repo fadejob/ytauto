@@ -49,17 +49,51 @@ export async function activeAccounts(): Promise<{ id: string; guest: boolean }[]
 }
 
 /**
- * MCP (Claude Code) va kompyuter (worker) so'rovlari: "Authorization: Bearer <token>" - botdagi bilan bir xil token.
- * Noto'g'ri token IP bo'yicha cheklanadi (15 daqiqada 20 urinish). Token o'zi saqlanmaydi - faqat xeshi solishtiriladi.
+ * "Authorization: Bearer <token>" so'rovlari: kompyuter (worker) - hisob tokeni bilan; Claude Code (MCP) - alohida MCP tokeni
+ * (ytm_..., botda yaratiladi va bekor qilinadi) yoki hisob tokeni. MCP tokeni faqat opts.mcp bo'lsa qabul qilinadi.
+ * Noto'g'ri token IP bo'yicha cheklanadi (15 daqiqada 20 urinish). Tokenlar o'zi saqlanmaydi - faqat xeshi solishtiriladi.
  */
-export async function accountForToken(token: string, ip: string): Promise<LinkedAccount | null> {
+export async function accountForToken(token: string, ip: string, opts?: { mcp?: boolean }): Promise<LinkedAccount | null> {
   await ensureSchema();
   const t = token.trim();
-  const [row] = TOKEN_RE.test(t) ? await ownerSql()`
+  let rows: Record<string, unknown>[] = [];
+  if (TOKEN_RE.test(t)) rows = await ownerSql()`
     SELECT a.id::text AS id, a.host_account_id IS NOT NULL AS guest, h.device_name AS host_label FROM ytauto.accounts a
-    LEFT JOIN ytauto.accounts h ON h.id = a.host_account_id WHERE a.token_hash = ${hashToken(t)}` : [];
+    LEFT JOIN ytauto.accounts h ON h.id = a.host_account_id WHERE a.token_hash = ${hashToken(t)}`;
+  else if (opts?.mcp && MCP_TOKEN_RE.test(t)) rows = await ownerSql()`
+    UPDATE ytauto.mcp_tokens m SET last_used_at_utc = now() FROM ytauto.accounts a
+    LEFT JOIN ytauto.accounts h ON h.id = a.host_account_id
+    WHERE m.token_hash = ${hashToken(t)} AND a.id = m.account_id
+    RETURNING a.id::text AS id, a.host_account_id IS NOT NULL AS guest, h.device_name AS host_label`;
+  const row = rows[0];
   if (!row) { await rateLimit(`bearer:${ip}`, 20, 15); return null; }
   return { id: row.id as string, guest: row.guest === true, hostLabel: (row.host_label as string | null) ?? null };
+}
+
+// ------------------------------------------------------------------ Claude Code (MCP) tokeni
+export const MCP_TOKEN_RE = /^ytm_[0-9A-Za-z]{40}$/;
+export type McpTokenInfo = { exists: boolean; createdAt: string | null; lastUsedAt: string | null };
+
+export async function mcpTokenInfo(accountId: string): Promise<McpTokenInfo> {
+  await ensureSchema();
+  const [r] = await ownerSql()`SELECT created_at_utc, last_used_at_utc FROM ytauto.mcp_tokens WHERE account_id = ${accountId}`;
+  return { exists: !!r, createdAt: r ? (r.created_at_utc as Date).toISOString() : null, lastUsedAt: r?.last_used_at_utc ? (r.last_used_at_utc as Date).toISOString() : null };
+}
+
+/** Yangi MCP tokeni (eskisi darhol ishlamay qoladi). Token o'zi faqat shu javobda qaytadi. */
+export async function createMcpToken(accountId: string): Promise<string> {
+  await ensureSchema();
+  const token = "ytm_" + newToken().slice(3);
+  await ownerSql()`
+    INSERT INTO ytauto.mcp_tokens(account_id, token_hash) VALUES (${accountId}, ${hashToken(token)})
+    ON CONFLICT (account_id) DO UPDATE SET token_hash = EXCLUDED.token_hash, created_at_utc = now(), last_used_at_utc = NULL`;
+  return token;
+}
+
+export async function revokeMcpToken(accountId: string): Promise<boolean> {
+  await ensureSchema();
+  const r = await ownerSql()`DELETE FROM ytauto.mcp_tokens WHERE account_id = ${accountId}`;
+  return r.count > 0;
 }
 
 /** guestId - hostId hisobi yaratgan qo'shimcha (mehmon) hisobmi (mezbon kompyuter mehmon vazifasini bajarganda). */

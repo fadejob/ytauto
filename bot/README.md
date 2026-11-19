@@ -115,11 +115,16 @@ Ilova yangilanmaguncha kontekst faqat AI yordamchi va mavzu tavsiyalarida ishlat
 Bot MCP server ham: **`/api/mcp`** (Streamable HTTP, holatsiz). Claude Code foydalanuvchi loyihasini o'rganadi, screenshot va qisqa
 action videolarni oladi va YtAuto'ga yuboradi. Ssenariy, ovoz, subtitr, montaj va render — **YtAuto ichida** (mavjud pipeline).
 
-**Ulash** (token — YtAuto ilovasidagi yoki botdagi qo'shimcha token):
+**Ulash** — botda **Sozlamalar → Claude Code ulash (MCP)** → «Token yaratish» → «Matnni nusxalash» → matnni Claude Code'ga joylang.
+Claude o'zi ulanadi (`claude mcp add --scope user ...` - token loyiha fayllariga yozilmaydi); yangi tool'lar ko'rinishi uchun sessiyani
+qayta oching yoki `/mcp`. Matnda server URL, alohida **MCP tokeni** (`ytm_...`) va buyruq bor:
 
 ```bash
-claude mcp add --transport http ytauto https://ytauto-kappa.vercel.app/api/mcp --header "Authorization: Bearer yt_..."
+claude mcp add --transport http --scope user ytauto https://ytauto-kappa.vercel.app/api/mcp --header "Authorization: Bearer ytm_..."
 ```
+
+MCP tokeni faqat `/api/mcp` ga kiradi (botga kirish va kompyuterni ulash uchun yaroqsiz), hisobga bittadan, faqat yaratilganda
+ko'rsatiladi; «Yangi token» eskisini, «Bekor qilish» - darhol o'chiradi. Asosiy/qo'shimcha hisob tokeni (`yt_...`) ham MCP uchun ishlaydi.
 
 So'ng Claude Code'ga: *«Shu loyihaning demo videosini YtAuto orqali yarat»* (chiqarish kerak bo'lsa — aniq ayting).
 

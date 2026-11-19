@@ -167,3 +167,25 @@ export async function handleRpc(m: RpcRequest, run: <T>(fn: () => Promise<T>) =>
       return err(m.id, -32601, `Method not found: ${m.method}`);
   }
 }
+
+/** Botdagi «Claude Code ulash»: Claude'ga beriladigan tayyor matn - Claude uni o'qib o'zi `claude mcp add` qiladi. */
+export function setupText(url: string, token: string): { command: string; setup: string } {
+  const command = `claude mcp add --transport http --scope user ytauto ${url} --header "Authorization: Bearer ${token}"`;
+  const setup = [
+    "YtAuto MCP serverini Claude Code'ga ula (loyiha demo videolarini YtAuto orqali yaratish uchun).",
+    "",
+    "1. Terminalda shu buyruqni bajar (--scope user: barcha loyihalarda ishlaydi va token loyiha fayllariga yozilmaydi):",
+    command,
+    "",
+    "2. `claude mcp list` bilan \"ytauto\" ulanganini tekshir. Yangi MCP server shu sessiyada ko'rinmasa, menga sessiyani qayta ochishni yoki /mcp bilan ulashni ayt.",
+    "",
+    "Ma'lumotlar:",
+    `- Server URL: ${url}`,
+    "- Transport: HTTP (Streamable HTTP)",
+    `- Header: Authorization: Bearer ${token}`,
+    "- Tool'lar: request_media_upload, create_demo_video, get_video_status, get_video_result, publish_video",
+    "",
+    "Token maxfiy: uni loyiha fayllariga, .mcp.json yoki commit'larga yozma va javobingda takrorlama.",
+  ].join("\n");
+  return { command, setup };
+}

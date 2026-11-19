@@ -19,14 +19,14 @@ export async function POST(req: Request) {
   const auth = req.headers.get("authorization") ?? "";
   const token = auth.match(/^Bearer\s+(\S+)$/i)?.[1] ?? "";
   let acc;
-  try { acc = token ? await accountForToken(token, clientIp(req)) : null; }
+  try { acc = token ? await accountForToken(token, clientIp(req), { mcp: true }) : null; }
   catch (e) {
     if (e instanceof LimitError) return json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: e.message } }, 429);
     console.error("[mcp] auth", e);
     return json({ jsonrpc: "2.0", id: null, error: { code: -32603, message: "Server xatosi (baza)." } }, 500);
   }
   if (!acc) {
-    return json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "YtAuto token kerak: Authorization: Bearer yt_... (YtAuto ilovasidagi yoki botdagi qo'shimcha token)." } },
+    return json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: "YtAuto MCP tokeni kerak: Authorization: Bearer ytm_... (botda Sozlamalar → Claude Code ulash) yoki hisob tokeni yt_..." } },
       401, { "WWW-Authenticate": 'Bearer realm="ytauto"' });
   }
 

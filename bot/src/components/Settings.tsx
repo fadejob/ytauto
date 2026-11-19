@@ -8,6 +8,7 @@ import VoiceProfiles from "./VoiceProfiles";
 import VoiceClone from "./VoiceClone";
 import Library from "./Library";
 import Guests from "./Guests";
+import McpConnect from "./McpConnect";
 
 type Sch = { enabled: boolean; startTime: string; endTime: string; timeZoneId: string; wakeToRun: boolean; executionLimitHours: number };
 type Draft = BotConfigInput;
@@ -223,6 +224,8 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
             <Library toast={toast} canUpload={!guest} />
 
             {!guest ? <Guests toast={toast} /> : null}
+
+            <McpConnect toast={toast} />
 
             {!guest ? <>
             <div className="sect">Limitlar</div>
