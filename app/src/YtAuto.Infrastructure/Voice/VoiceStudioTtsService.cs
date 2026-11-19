@@ -226,6 +226,17 @@ internal sealed class VoiceStudioSession : ITtsSession
 
     public async Task EnsureModelAvailableAsync(string model, CancellationToken ct)
     {
+        // MOSS-TTS-Nano - sidecar dvigatel: o'z venv'i (MossEngine) o'rnatilgan bo'lsa, og'irliklarni (OpenMOSS-Team/MOSS-TTS-Nano va
+        // MOSS-Audio-Tokenizer-Nano, ~310 MB) birinchi sintezda o'zi HF keshiga yuklaydi. VoiceStudio /models katalogi esa uni yangi
+        // "MOSS-TTS-Nano-100M" nomi bilan tekshiradi - sidecar eski nom bilan keshlagani uchun u yerda doim installed=false bo'ladi.
+        // Shuning uchun MOSS uchun tekshiruv - ilova holati bilan bir xil: dvigatel o'rnatilganmi.
+        if (string.Equals(model, TtsVoices.Model, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!MossEngine.IsInstalled())
+                throw PipelineException.Config("tts_model_missing", $"{TtsVoices.DisplayName} dvigateli bu kompyuterda o'rnatilmagan. YtAuto ilovasida «Kerakli fayllarni yuklash va sozlash» ni bosing.");
+            _log.Info($"TTS: {TtsVoices.DisplayName} dvigateli o'rnatilgan (model fayllari birinchi sintezda VoiceStudio tomonidan yuklanadi).", "Voice");
+            return;
+        }
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct); cts.CancelAfter(TimeSpan.FromSeconds(30));
