@@ -272,46 +272,41 @@ public sealed partial class JobRunner
     private const int MaxTagChars = 500;
 
     /// <summary>
-    /// Taglar: ssenariy bilan yozilgan (ko'pi bilan 5) + kanal standart taglari (Sozlamalar → YouTube, vergul bilan). Ssenariyda tag bo'lmasa -
-    /// faqat standartlar. Takrorlar olib tashlanadi; YouTube 500 belgi chegarasidan oshganlari tashlanadi.
+    /// Taglar: kanalda standart taglar bo'lsa (Sozlamalar → YouTube, vergul bilan) - FAQAT ular; bo'lmasa - ssenariy bilan Gemini yozgan
+    /// 5 ta tag. Takrorlar olib tashlanadi; YouTube 500 belgi chegarasidan oshganlari tashlanadi.
     /// </summary>
     internal static List<string> ComposeTags(IEnumerable<string>? scriptTags, string? channelDefaults)
     {
-        var generated = ScriptValidator.CleanTags(scriptTags, DefaultPrompts.TagsPerVideo);
         var defaults = ScriptValidator.CleanTags((channelDefaults ?? "").Split(','), 100);
-        var list = new List<string>(); var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase); var used = 0;
-        foreach (var t in generated.Concat(defaults))
+        var source = defaults.Count > 0 ? defaults : ScriptValidator.CleanTags(scriptTags, DefaultPrompts.TagsPerVideo);
+        var list = new List<string>(); var used = 0;
+        foreach (var t in source)
         {
             var cost = t.Length + (t.Contains(' ') ? 2 : 0) + (list.Count > 0 ? 1 : 0);
-            if (!seen.Add(t) || used + cost > MaxTagChars) continue;
+            if (used + cost > MaxTagChars) continue;
             list.Add(t); used += cost;
         }
         return list;
     }
 
-    /// <summary>Logda: tavsif va taglar qayerdan olindi (ssenariy / kanal standarti).</summary>
+    /// <summary>Logda: tavsif va taglar qayerdan olindi (kanal standarti yoki Gemini).</summary>
     internal static string DescribeMetadataSources(int scriptTags, bool scriptDescription, string? defaultTags, string? defaultDescription)
     {
-        var hasDefTags = !string.IsNullOrWhiteSpace(defaultTags); var hasDefDesc = !string.IsNullOrWhiteSpace(defaultDescription);
-        string Part(string what, bool fromScript, bool fromDefault) => $"{what}: " + (fromScript, fromDefault) switch
-        {
-            (true, true) => "ssenariydan + kanal standarti",
-            (true, false) => "ssenariydan",
-            (false, true) => "faqat kanal standarti (ssenariyda yo'q)",
-            _ => "yo'q",
-        };
-        return $"{Part($"Taglar ({scriptTags} ta)", scriptTags > 0, hasDefTags)}; {Part("tavsif", scriptDescription, hasDefDesc)}.";
+        var defTags = ScriptValidator.CleanTags((defaultTags ?? "").Split(','), 100).Count;
+        var tags = defTags > 0 ? $"kanal standarti ({defTags} ta)" : scriptTags > 0 ? $"Gemini yozgan ({scriptTags} ta)" : "yo'q";
+        var desc = !string.IsNullOrWhiteSpace(defaultDescription) ? "kanal standarti" : scriptDescription ? "Gemini yozgan" : "yo'q";
+        return $"Taglar: {tags}; tavsif: {desc}.";
     }
 
     /// <summary>
-    /// YouTube tavsifi (5000 belgi): video tavsifi + rasm mualliflari (CC BY talabi) + kanal standart matni.
-    /// Joy yetmasa video tavsifi qisqartiriladi; mualliflar bloki kesilmaydi.
+    /// YouTube tavsifi (5000 belgi): kanalda standart tavsif bo'lsa - FAQAT u (Gemini yozgani olinmaydi), bo'lmasa - Gemini yozgan tavsif.
+    /// Rasm mualliflari bloki (CC BY litsenziya talabi) har doim qo'shiladi va kesilmaydi; joy yetmasa video tavsifi qisqartiriladi.
     /// </summary>
     internal static string ComposeDescription(string? description, string credits, string? channelDefault)
     {
         const int Max = 5000;
         var tail = string.Join("\n\n", new[] { credits?.Trim(), channelDefault?.Trim() }.Where(s => !string.IsNullOrWhiteSpace(s)));
-        var main = description?.Trim() ?? "";
+        var main = string.IsNullOrWhiteSpace(channelDefault) ? description?.Trim() ?? "" : "";
         if (tail.Length == 0) return Trunc(main, Max);
         var room = Max - tail.Length - 2;
         if (room <= 0) return Trunc(tail, Max);

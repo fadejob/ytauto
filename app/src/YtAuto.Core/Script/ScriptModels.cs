@@ -18,6 +18,27 @@ public sealed class ScriptRequest
     public double Temperature { get; init; } = 0.7;
     /// <summary>Oldingi urinishdagi validatsiya xatolari (qayta yozish uchun).</summary>
     public IReadOnlyList<string> PreviousProblems { get; init; } = Array.Empty<string>();
+    /// <summary>YouTube tavsifini yozsinmi: kanalda standart tavsif bo'lsa false (standart ishlatiladi).</summary>
+    public bool WriteDescription { get; init; } = true;
+    /// <summary>5 ta tag yozsinmi: kanalda standart taglar bo'lsa false (standartlar ishlatiladi).</summary>
+    public bool WriteTags { get; init; } = true;
+}
+
+/// <summary>Foydalanuvchi o'z matni/audiosi bilan bergan video uchun faqat tavsif va/yoki taglar (matn o'zgartirilmaydi).</summary>
+public sealed class MetadataRequest
+{
+    public string Title { get; init; } = "";
+    public string Text { get; init; } = "";
+    public string Language { get; init; } = "en";
+    public string Model { get; init; } = "";
+    public bool WriteDescription { get; init; } = true;
+    public bool WriteTags { get; init; } = true;
+}
+
+public sealed class MetadataResult
+{
+    public string Description { get; set; } = "";
+    public List<string> Tags { get; set; } = new();
 }
 
 public sealed class SceneSpec

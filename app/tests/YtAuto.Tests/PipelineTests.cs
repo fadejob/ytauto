@@ -39,6 +39,7 @@ internal static class TestScript
     public static VideoScript Make() => new()
     {
         NarrationText = Narration, SubtitleText = Narration, YouTubeTitle = "Why water boils", YouTubeDescription = "Short explainer.",
+        Tags = new() { "boiling water", "steam", "physics", "science explained", "kitchen science" },
         Scenes = new()
         {
             new() { Index = 1, Narration = "Water boils when it gets hot enough.", Visual = "pot", OnScreenText = "Heat" },
@@ -53,6 +54,16 @@ internal sealed class FakeScript : IScriptGenerator
     public int Calls; public ScriptRequest? Last;
     public Task<ScriptResult> GenerateAsync(ScriptRequest r, IJobLog log, CancellationToken ct)
     { Calls++; Last = r; var s = TestScript.Make(); return Task.FromResult(new ScriptResult { Script = s, RawModelOutput = s.ToJson(), ModelUsed = "fake" }); }
+    public int DescribeCalls; public MetadataRequest? LastMeta;
+    public Task<MetadataResult> DescribeAsync(MetadataRequest r, IJobLog log, CancellationToken ct)
+    {
+        DescribeCalls++; LastMeta = r;
+        return Task.FromResult(new MetadataResult
+        {
+            Description = r.WriteDescription ? "Own text summary." : "",
+            Tags = r.WriteTags ? new() { "own a", "own b", "own c", "own d", "own e" } : new(),
+        });
+    }
 }
 
 internal sealed class FakeTts : ITtsService

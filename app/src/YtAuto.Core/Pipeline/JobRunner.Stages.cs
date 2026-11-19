@@ -15,9 +15,18 @@ public sealed partial class JobRunner
     // Qo'lda kiritilgan matn/ovoz uchun alohida hash: oddiy vazifalarning hash'i o'zgarmaydi (tayyor bosqichlar qayta bajarilmaydi).
     private static string ScriptInputHash(JobContext c) => c.Job.HasManualScript
         ? Hashing.Sha256Text("script-manual-v1", c.Job.ManualTitle, c.Job.ManualScript)
+          // Avval qo'lda kiritilgan matnga metadata yozilmasdi: yozish kerak bo'lgandagina hash o'zgaradi.
+          + (WriteDescription(c) || WriteTags(c) ? $":meta-d{WriteDescription(c)}-t{WriteTags(c)}" : "")
         : Hashing.Sha256Text("script-v2", c.Job.Topic, c.Job.Notes, c.Job.Language,
             c.Job.TargetDurationSec.ToString(), c.S.Gemini.ScriptPrompt, c.S.Gemini.Model, c.S.Gemini.UseSearchGrounding.ToString())
-          + ChannelHashSuffix(c.S.ChannelContext.ScriptBlock);
+          + ChannelHashSuffix(c.S.ChannelContext.ScriptBlock)
+          // Avval Gemini har doim ikkalasini yozardi: standart bor bo'lgandagina hash o'zgaradi.
+          + (WriteDescription(c) && WriteTags(c) ? "" : $":meta-d{WriteDescription(c)}-t{WriteTags(c)}");
+
+    /// <summary>Kanalda standart tavsif yo'q - Gemini videoga tavsif yozadi (bor bo'lsa standart ishlatiladi).</summary>
+    internal static bool WriteDescription(JobContext c) => string.IsNullOrWhiteSpace(c.S.YouTube.DefaultDescription);
+    /// <summary>Kanalda standart taglar yo'q - Gemini videoga 5 ta tag yozadi (bor bo'lsa standartlar ishlatiladi).</summary>
+    internal static bool WriteTags(JobContext c) => ScriptValidator.CleanTags((c.S.YouTube.DefaultTags ?? "").Split(','), 100).Count == 0;
 
     /// <summary>Kanal konteksti bo'lmasa hash o'zgarmaydi (oldingi joblar qayta bajarilmaydi); bo'lsa uning o'zgarishi bosqichni qayta ishlatadi.</summary>
     private static string ChannelHashSuffix(string block) => block.Length == 0 ? "" : ":" + Hashing.Sha256Text("channel-v1", block);
@@ -58,7 +67,8 @@ public sealed partial class JobRunner
     // ---------------------------------------------------------------- B: Gemini
     private async Task<StageOutputs> ScriptStageAsync(JobContext c)
     {
-        if (c.Job.HasManualScript) return ManualScriptStage(c);
+        if (c.Job.HasManualScript) return await ManualScriptStageAsync(c).ConfigureAwait(false);
+        bool writeDesc = WriteDescription(c), writeTags = WriteTags(c);
         var req = new ScriptRequest
         {
             Topic = c.Job.Topic, Notes = c.Job.Notes, Language = c.Job.Language, TargetDurationSec = c.Job.TargetDurationSec,
@@ -66,6 +76,7 @@ public sealed partial class JobRunner
             PromptTemplate = ChannelPrompt.ApplyToScript(string.IsNullOrWhiteSpace(c.S.Gemini.ScriptPrompt) ? DefaultPrompts.Script : c.S.Gemini.ScriptPrompt, c.S.ChannelContext),
             FactSheetPromptTemplate = DefaultPrompts.FactSheet,
             UseSearchGrounding = c.S.Gemini.UseSearchGrounding, Model = c.S.Gemini.Model, Temperature = c.S.Gemini.Temperature,
+            WriteDescription = writeDesc, WriteTags = writeTags,
         };
         VideoScript? script = null; List<string> problems = new(); ScriptResult? last = null;
         for (int attempt = 1; attempt <= 3; attempt++)
@@ -86,6 +97,7 @@ public sealed partial class JobRunner
                 Topic = req.Topic, Notes = req.Notes, Language = req.Language, TargetDurationSec = req.TargetDurationSec, Format = req.Format,
                 PromptTemplate = req.PromptTemplate, FactSheetPromptTemplate = req.FactSheetPromptTemplate, UseSearchGrounding = false,
                 Model = req.Model, Temperature = req.Temperature, PreviousProblems = problems,
+                WriteDescription = writeDesc, WriteTags = writeTags,
             };
             // Fakt varag'ini qayta ishlatamiz (qayta qidiruv qilmaymiz)
             if (!string.IsNullOrEmpty(script.FactSheet)) req = WithFactSheet(req, script);
@@ -96,11 +108,12 @@ public sealed partial class JobRunner
         if (script.UnverifiedClaims.Count > 0)
             c.Log.Warn($"Model manbasiz deb belgilagan da'volar: {string.Join(" | ", script.UnverifiedClaims)}", "Script");
         ScriptValidator.Canonicalize(script);
+        ApplyMetadataRule(c, script, writeDesc, writeTags);
         File.WriteAllText(c.ScriptJson, script.ToJson(), new UTF8Encoding(false));
         File.Copy(c.ScriptJson, Path.Combine(c.RecordDir, "script.json"), true);
 
         c.Job.Title = script.YouTubeTitle.Trim();
-        c.Job.Description = BuildDescription(script);
+        c.Job.Description = writeDesc ? BuildDescription(script) : "";
         _x.Store.Update(c.Job);
         c.StageMetrics["words"] = ScriptValidator.CountWords(script.SubtitleText);
         c.StageMetrics["prompt_tokens"] = last!.PromptTokens;
@@ -113,7 +126,7 @@ public sealed partial class JobRunner
     /// Botda kiritilgan subtitr va title'dan ssenariy: Gemini chaqirilmaydi. Matn foydalanuvchiniki - faqat aniq xatolar
     /// (bo'sh, title uzun yoki &lt;&gt; belgili) to'xtatadi; uslubiy kamchiliklar ogohlantirish sifatida yoziladi.
     /// </summary>
-    private StageOutputs ManualScriptStage(JobContext c)
+    private async Task<StageOutputs> ManualScriptStageAsync(JobContext c)
     {
         var script = new VideoScript
         {
@@ -127,13 +140,35 @@ public sealed partial class JobRunner
             throw PipelineException.Config("manual_script_invalid", "Botda kiritilgan subtitr/title yaroqsiz: " + string.Join(" | ", fatal) + " Mavzuni botda tahrirlang.");
         foreach (var p in problems.Except(fatal)) c.Log.Warn("Qo'lda kiritilgan matn: " + p, "Script");
 
+        // Matn va title foydalanuvchiniki; kanalda standart tavsif/taglar bo'lmasa Gemini faqat ularni yozadi (matn o'zgarmaydi).
+        bool writeDesc = WriteDescription(c), writeTags = WriteTags(c);
+        if (writeDesc || writeTags)
+        {
+            try
+            {
+                var meta = await Retry.TransientAsync(_ => _x.ScriptGenerator.DescribeAsync(new MetadataRequest
+                {
+                    Title = script.YouTubeTitle, Text = script.SubtitleText, Language = c.Job.Language, Model = c.S.Gemini.Model,
+                    WriteDescription = writeDesc, WriteTags = writeTags,
+                }, c.Log, c.Ct), c.S.Limits.MaxTransientRetries, (n, e) => c.Log.Warn($"Gemini (tavsif/tag) vaqtinchalik xato ({n}): {e.Message}", "Script"), c.Ct).ConfigureAwait(false);
+                script.YouTubeDescription = meta.Description.Replace("<", "‹").Replace(">", "›");
+                script.Tags = meta.Tags;
+                ScriptValidator.Canonicalize(script);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                c.Log.Warn($"Tavsif/taglarni Gemini yozib bera olmadi - video ularsiz yuklanadi: {e.Message}", "Script");
+            }
+        }
+        ApplyMetadataRule(c, script, writeDesc, writeTags);
+
         File.WriteAllText(c.ScriptJson, script.ToJson(), new UTF8Encoding(false));
         File.Copy(c.ScriptJson, Path.Combine(c.RecordDir, "script.json"), true);
         c.Job.Title = script.YouTubeTitle;
-        c.Job.Description = BuildDescription(script);
+        c.Job.Description = writeDesc ? BuildDescription(script) : "";
         _x.Store.Update(c.Job);
         c.StageMetrics["words"] = ScriptValidator.CountWords(script.SubtitleText);
-        c.Log.Info($"Ssenariy botda qo'lda kiritilgan: Gemini o'tkazib yuborildi. Title \"{script.YouTubeTitle}\", subtitr {c.StageMetrics["words"]} so'z.", "Script");
+        c.Log.Info($"Ssenariy botda qo'lda kiritilgan: matn Gemini'ga yozdirilmadi. Title \"{script.YouTubeTitle}\", subtitr {c.StageMetrics["words"]} so'z.", "Script");
         return new StageOutputs { Files = { FileOps.Describe(c.ScriptJson, "script") }, Values = { ["title"] = script.YouTubeTitle, ["model"] = "manual" } };
     }
 
@@ -144,6 +179,19 @@ public sealed partial class JobRunner
         FactSheetPromptTemplate = r.FactSheetPromptTemplate, UseSearchGrounding = false, Model = r.Model, Temperature = r.Temperature,
         PreviousProblems = r.PreviousProblems,
     };
+
+    /// <summary>
+    /// Kanal standarti bor bo'lsa Gemini yozgani olinmaydi (model baribir yozib yuborgan bo'lsa ham); yo'q bo'lsa yozilmagani logga.
+    /// </summary>
+    private static void ApplyMetadataRule(JobContext c, VideoScript script, bool writeDesc, bool writeTags)
+    {
+        if (!writeDesc) script.YouTubeDescription = "";
+        if (!writeTags) script.Tags.Clear();
+        if (writeDesc && script.YouTubeDescription.Length == 0) c.Log.Warn("Kanalda standart tavsif yo'q, Gemini ham tavsif yozmadi - video tavsifsiz yuklanadi.", "Script");
+        if (writeTags && script.Tags.Count < DefaultPrompts.TagsPerVideo)
+            c.Log.Warn($"Kanalda standart taglar yo'q, Gemini {script.Tags.Count} ta tag yozdi ({DefaultPrompts.TagsPerVideo} ta kutilgan).", "Script");
+        c.Log.Info($"Tavsif: {(writeDesc ? "Gemini yozdi" : "kanal standarti ishlatiladi")}; taglar: {(writeTags ? $"Gemini yozdi ({script.Tags.Count} ta)" : "kanal standarti ishlatiladi")}.", "Script");
+    }
 
     internal static string BuildDescription(VideoScript s)
     {

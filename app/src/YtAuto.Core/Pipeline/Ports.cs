@@ -95,6 +95,11 @@ public static class SecretNames
 public interface IScriptGenerator
 {
     Task<ScriptResult> GenerateAsync(ScriptRequest request, IJobLog log, CancellationToken ct);
+    /// <summary>
+    /// Tayyor matn (foydalanuvchiniki) uchun faqat YouTube tavsifi va/yoki 5 ta tag. Standart amal - bo'sh natija
+    /// (metadata yozmaydigan generatorlar uchun).
+    /// </summary>
+    Task<MetadataResult> DescribeAsync(MetadataRequest request, IJobLog log, CancellationToken ct) => Task.FromResult(new MetadataResult());
 }
 
 public interface ITtsService

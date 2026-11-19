@@ -76,6 +76,7 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
         else if (req.Notes.Contains("[FACT SHEET FROM PREVIOUS STEP]")) factSheet = "(see notes)";
 
         var prompt = Fill(req.PromptTemplate, req, factSheet.Length == 0 ? "(empty - no search-grounded facts available; avoid recent numbers and specific statistics)" : factSheet);
+        prompt += MetadataInstruction(req.WriteDescription, req.WriteTags);
         if (req.PreviousProblems.Count > 0)
             prompt += "\n\nYour previous answer was rejected by an automatic check. Fix ALL of these problems:\n- " + string.Join("\n- ", req.PreviousProblems);
 
@@ -87,7 +88,7 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
                 ["temperature"] = req.Temperature,
                 ["maxOutputTokens"] = 16384,
                 ["responseMimeType"] = "application/json",
-                ["responseSchema"] = ScriptSchema(),
+                ["responseSchema"] = ScriptSchema(req.WriteDescription, req.WriteTags),
             },
         };
         var (json, raw) = await CallAsync(keys, model, body, TimeSpan.FromSeconds(240), log, ct).ConfigureAwait(false);
@@ -104,6 +105,66 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
             PromptTokens = usage?["promptTokenCount"]?.GetValue<int>() ?? 0,
             OutputTokens = usage?["candidatesTokenCount"]?.GetValue<int>() ?? 0,
         };
+    }
+
+    /// <summary>
+    /// Promptga (foydalanuvchi o'zgartirgan bo'lsa ham) qo'shiladigan aniq ko'rsatma: kanalda standart tavsif/taglar bormi.
+    /// Bor bo'lsa - yozmaydi (standart ishlatiladi); yo'q bo'lsa - tavsif va aynan 5 ta tag yozadi.
+    /// </summary>
+    internal static string MetadataInstruction(bool writeDescription, bool writeTags)
+    {
+        var sb = new StringBuilder("\n\nYouTube description and tags for this channel:\n");
+        sb.Append(writeDescription
+            ? "- The channel has NO default description: write youtube_description (2 short paragraphs summarising this video, no < or > characters).\n"
+            : "- The channel has its own default description: do NOT write youtube_description.\n");
+        sb.Append(writeTags
+            ? $"- The channel has NO default tags: write exactly {DefaultPrompts.TagsPerVideo} tags for this video (1-3 words each, no # sign, most specific first).\n"
+            : "- The channel has its own default tags: do NOT write tags.\n");
+        return sb.ToString();
+    }
+
+    public const string MetadataPrompt = """
+You write YouTube metadata for a finished video. The text below is exactly what is said in the video; do not change it.
+Video title: {title}
+Language: {language}
+
+{instructions}
+SPOKEN TEXT:
+{text}
+""";
+
+    /// <summary>Foydalanuvchining tayyor matni uchun faqat tavsif va/yoki 5 ta tag (matn va title o'zgartirilmaydi).</summary>
+    public async Task<MetadataResult> DescribeAsync(MetadataRequest req, IJobLog log, CancellationToken ct)
+    {
+        if (!req.WriteDescription && !req.WriteTags) return new MetadataResult();
+        var keys = Keys();
+        var model = string.IsNullOrWhiteSpace(req.Model) ? "gemini-2.5-flash" : req.Model.Trim();
+        var prompt = MetadataPrompt.Replace("{title}", req.Title.Trim()).Replace("{language}", req.Language)
+            .Replace("{instructions}", MetadataInstruction(req.WriteDescription, req.WriteTags).TrimStart()).Replace("{text}", req.Text.Trim());
+        var schema = ScriptSchema(req.WriteDescription, req.WriteTags);
+        var props = (JsonObject)schema["properties"]!;
+        props.Remove("subtitle_text"); props.Remove("youtube_title"); props.Remove("sources");
+        schema["required"] = new JsonArray(props.Select(p => (JsonNode)JsonValue.Create(p.Key)!).ToArray());
+        schema["propertyOrdering"] = new JsonArray(props.Select(p => (JsonNode)JsonValue.Create(p.Key)!).ToArray());
+        var body = new JsonObject
+        {
+            ["contents"] = new JsonArray(new JsonObject { ["role"] = "user", ["parts"] = new JsonArray(new JsonObject { ["text"] = prompt }) }),
+            ["generationConfig"] = new JsonObject
+            {
+                ["temperature"] = 0.4, ["maxOutputTokens"] = 4096, ["responseMimeType"] = "application/json", ["responseSchema"] = schema,
+            },
+        };
+        var (json, _) = await CallAsync(keys, model, body, TimeSpan.FromSeconds(120), log, ct).ConfigureAwait(false);
+        try
+        {
+            var n = JsonNode.Parse(ExtractText(json));
+            return new MetadataResult
+            {
+                Description = req.WriteDescription ? n?["youtube_description"]?.GetValue<string>()?.Trim() ?? "" : "",
+                Tags = req.WriteTags ? ScriptValidator.CleanTags((n?["tags"] as JsonArray)?.Select(t => t?.GetValue<string>() ?? ""), DefaultPrompts.TagsPerVideo) : new(),
+            };
+        }
+        catch (Exception e) when (e is JsonException or InvalidOperationException) { throw PipelineException.Transient("gemini_bad_json", "Tavsif/tag javobi JSON emas: " + e.Message); }
     }
 
     private async Task<(string, List<SourceRef>)> FactSheetAsync(List<string> keys, string model, ScriptRequest req, IJobLog log, CancellationToken ct)
@@ -258,7 +319,7 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
         return sb.ToString();
     }
 
-    internal static JsonObject ScriptSchema()
+    internal static JsonObject ScriptSchema(bool writeDescription = true, bool writeTags = true)
     {
         JsonObject Str() => new() { ["type"] = "STRING" };
         JsonObject Arr(JsonObject items) => new() { ["type"] = "ARRAY", ["items"] = items };
@@ -268,18 +329,24 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
             ["properties"] = new JsonObject { ["title"] = Str(), ["url"] = Str() },
             ["required"] = new JsonArray("title", "url"),
         };
+        var props = new JsonObject { ["subtitle_text"] = Str(), ["youtube_title"] = Str() };
+        var required = new List<string> { "subtitle_text", "youtube_title" };
+        var order = new List<string> { "youtube_title", "subtitle_text" };
+        if (writeDescription) { props["youtube_description"] = Str(); required.Add("youtube_description"); order.Add("youtube_description"); }
+        if (writeTags)
+        {
+            props["tags"] = new JsonObject { ["type"] = "ARRAY", ["items"] = Str(), ["minItems"] = DefaultPrompts.TagsPerVideo, ["maxItems"] = DefaultPrompts.TagsPerVideo };
+            required.Add("tags"); order.Add("tags");
+        }
+        props["sources"] = Arr(source); order.Add("sources");
         return new JsonObject
         {
             ["type"] = "OBJECT",
-            // Asosiy shartnoma: subtitle_text (ovoz + subtitr), youtube_title, tavsif va aynan 5 ta tag (ssenariy bilan birga yoziladi).
-            ["properties"] = new JsonObject
-            {
-                ["subtitle_text"] = Str(), ["youtube_title"] = Str(), ["youtube_description"] = Str(),
-                ["tags"] = new JsonObject { ["type"] = "ARRAY", ["items"] = Str(), ["minItems"] = DefaultPrompts.TagsPerVideo, ["maxItems"] = DefaultPrompts.TagsPerVideo },
-                ["sources"] = Arr(source),
-            },
-            ["required"] = new JsonArray("subtitle_text", "youtube_title", "youtube_description", "tags"),
-            ["propertyOrdering"] = new JsonArray("youtube_title", "subtitle_text", "youtube_description", "tags", "sources"),
+            // Asosiy shartnoma: subtitle_text (ovoz + subtitr) va youtube_title. Tavsif va aynan 5 ta tag - faqat kanalda
+            // standarti bo'lmasa (bo'lsa sxemada umuman yo'q: Gemini ularni yozmaydi, standart ishlatiladi).
+            ["properties"] = props,
+            ["required"] = new JsonArray(required.Select(r => (JsonNode)JsonValue.Create(r)!).ToArray()),
+            ["propertyOrdering"] = new JsonArray(order.Select(r => (JsonNode)JsonValue.Create(r)!).ToArray()),
         };
     }
 
