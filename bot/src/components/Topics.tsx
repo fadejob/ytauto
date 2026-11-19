@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, confirmBox, haptic, putFile } from "@/lib/client";
 import { FormatText, StatusText, type Action, type Catalog, type PreparedAudio, type ScriptSource, type State, type Topic } from "@/lib/types";
 import type { Run } from "./App";
@@ -34,6 +34,13 @@ export default function Topics({ state, loading, refresh, run, locked }: { state
     for (const t of state?.topics ?? []) c[groupOf(t)]++;
     return c;
   }, [state]);
+  // Shablon serverdan kompyuterga tushayotgan bo'lsa, ro'yxat o'zi yangilanadi: o'rnatilishi bilan tanlash mumkin bo'ladi.
+  const waitingTemplates = (state?.catalog.pendingTemplates?.length ?? 0) > 0;
+  useEffect(() => {
+    if (!waitingTemplates) return;
+    const t = window.setInterval(() => document.visibilityState === "visible" && void refresh(), 8000);
+    return () => window.clearInterval(t);
+  }, [waitingTemplates, refresh]);
   const items = (state?.topics ?? []).filter((t) => groupOf(t) === group);
   if (group === "done") items.sort((a, b) => b.publishAt.localeCompare(a.publishAt));
 
@@ -198,7 +205,10 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
   const filled = rows.filter((r) => (r.source === "gemini" ? r.topic.trim() : r.title.trim() || r.script.trim() || r.file));
   const topicOf = (r: Row) => (r.source === "gemini" ? r.topic : r.title);
   const problems = filled.map((r) => rowProblem(r, hasAudio));
-  const canSave = filled.length > 0 && problems.every((p) => p === null);
+  // Hali kompyuterga tushmagan shablon tanlanmaydi (tahrirdagi eski mavzuda tanlangan bo'lsa, saqlash ham to'xtaydi).
+  const pending = catalog.pendingTemplates ?? [];
+  const templatePending = !!template && pending.some((p) => p.name === template);
+  const canSave = filled.length > 0 && problems.every((p) => p === null) && !templatePending;
   const allAudio = rows.every((r) => r.source === "audio");
 
   async function save() {
@@ -308,7 +318,10 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
               <select className="input" value={template} onChange={(e) => setTemplate(e.target.value)}>
                 <option value="">Shablonsiz</option>
                 {catalog.templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
-                {template && !catalog.templates.some((t) => t.name === template) ? <option value={template}>{template}</option> : null}
+                {pending.map((p) => (
+                  <option key={`pending:${p.name}`} value={p.name} disabled>⏳ {p.name} — serverga yuklanmoqda{p.progress > 0 ? ` ${p.progress}%` : "…"}</option>
+                ))}
+                {template && !templatePending && !catalog.templates.some((t) => t.name === template) ? <option value={template}>{template}</option> : null}
               </select>
             </div>
             <div className="field">
@@ -328,6 +341,11 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
               </select>
             </div>
           )}
+          {templatePending ? (
+            <div className="hint" style={{ color: "var(--danger)" }}>«{template}» shabloni hali serverga yuklanmoqda: kompyuterga tushib o&apos;rnatilgach tanlash mumkin bo&apos;ladi.</div>
+          ) : pending.length > 0 ? (
+            <div className="hint">⏳ {pending.map((p) => `«${p.name}»`).join(", ")} serverga yuklanmoqda: kompyuterga tushib o&apos;rnatilgach shu ro&apos;yxatda tanlash mumkin bo&apos;ladi.</div>
+          ) : null}
           {!catalog.known ? <div className="hint">Shablonlar ro&apos;yxati desktop ilova katalog yuborgach chiqadi.</div> : null}
         </div>
         <div style={{ display: "grid", gap: 8, marginTop: 12 }}>

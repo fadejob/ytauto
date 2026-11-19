@@ -102,6 +102,8 @@ export type BotConfigInput = {
 export type Catalog = {
   voiceProfiles: string[];
   templates: { name: string; kind: string }[];
+  /** Botdan yuklangan, lekin hali birorta kompyuterga tushib o'rnatilmagan shablonlar: tanlab bo'lmaydi, "serverga yuklanmoqda" deb ko'rinadi. */
+  pendingTemplates: PendingTemplate[];
   defaults: { voiceProfile: string; template: string; format: number };
   youtube: { publishTime: string; timeZone: string };
   known: boolean; // false — desktop ilova katalogni hali yubormagan (standart qiymatlar)
@@ -232,6 +234,7 @@ export type TemplateUpload = {
   id: number; name: string; kind: "Mp4Reference" | "OpenFilmProject"; machine: string;
   status: "pending" | "downloading" | "importing" | "done" | "error"; progress: number; message: string | null; createdAt: string; size: number;
 };
+export type PendingTemplate = { name: string; progress: number };
 export type PreparedUpload = { groupId: string; path: string; uploadUrl: string };
 export type PreparedAudio = { path: string; uploadUrl: string };
 

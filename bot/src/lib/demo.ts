@@ -10,7 +10,7 @@ export const isDemo = () => process.env.DEMO_MODE === "1";
 
 const TZ = "Asia/Tashkent";
 export const demoCatalog: Catalog = {
-  voiceProfiles: ["MOSS ayol", "MOSS erkak"], templates: [{ name: "Clean explainer", kind: "OpenFilmProject" }, { name: "Neon facts", kind: "Mp4Reference" }], defaults: { voiceProfile: "MOSS ayol", template: "", format: 0 },
+  voiceProfiles: ["MOSS ayol", "MOSS erkak"], templates: [{ name: "Clean explainer", kind: "OpenFilmProject" }, { name: "Neon facts", kind: "Mp4Reference" }], pendingTemplates: [], defaults: { voiceProfile: "MOSS ayol", template: "", format: 0 },
   youtube: { publishTime: "18:00", timeZone: TZ }, known: true,
 };
 

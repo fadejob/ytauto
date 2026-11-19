@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { currentAccountId, sql } from "./db";
 import { isDemo } from "./demo";
 import { BUCKET, storageCfg } from "./storage";
-import type { PreparedUpload, TemplateUpload } from "./types";
+import type { PendingTemplate, PreparedUpload, TemplateUpload } from "./types";
 
 /**
  * Shablon yuklash: brauzer faylni Supabase Storage'ga (private "templates" bucket) imzolangan havola bilan to'g'ridan-to'g'ri yuboradi
@@ -79,6 +79,18 @@ export async function listUploads(): Promise<TemplateUpload[]> {
     status: r.status as TemplateUpload["status"], progress: r.progress as number, message: (r.message as string | null) ?? null,
     createdAt: (r.created_at_utc as Date).toISOString(), size: r.size as number,
   }));
+}
+
+/**
+ * Hali kompyuterga tushmagan yuklashlar (nom bo'yicha, eng ilg'or kompyuter progressi bilan).
+ * Shablon faqat kompyuter uni yuklab olib o'rnatgach (ytauto.templates'ga yozilgach) mavzuga tanlanadi.
+ */
+export async function pendingTemplates(): Promise<PendingTemplate[]> {
+  if (isDemo()) return demoList().filter((u) => u.status !== "done" && u.status !== "error").map((u) => ({ name: u.name, progress: u.progress }));
+  const rows = await sql()`SELECT name, max(progress)::int AS progress FROM ytauto.template_uploads
+                           WHERE status IN ('pending', 'downloading', 'importing') AND created_at_utc > now() - interval '23 hours'
+                           GROUP BY name ORDER BY min(id)`;
+  return rows.map((r) => ({ name: r.name as string, progress: r.progress as number }));
 }
 
 // ------------------------------------------------------------------ demo

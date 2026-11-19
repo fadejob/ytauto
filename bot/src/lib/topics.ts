@@ -3,6 +3,7 @@ import { isGuest, sql } from "./db";
 import { queueForAll } from "./commands";
 import { GEMINI_REQUIRED, geminiReady, getConfig } from "./config";
 import { templateCatalog } from "./library";
+import { pendingTemplates } from "./templates";
 import { attachAudio } from "./audio";
 import { removeObjects } from "./storage";
 import { readBlocks } from "./channel/store";
@@ -23,6 +24,8 @@ async function pickTemplateFormat(cat: Catalog, template?: string, format?: numb
   const channelVoice = isDemo() ? "" : await channelVoiceProfile(cat);
   const vc = voice !== undefined && voice !== "" ? voice : cfg.defaults.voiceProfile || channelVoice || cat.defaults.voiceProfile || cat.voiceProfiles[0] || "";
   if (![0, 1, 2].includes(fmt)) return { error: "Format noto'g'ri (0 = 16:9, 1 = Shorts 9:16, 2 = 1:1)." };
+  if (tpl && cat.pendingTemplates.some((p) => p.name === tpl))
+    return { error: `"${tpl}" shabloni hali serverga yuklanmoqda: kompyuterga tushib o'rnatilgach tanlash mumkin bo'ladi.` };
   if (tpl && cat.known && cat.templates.length > 0 && !cat.templates.some((t) => t.name === tpl)) return { error: `Shablon topilmadi: "${tpl}".` };
   // Bot ro'yxatidagi profil (masalan yangi «Mening ovozim») kompyuter katalogi yangilanmaguncha ham tanlanadi.
   if (vc && cat.known && cat.voiceProfiles.length > 0 && !cat.voiceProfiles.includes(vc) && !cfg.voice.profiles.some((p) => p.name === vc))
@@ -122,12 +125,17 @@ type CatalogJson = {
 };
 
 export async function getCatalog(): Promise<Catalog> {
-  if (isDemo()) return demoCatalog;
+  // Kompyuterga hali tushmagan yuklashlar (bir kompyuterda o'rnatilgan bo'lsa, u allaqachon tanlanadi).
+  const pendingOf = async (templates: { name: string }[]) =>
+    (await pendingTemplates()).filter((p) => !templates.some((t) => t.name === p.name));
+  if (isDemo()) return { ...demoCatalog, pendingTemplates: await pendingOf(demoCatalog.templates) };
   const [row] = await sql()`SELECT value FROM ytauto.shared_settings WHERE key = 'bot.catalog'`;
   const c = row ? (JSON.parse(row.value as string) as CatalogJson) : null;
+  const templates = (await templateCatalog()) ?? c?.templates ?? [];
   return {
     voiceProfiles: c?.voice_profiles ?? [],
-    templates: (await templateCatalog()) ?? c?.templates ?? [],
+    templates,
+    pendingTemplates: await pendingOf(templates),
     defaults: { voiceProfile: c?.defaults?.voice_profile ?? "", template: c?.defaults?.template ?? "", format: c?.defaults?.format ?? 0 },
     youtube: { publishTime: c?.youtube?.publish_time ?? "18:00", timeZone: c?.youtube?.time_zone ?? "Asia/Tashkent" },
     known: !!c,
