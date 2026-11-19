@@ -9,6 +9,19 @@ import VoiceClone from "./VoiceClone";
 import Library from "./Library";
 import Guests from "./Guests";
 import GeminiLimits from "./GeminiLimits";
+import { DEFAULT_GEMINI_CHAIN, limitsFor } from "@/lib/gemini-models";
+
+/**
+ * Claude Code (montaj) modeli: `claude --model <id>` ga uzatiladi. Bo'sh - Claude Code'ning o'z standarti.
+ * Fable - eng kuchli va eng qimmat; obunangizda bo'lmasa Claude Code xato beradi.
+ */
+const CLAUDE_MODELS: [string, string][] = [
+  ["", "Claude Code standarti"],
+  ["claude-opus-5-5", "Claude Opus 5.5 — tavsiya"],
+  ["claude-sonnet-5-5", "Claude Sonnet 5.5 — tezroq, arzonroq"],
+  ["claude-haiku-5-5", "Claude Haiku 5.5 — eng tez va arzon"],
+  ["claude-fable-5-2", "Claude Fable 5.2 — eng kuchli, eng qimmat"],
+];
 
 type Sch = { enabled: boolean; startTime: string; endTime: string; timeZoneId: string; wakeToRun: boolean; executionLimitHours: number };
 type Draft = BotConfigInput;
@@ -163,6 +176,20 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
                 <textarea className="textarea" rows={2} autoComplete="off" spellCheck={false} value={newKeys} placeholder={"Yangi kalit(lar): AIza…\nhar qatorga bittadan"} onChange={(e) => setNewKeys(e.target.value)} />
               </div>
               <div className="hint">Kalitlar tartib bilan ishlatiladi: biri limitga (429) tushsa keyingisi bilan davom etiladi, hammasi tugasa ish to&apos;xtaydi. AI yordamchi ham shu kalitlardan foydalanadi.</div>
+              {(() => {
+                // Zanjirning birinchisi - joriy model; tanlangani boshga o'tadi, qolganlari shu tartibda zaxira bo'lib qoladi.
+                const chain = cfg.gemini.models.length ? cfg.gemini.models : DEFAULT_GEMINI_CHAIN;
+                const options = [...chain, ...DEFAULT_GEMINI_CHAIN.filter((m) => !chain.some((c) => c.toLowerCase() === m.toLowerCase()))];
+                const perDay = (m: string) => { const l = limitsFor(m); return l ? ` — bepul kalitda kuniga ${l.rpd.toLocaleString("en-US").replace(/,/g, " ")} so'rov` : ""; };
+                return (
+                  <div className="field"><label>Joriy model</label>
+                    <select className="input" value={chain[0]} onChange={(e) => G({ models: [e.target.value, ...options.filter((m) => m !== e.target.value)] })}>
+                      {options.map((m) => <option key={m} value={m}>{m}{perDay(m)}</option>)}
+                    </select>
+                    <div className="hint">Ssenariy va boshqa Gemini ishlari shu model bilan bajariladi. Uning limiti tugasa yoki ishlamasa, qolgan modellarga navbat bilan avtomatik o&apos;tiladi.</div>
+                  </div>
+                );
+              })()}
             </div>
             {!guest ? <GeminiLimits toast={toast} /> : null}
 
@@ -170,7 +197,11 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
             <div className="sect">Claude (montaj)</div>
             <div className="card formcard">
               <div className="grid2">
-                <div className="field"><label>Model (bo&apos;sh — standart)</label><input className="input" value={cfg.claude.model} onChange={(e) => C({ model: e.target.value })} /></div>
+                <div className="field"><label>Model</label>
+                  <select className="input" value={cfg.claude.model} onChange={(e) => C({ model: e.target.value })}>
+                    {CLAUDE_MODELS.map(([id, label]) => <option key={id || "default"} value={id}>{label}</option>)}
+                    {cfg.claude.model && !CLAUDE_MODELS.some(([id]) => id === cfg.claude.model) ? <option value={cfg.claude.model}>{cfg.claude.model}</option> : null}
+                  </select></div>
                 <div className="field"><label>Maks. byudjet USD (0 — cheklovsiz)</label><input className="input" inputMode="decimal" value={cfg.claude.maxBudgetUsd} onChange={(e) => C({ maxBudgetUsd: num(e.target.value) })} /></div>
               </div>
             </div>
