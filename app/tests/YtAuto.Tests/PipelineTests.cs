@@ -277,7 +277,12 @@ internal sealed class Harness : IDisposable
         Film = Film, Media = Media, Uploader = Uploader, Resources = new FakeResources(), Paths = Paths, Clock = Clock,
         JobLogFactory = _ => Log, RunLog = Log, PostUploadPoll = TimeSpan.Zero, StopBeforeUpload = stopBeforeUpload, OnPublished = OnPublished,
         OnVoiceCloneStatus = OnVoiceCloneStatus, Visuals = Visuals, MediaLibrary = MediaLib, Music = MusicCache,
+        DemoWriter = DemoWriter, DemoMedia = DemoMedia, DemoResults = DemoResults, PublishAllowed = PublishAllowed,
     });
+    public YtAuto.Core.Demo.IDemoScriptWriter? DemoWriter;
+    public YtAuto.Core.Demo.IDemoMediaFetcher? DemoMedia;
+    public YtAuto.Core.Demo.IDemoResultSink? DemoResults;
+    public Func<bool>? PublishAllowed;
     public YtAuto.Core.Visuals.IVisualDirector? Visuals;
     public YtAuto.Core.Visuals.IMediaLibrary? MediaLib;
     public IMusicCache? MusicCache;
