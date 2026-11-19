@@ -59,6 +59,74 @@ Output only the markdown document.
         return text;
     }
 
+    public const string MotionGuidePrompt = """
+You are the motion designer of a YouTube channel. The video clip(s) above are from the channel's template video "{name}"
+({clips}). Owner notes about the template: {notes}
+
+Watch the MOTION carefully, frame by frame, and write MOTION_GUIDE.md: a precise animation system another motion designer will
+follow to animate NEW videos built from HTML/CSS/SVG pages (each scene is one page whose picture depends only on the time t)
+so they move exactly like this channel. Describe motion only, never the topic or content. Be concrete and measurable:
+durations in seconds, delays and staggers in seconds, distances as % of frame, scale factors, opacity values, easing as
+CSS cubic-bezier(...) or a named curve. If something does not happen in the clips, say "not used" instead of inventing it.
+
+Sections (use these headings):
+1. Pacing: average scene/shot length (s), cuts per minute, how long a scene holds after its last element appears, rhythm (steady, accelerating, beat-driven).
+2. Scene transitions: type (hard cut, cross-fade, slide/push with direction, wipe, zoom-through, mask/shape reveal, whip pan, glitch...), duration, easing, what moves.
+3. Text animation: how headlines and labels enter and leave (fade, slide up from N %, scale-in, typewriter, word-by-word, per-letter, mask reveal, highlight sweep, underline draw), duration, stagger, easing; how key words are emphasised over time.
+4. Shapes, cards, icons and charts: entrance (pop with overshoot, draw-on stroke, grow from origin, slide), duration, stagger between items, how lists/steps/numbers build (count-up speed), connectors and arrows.
+5. Images and photos: entrance, Ken Burns / parallax (scale from→to per second, pan direction), masks, frames.
+6. Background and ambient motion: moving gradients, particles, grids, light sweeps, loops (period in s), camera drift/zoom on the whole scene.
+7. Exits: do elements leave before the cut or does the cut take them; exit style and duration.
+8. Recurring motion brand elements: logo stings, progress bars, counters, lower thirds, stickers - when they appear and how they move.
+9. Recipe: a compact CSS block a designer can paste - custom properties for the standard durations, staggers and easings
+   (e.g. --dur-in, --dur-out, --stagger, --ease-in, --ease-out, --ease-pop) and @keyframes for the 4-8 most used moves,
+   each with a one-line comment saying when to use it.
+10. Do / Don't: 6-10 short rules that keep new videos moving on-brand.
+
+Output only the markdown document.
+""";
+
+    /// <summary>
+    /// Shablon videosining harakat tizimi. Klip(lar) video sifatida (inline, ovozsiz, past o'lchamda) yuboriladi: Gemini so'ralgan fps bilan
+    /// kadr oladi va MEDIA_RESOLUTION_LOW tufayli kadr boshiga ~66 token sarflanadi. Model video_metadata/mediaResolution'ni rad etsa,
+    /// ularsiz bir marta qayta so'raladi (standart 1 kadr/s).
+    /// </summary>
+    public async Task<string> TemplateMotionGuideAsync(IReadOnlyList<MotionClip> clips, double fps, string templateName, string notes, IJobLog log, CancellationToken ct)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        var desc = string.Join("; ", clips.Select((c, i) => $"clip {i + 1}: {c.StartSec.ToString("0.#", inv)}–{(c.StartSec + c.DurationSec).ToString("0.#", inv)} s of the template"));
+        var prompt = MotionGuidePrompt.Replace("{name}", templateName).Replace("{clips}", desc)
+            .Replace("{notes}", string.IsNullOrWhiteSpace(notes) ? "(none)" : notes.Trim());
+        JsonArray Parts(bool tuned)
+        {
+            var parts = new JsonArray();
+            foreach (var c in clips)
+            {
+                var part = new JsonObject { ["inline_data"] = new JsonObject { ["mime_type"] = "video/mp4", ["data"] = Convert.ToBase64String(File.ReadAllBytes(c.Path)) } };
+                if (tuned) part["video_metadata"] = new JsonObject { ["fps"] = fps };
+                parts.Add(part);
+            }
+            parts.Add(new JsonObject { ["text"] = prompt });
+            return parts;
+        }
+        JsonObject Config(bool tuned)
+        {
+            var g = new JsonObject { ["temperature"] = 0.3, ["maxOutputTokens"] = 12288 };
+            if (tuned) g["mediaResolution"] = "MEDIA_RESOLUTION_LOW";
+            return g;
+        }
+        JsonNode json;
+        try { json = await CallAsync(Parts(true), Config(true), log, ct).ConfigureAwait(false); }
+        catch (PipelineException e) when (e.Code == "gemini_request")
+        {
+            log.Warn($"Gemini video sozlamalarini (fps, past o'lcham) qabul qilmadi, standart rejimda qayta so'raladi: {e.Message}", "Edit");
+            json = await CallAsync(Parts(false), Config(false), log, ct).ConfigureAwait(false);
+        }
+        var text = GeminiScriptGenerator.TextOf(json).Trim();
+        if (text.StartsWith("```")) text = text.Trim('`').Replace("markdown\n", "", StringComparison.OrdinalIgnoreCase).Trim();
+        return text;
+    }
+
     public const string MediaPlanPrompt = """
 You plan real images for an explainer video. The narration is below with timings (seconds).
 Choose the moments where a REAL picture explains the words better than drawn shapes, and say what to search for.

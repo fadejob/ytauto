@@ -156,6 +156,8 @@ public sealed class VisualSettings
     public int MaxMedia { get; set; } = 16;
     /// <summary>Shablon kadrlaridan Gemini dizayn qo'llanmasi (STYLE_GUIDE.md) yaratiladi va Claude'ga beriladi.</summary>
     public bool TemplateStyleGuide { get; set; } = true;
+    /// <summary>Shablon videosining harakati (animatsiya, o'tishlar, temp) Gemini'ga video sifatida beriladi - MOTION_GUIDE.md. Shablon uchun bir marta.</summary>
+    public bool TemplateMotionGuide { get; set; } = true;
     /// <summary>Render'dan keyin kadrlar shablon bilan solishtiriladi; ball past bo'lsa Claude tuzatadi.</summary>
     public bool StyleReview { get; set; } = true;
     /// <summary>Shundan past ball (0-10) - tuzatishga qaytariladi.</summary>

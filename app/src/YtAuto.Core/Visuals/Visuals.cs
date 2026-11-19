@@ -105,6 +105,9 @@ public sealed class MediaManifest
     private static string Trim(string s, int n) { s = s.Replace("\n", " ").Trim(); return s.Length > n ? s[..n] + "…" : s; }
 }
 
+/// <summary>Harakat tahlili uchun shablon videosidan kesilgan klip: fayl va asl videodagi boshlanish vaqti (s).</summary>
+public sealed record MotionClip(string Path, double StartSec, double DurationSec);
+
 /// <summary>Tayyor video kadrlarining shablon uslubiga mosligi (Gemini vision): 0-10 ball va tuzatish kerak bo'lgan joylar.</summary>
 public sealed class StyleReview
 {
@@ -118,6 +121,11 @@ public interface IVisualDirector
 {
     /// <summary>Shablon kadrlaridan dizayn tizimi (STYLE_GUIDE.md matni): ranglar (hex), shrift, kompozitsiya, fon, ikon/rasm uslubi, harakat.</summary>
     Task<string> TemplateStyleGuideAsync(IReadOnlyList<string> framePaths, string templateName, string notes, IJobLog log, CancellationToken ct);
+    /// <summary>
+    /// Shablon videosining HARAKATI (MOTION_GUIDE.md matni): elementlar qanday paydo bo'ladi, davomiylik va easing, sahna o'tishlari,
+    /// temp, kamera harakati, matn animatsiyasi. Model kadrlarni emas, videoning o'zini (kichik klip, <paramref name="fps"/> kadr/s) ko'radi.
+    /// </summary>
+    Task<string> TemplateMotionGuideAsync(IReadOnlyList<MotionClip> clips, double fps, string templateName, string notes, IJobLog log, CancellationToken ct);
     /// <summary>Subtitr ma'nosiga qarab qaysi sahnaga qanday real ikon/logo/foto kerakligi.</summary>
     Task<MediaPlan> PlanMediaAsync(string subtitleText, IReadOnlyList<SubtitleCue> cues, string channelContext, int maxItems, IJobLog log, CancellationToken ct);
     /// <summary>Tayyor video kadrlarini shablon kadrlari va uslub qo'llanmasi bilan solishtiradi.</summary>

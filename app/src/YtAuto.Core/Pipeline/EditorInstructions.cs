@@ -16,7 +16,7 @@ internal static class EditorInstructions
     public const string MontageHeading = "## Channel style (learned from this channel's latest videos; keep new videos consistent with it)";
 
     public static string Build(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues, double audioSec,
-        TemplateDefinition? tpl, IReadOnlyList<string> refFrames, bool hasStyleGuide = false, MediaManifest? media = null)
+        TemplateDefinition? tpl, IReadOnlyList<string> refFrames, bool hasStyleGuide = false, MediaManifest? media = null, bool hasMotionGuide = false)
     {
         var (w, h) = c.StageSize;
         var inv = CultureInfo.InvariantCulture;
@@ -53,6 +53,8 @@ internal static class EditorInstructions
         }
         if (hasStyleGuide)
             sb.AppendLine($"- **`reference/STYLE_GUIDE.md`: the channel's design system, extracted from the template{(tpl is null ? "" : $" \"{tpl.Name}\"")}. It is binding: exact hex colours, fonts, layout, image treatment, brand elements, motion. Read it whole before designing.**");
+        if (hasMotionGuide)
+            sb.AppendLine($"- **`reference/MOTION_GUIDE.md`: how the template{(tpl is null ? "" : $" \"{tpl.Name}\"")} MOVES, analysed from the video itself (not stills): pacing, scene transitions, text/shape/image entrances, durations, staggers, easing, ambient motion, and a CSS recipe. It is binding for all animation; where it differs from the motion section of STYLE_GUIDE.md or the generic motion rules below, MOTION_GUIDE.md wins. Read it whole before animating.**");
         if (refFrames.Count > 0)
         {
             sb.AppendLine($"- Template: {refFrames.Count} frames from the channel's template video{(tpl is null ? "" : $" \"{tpl.Name}\"")}. Open ALL of them with the Read tool before designing; copy their look (colours, typography, layout, backgrounds, how images and icons are framed, recurring brand elements), not their content:");
@@ -68,9 +70,9 @@ internal static class EditorInstructions
         sb.AppendLine();
         sb.AppendLine("Group these lines into scenes by meaning (one idea per scene). Make one page per scene and cut them end to end on one track.");
         sb.AppendLine();
-        if (refFrames.Count > 0 || hasStyleGuide) AppendTemplateFidelity(sb);
+        if (refFrames.Count > 0 || hasStyleGuide || hasMotionGuide) AppendTemplateFidelity(sb, hasMotionGuide);
         if (media is { Assets.Count: > 0 }) AppendMedia(sb, media, inv);
-        AppendDesignBar(sb, w, h, tpl is not null || refFrames.Count > 0);
+        AppendDesignBar(sb, w, h, tpl is not null || refFrames.Count > 0, hasMotionGuide);
         sb.AppendLine("## Hard requirements (the worker checks them automatically)");
         sb.AppendLine();
         sb.AppendLine($"1. `film/film.html` with `<meta name=\"viewport\" content=\"width={w}, height={h}\">`.");
@@ -94,7 +96,7 @@ internal static class EditorInstructions
     }
 
     /// <summary>Shablonga sodiqlik: video shablon kanalidan chiqqandek ko'rinishi kerak (render'dan keyin Gemini solishtiradi).</summary>
-    private static void AppendTemplateFidelity(StringBuilder sb)
+    private static void AppendTemplateFidelity(StringBuilder sb, bool hasMotionGuide = false)
     {
         sb.AppendLine("## Template fidelity (the most important design goal)");
         sb.AppendLine();
@@ -103,6 +105,12 @@ internal static class EditorInstructions
         sb.AppendLine("- Rebuild the template's recurring elements as reusable parts: background treatment, card/panel style, headline placement and highlight style, labels, lower-third or watermark position, progress or counter elements.");
         sb.AppendLine("- Match the template's density and pacing: as much text per scene, the same balance of text vs picture, similar entrance motion and transitions.");
         sb.AppendLine("- Adapt only the content to this video's topic. Do not import colours, fonts or effects that the template does not use.");
+        if (hasMotionGuide)
+        {
+            sb.AppendLine("- Move like the template: put MOTION_GUIDE.md's durations, staggers and easings in `film/style.css` as CSS variables (its recipe section) and use them for every animation;");
+            sb.AppendLine("  use the same entrance types for text, shapes and images, the same scene transition type and length, and a similar scene length and rhythm.");
+            sb.AppendLine("  Do not add motion styles the template does not use. Keep OpenFilm's rules: the picture depends only on t, and frame 0 of each page is already readable.");
+        }
         sb.AppendLine();
     }
 
@@ -149,7 +157,7 @@ internal static class EditorInstructions
     /// Sahna sahifalari (iframe) uchun dizayn sifati talablari. Har doim qo'shiladi (foydalanuvchi o'z montaj promptini yozgan bo'lsa ham):
     /// oldingi videolarda kontent kichik, yuqoriga tiqilgan, kadrning yarmi bo'sh, sahna boshida qora/xira kadr bo'lardi.
     /// </summary>
-    private static void AppendDesignBar(StringBuilder sb, int w, int h, bool hasTemplate)
+    private static void AppendDesignBar(StringBuilder sb, int w, int h, bool hasTemplate, bool hasMotionGuide = false)
     {
         var vertical = h > w;
         var px = (double v) => Math.Round(v * Math.Min(w, h) / 1080.0).ToString(CultureInfo.InvariantCulture);
@@ -172,7 +180,9 @@ internal static class EditorInstructions
         sb.AppendLine($"- Typography: one font family from the system (e.g. \"Segoe UI\", Arial; no web fonts). Headline {px(64)}–{px(96)} px, bold, max 6 words; labels at least {px(30)} px; one or two key words in the accent colour.");
         sb.AppendLine($"- Shapes look finished: rounded corners, consistent stroke widths ({px(4)}–{px(6)} px), soft shadows or glow on the focal element, icons drawn in SVG with the same style everywhere. No emoji, no clip-art look, no placeholder boxes.");
         sb.AppendLine();
-        sb.AppendLine("Motion (the picture depends only on t)");
+        sb.AppendLine(hasMotionGuide
+            ? "Motion (the picture depends only on t; the timings and styles in `reference/MOTION_GUIDE.md` replace the defaults below)"
+            : "Motion (the picture depends only on t)");
         sb.AppendLine("- Frame 0 of every page is already a good-looking, readable frame: the headline and the focal visual are visible at t=0 (at most a quick 0–0.4 s ease-in on top of an already visible layout). Never start a scene on a black, empty or faded frame.");
         sb.AppendLine("- Build the explanation with staged reveals timed to the subtitle words (items appear, lines draw, numbers count up), each 0.3–0.8 s with ease-out; keep a gentle continuous motion (slow drift/scale 1.00→1.04) so no scene is a frozen slide.");
         sb.AppendLine("- Everything stays on screen until the scene ends; no element disappears early, no fade-out to black before the cut.");

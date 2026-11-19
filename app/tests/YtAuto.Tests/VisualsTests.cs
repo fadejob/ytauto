@@ -9,8 +9,17 @@ namespace YtAuto.Tests;
 
 internal sealed class FakeVisuals : IVisualDirector
 {
-    public int GuideCalls, PlanCalls, ReviewCalls;
+    public int GuideCalls, PlanCalls, ReviewCalls, MotionCalls;
     public double Score = 9;
+    public IReadOnlyList<MotionClip> LastClips = Array.Empty<MotionClip>();
+    public double LastFps;
+    /// <summary>Chaqirilgan paytda klip fayllari mavjud edimi (keyin o'chiriladi).</summary>
+    public bool ClipsExisted;
+    public Task<string> TemplateMotionGuideAsync(IReadOnlyList<MotionClip> clips, double fps, string templateName, string notes, IJobLog log, CancellationToken ct)
+    {
+        MotionCalls++; LastClips = clips; LastFps = fps; ClipsExisted = clips.All(c => File.Exists(c.Path));
+        return Task.FromResult("# Motion\n## 2. Scene transitions\n- push left, 0.4 s, cubic-bezier(0.65,0,0.35,1)\n" + new string('m', 300));
+    }
     public MediaPlan Plan = new() { Items = { new() { Kind = "logo", Query = "Visa", Purpose = "card brand", At = 1 }, new() { Kind = "photo", Query = "card terminal", Purpose = "payment", At = 3 } } };
     public Task<string> TemplateStyleGuideAsync(IReadOnlyList<string> framePaths, string templateName, string notes, IJobLog log, CancellationToken ct)
     { GuideCalls++; return Task.FromResult("# Style\n## 1. Palette\n- background #0b1020\n- accent #facc15\n" + new string('x', 300)); }
@@ -116,9 +125,62 @@ public class VisualsTests
         Assert.Contains("reference/style_frame_01.jpg", h.Editor.LastInstructions); // kadrlar baribir beriladi
     }
 
+    [Fact]
+    public async Task MotionGuide_FromVideoClip_GoesToClaude_AndIsCachedPerTemplate()
+    {
+        using var h = WithTemplate(new Harness());
+        var v = (FakeVisuals)h.Visuals!;
+        Assert.Equal(RunOutcome.Completed, (await h.Run()).Outcome);
+
+        Assert.Equal(1, v.MotionCalls);
+        var clip = Assert.Single(v.LastClips);               // 30 s shablon - butun video bitta klip
+        Assert.Equal(0, clip.StartSec);
+        Assert.True(v.ClipsExisted);
+        Assert.False(File.Exists(clip.Path));                // vaqtinchalik klip o'chirildi
+        Assert.Equal(5, v.LastFps);
+        Assert.Contains(h.Media.Clips, c => c.Width == 640);
+
+        var ins = h.Editor.LastInstructions!;
+        Assert.Contains("reference/MOTION_GUIDE.md", ins);
+        Assert.Contains("Move like the template", ins);
+        Assert.Contains("the timings and styles in `reference/MOTION_GUIDE.md` replace the defaults", ins);
+
+        var j2 = h.AddJob("Second topic"); j2.TemplateName = "Brand"; h.Store.Update(j2);
+        await h.Run();
+        Assert.Equal(1, v.MotionCalls);                      // ikkinchi videoda qayta tahlil qilinmaydi
+        Assert.Contains("reference/MOTION_GUIDE.md", h.Editor.LastInstructions);
+    }
+
+    [Fact]
+    public async Task MotionGuideOff_NoVideoAnalysis()
+    {
+        using var h = WithTemplate(new Harness());
+        h.Settings.S.Visuals.TemplateMotionGuide = false;
+        await h.Run();
+        Assert.Equal(0, ((FakeVisuals)h.Visuals!).MotionCalls);
+        Assert.Empty(h.Media.Clips);
+        Assert.DoesNotContain("reference/MOTION_GUIDE.md", h.Editor.LastInstructions);
+        Assert.Contains("reference/STYLE_GUIDE.md", h.Editor.LastInstructions); // kadr tahlili ishlayveradi
+    }
+
+    [Theory]
+    [InlineData(60, 1, 5)]     // butun video, 5 kadr/s = 300 kadr
+    [InlineData(150, 1, 3)]    // 450 / 150
+    [InlineData(600, 2, 3)]    // boshidan 75 s + o'rtasidan 75 s
+    [InlineData(1, 0, 0)]      // juda qisqa - tahlil yo'q
+    public void MotionPlan_BoundsFramesAndTokens(double duration, int segments, double fps)
+    {
+        var (segs, f) = JobRunner.MotionPlan(duration);
+        Assert.Equal(segments, segs.Count);
+        Assert.Equal(fps, f);
+        Assert.True(segs.Sum(s => s.Duration) * f <= JobRunner.MotionMaxFrames);
+        if (segments == 2) Assert.Equal((262.5, 75.0), segs[1]);
+    }
+
     private sealed class ThrowingVisuals : IVisualDirector
     {
         public Task<string> TemplateStyleGuideAsync(IReadOnlyList<string> f, string n, string notes, IJobLog log, CancellationToken ct) => throw new InvalidOperationException("boom");
+        public Task<string> TemplateMotionGuideAsync(IReadOnlyList<MotionClip> c, double fps, string n, string notes, IJobLog log, CancellationToken ct) => throw new InvalidOperationException("boom");
         public Task<MediaPlan> PlanMediaAsync(string s, IReadOnlyList<SubtitleCue> c, string ch, int m, IJobLog log, CancellationToken ct) => throw new InvalidOperationException("boom");
         public Task<StyleReview> ReviewAgainstTemplateAsync(IReadOnlyList<string> a, IReadOnlyList<string> b, string g, IJobLog log, CancellationToken ct) => throw new InvalidOperationException("boom");
     }

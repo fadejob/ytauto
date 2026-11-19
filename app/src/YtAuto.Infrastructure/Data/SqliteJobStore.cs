@@ -785,6 +785,7 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 if (vis["realMedia"] is System.Text.Json.Nodes.JsonValue rm && rm.TryGetValue<bool>(out var rmv)) s.Visuals.RealMedia = rmv;
                 if (vis["maxMedia"] is System.Text.Json.Nodes.JsonValue mm && mm.TryGetValue<int>(out var mmv)) s.Visuals.MaxMedia = Math.Clamp(mmv, 0, 40);
                 if (vis["templateStyleGuide"] is System.Text.Json.Nodes.JsonValue sg && sg.TryGetValue<bool>(out var sgv)) s.Visuals.TemplateStyleGuide = sgv;
+                if (vis["templateMotion"] is System.Text.Json.Nodes.JsonValue tm && tm.TryGetValue<bool>(out var tmv)) s.Visuals.TemplateMotionGuide = tmv;
                 if (vis["styleReview"] is System.Text.Json.Nodes.JsonValue sr && sr.TryGetValue<bool>(out var srv)) s.Visuals.StyleReview = srv;
                 if (vis["minStyleScore"] is System.Text.Json.Nodes.JsonValue ms && ms.TryGetValue<double>(out var msv)) s.Visuals.MinStyleScore = Math.Clamp(msv, 0, 10);
                 // Sifatli stok foto manbalari (bepul kalitlar): bo'lmasa Openverse/Wikimedia ishlatiladi.

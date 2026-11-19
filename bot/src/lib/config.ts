@@ -38,7 +38,7 @@ const DEF: BotConfig = {
     notifySubscribers: true, setRecordingDate: false, locationDescription: "", defaultTags: "", defaultDescription: "", minLeadMinutes: 30,
   },
   openFilm: { renderWorkers: 1, fps: 30, loudnessLufs: -14, burnSubtitles: true, lookFullAfterRender: true, renderTimeoutMinutes: 90 },
-  visuals: { realMedia: true, maxMedia: 16, templateStyleGuide: true, styleReview: true, minStyleScore: 6.5, pexelsKeySet: false, pixabayKeySet: false },
+  visuals: { realMedia: true, maxMedia: 16, templateStyleGuide: true, templateMotion: true, styleReview: true, minStyleScore: 6.5, pexelsKeySet: false, pixabayKeySet: false },
 };
 
 let demoStored: Stored = {};
@@ -216,7 +216,7 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
     },
     visuals: input.visuals ? {
       realMedia: !!input.visuals.realMedia, maxMedia: Math.round(num(input.visuals.maxMedia, 0, 40, "Rasmlar soni")),
-      templateStyleGuide: !!input.visuals.templateStyleGuide, styleReview: !!input.visuals.styleReview,
+      templateStyleGuide: !!input.visuals.templateStyleGuide, templateMotion: input.visuals.templateMotion !== false, styleReview: !!input.visuals.styleReview,
       minStyleScore: num(input.visuals.minStyleScore, 0, 10, "Shablonga moslik bali"),
       pexelsApiKey: stockKey(input.visuals.pexelsApiKey, input.visuals.pexelsKeySet, cur.visuals?.pexelsApiKey, "Pexels"),
       pixabayApiKey: stockKey(input.visuals.pixabayApiKey, input.visuals.pixabayKeySet, cur.visuals?.pixabayApiKey, "Pixabay"),

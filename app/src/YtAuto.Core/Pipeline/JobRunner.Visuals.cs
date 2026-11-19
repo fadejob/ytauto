@@ -15,10 +15,28 @@ namespace YtAuto.Core.Pipeline;
 /// </summary>
 public sealed partial class JobRunner
 {
-    /// <summary>Uslub to'plami: shablon kadrlari (edit/ ga nisbiy) va STYLE_GUIDE.md matni (bo'lmasa "").</summary>
-    internal sealed record TemplateStyle(IReadOnlyList<string> Frames, IReadOnlyList<string> FrameFiles, string Guide);
+    /// <summary>Uslub to'plami: shablon kadrlari (edit/ ga nisbiy), STYLE_GUIDE.md va MOTION_GUIDE.md matni (bo'lmasa "").</summary>
+    internal sealed record TemplateStyle(IReadOnlyList<string> Frames, IReadOnlyList<string> FrameFiles, string Guide, string Motion = "");
 
     private static readonly double[] StyleFractions = { 0.03, 0.1, 0.18, 0.26, 0.34, 0.42, 0.5, 0.58, 0.66, 0.74, 0.84, 0.95 };
+
+    /// <summary>Gemini ko'radigan kadrlar chegarasi (MEDIA_RESOLUTION_LOW: kadr ~66 token, ya'ni tahlil ~30k token, bir marta).</summary>
+    internal const int MotionMaxFrames = 450;
+    private const double MotionWholeMaxSec = 150, MotionSegmentSec = 75;
+
+    /// <summary>
+    /// Harakat tahlili uchun qaysi qismlar va qanday fps: 150 s gacha - butun video; uzunrog'i - boshidan 75 s (intro, birinchi sahnalar)
+    /// va o'rtasidan 75 s. fps = 1..5, jami kadr <see cref="MotionMaxFrames"/> dan oshmaydi (tez o'tishlarni ko'rish uchun imkon qadar yuqori).
+    /// </summary>
+    internal static (IReadOnlyList<(double Start, double Duration)> Segments, double Fps) MotionPlan(double duration)
+    {
+        if (duration < 2) return (Array.Empty<(double, double)>(), 0);
+        var segs = duration <= MotionWholeMaxSec
+            ? new List<(double, double)> { (0, duration) }
+            : new List<(double, double)> { (0, MotionSegmentSec), (Math.Round(duration / 2 - MotionSegmentSec / 2, 1), MotionSegmentSec) };
+        var total = segs.Sum(s => s.Item2);
+        return (segs, Math.Clamp(Math.Floor(MotionMaxFrames / total), 1, 5));
+    }
 
     /// <summary>
     /// Shablon videosidan 12 kadr va (sozlamada yoqilgan bo'lsa) Gemini dizayn qo'llanmasi. Natija shablonlar papkasida
@@ -63,6 +81,8 @@ public sealed partial class JobRunner
             }
         }
 
+        var motion = await PrepareMotionGuideAsync(c, tpl!, refMp4, info.Duration, cacheDir).ConfigureAwait(false);
+
         // Claude o'z papkasi ichidagilarni o'qiydi: kadrlar va qo'llanma edit/reference/ ga nusxalanadi.
         var refDir = Path.Combine(c.EditDir, "reference");
         Directory.CreateDirectory(refDir);
@@ -74,7 +94,49 @@ public sealed partial class JobRunner
             rel.Add(Path.GetRelativePath(c.EditDir, dst).Replace('\\', '/'));
         }
         if (guide.Length > 0) File.WriteAllText(Path.Combine(refDir, "STYLE_GUIDE.md"), guide, new UTF8Encoding(false));
-        return new(rel, cached, guide);
+        if (motion.Length > 0) File.WriteAllText(Path.Combine(refDir, "MOTION_GUIDE.md"), motion, new UTF8Encoding(false));
+        return new(rel, cached, guide, motion);
+    }
+
+    /// <summary>
+    /// Shablon harakati (MOTION_GUIDE.md): kichik ovozsiz klip(lar) Gemini'ga VIDEO sifatida beriladi - animatsiya, o'tishlar, temp, easing.
+    /// Shablon bo'yicha keshlanadi (bir marta tahlil qilinadi). Xato bo'lsa ogohlantirish, video faqat kadrlar bilan davom etadi.
+    /// </summary>
+    private async Task<string> PrepareMotionGuideAsync(JobContext c, TemplateDefinition tpl, string refMp4, double duration, string cacheDir)
+    {
+        var path = Path.Combine(cacheDir, "MOTION_GUIDE.md");
+        if (File.Exists(path)) return File.ReadAllText(path);
+        if (!c.S.Visuals.TemplateMotionGuide || _x.Visuals is null) return "";
+        var (segs, fps) = MotionPlan(duration);
+        if (segs.Count == 0) return "";
+        var clips = new List<MotionClip>();
+        try
+        {
+            foreach (var (start, dur) in segs)
+            {
+                var clip = Path.Combine(cacheDir, $"motion_{clips.Count + 1}.mp4");
+                await _x.Media.MakeAnalysisClipAsync(refMp4, start, dur, clip, 640, c.Ct).ConfigureAwait(false);
+                clips.Add(new MotionClip(clip, start, dur));
+            }
+            var bytes = clips.Sum(x => new FileInfo(x.Path).Length);
+            if (bytes > 18L * 1024 * 1024) throw new InvalidOperationException($"tahlil klipi juda katta ({bytes / 1048576.0:0.0} MB)");
+            var frames = (int)(segs.Sum(s => s.Duration) * fps);
+            c.Log.Info($"Shablon «{tpl.Name}» harakati tahlil qilinmoqda: {segs.Sum(s => s.Duration):0} s video, {fps:0} kadr/s (~{frames} kadr, ~{frames * 66 / 1000 + 2}k token, bir marta).", "Edit");
+            var motion = await _x.Visuals.TemplateMotionGuideAsync(clips, fps, tpl.Name, tpl.Notes ?? "", c.Log, c.Ct).ConfigureAwait(false);
+            if (motion.Length <= 200) return "";
+            File.WriteAllText(path, motion, new UTF8Encoding(false));
+            c.Log.Info($"Shablon «{tpl.Name}» harakati tahlil qilindi (MOTION_GUIDE.md).", "Edit");
+            return motion;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            c.Log.Warn($"Shablon harakatini tahlil qilib bo'lmadi, faqat kadrlar va uslub qo'llanmasi beriladi: {e.Message}", "Edit");
+            return "";
+        }
+        finally
+        {
+            foreach (var x in clips) try { File.Delete(x.Path); } catch { }
+        }
     }
 
     private string MediaCacheDir(JobContext c) => Path.Combine(c.EditDir, "media_cache");

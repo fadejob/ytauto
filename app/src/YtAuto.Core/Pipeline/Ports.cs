@@ -220,6 +220,11 @@ public interface IMediaProbe
     /// <summary>MP4 ichiga muqova rasmini (attached_pic) qo'shadi: video va audio qayta kodlanmaydi. Natija - yangi fayl.</summary>
     Task EmbedCoverAsync(string mp4, string image, string outMp4, CancellationToken ct);
     Task<(double Mean, double Std)> FrameLumaAsync(string video, double atSec, CancellationToken ct);
+    /// <summary>
+    /// Tahlil uchun kichik klip: <paramref name="startSec"/> dan <paramref name="durationSec"/> soniya, ovozsiz, <paramref name="width"/> px kenglikda,
+    /// kuchli siqilgan H.264 MP4 (Gemini'ga video sifatida yuborish uchun - harakat saqlanadi, hajm kichik).
+    /// </summary>
+    Task MakeAnalysisClipAsync(string video, double startSec, double durationSec, string outMp4, int width, CancellationToken ct);
     string Version { get; }
 }
 

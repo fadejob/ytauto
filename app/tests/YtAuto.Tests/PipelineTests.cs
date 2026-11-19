@@ -180,6 +180,9 @@ internal sealed class FakeMedia : IMediaProbe
     public Task EmbedCoverAsync(string mp4, string image, string outMp4, CancellationToken ct)
     { Embeds++; File.WriteAllBytes(outMp4, File.ReadAllBytes(mp4).Concat(File.ReadAllBytes(image)).ToArray()); return Task.CompletedTask; }
     public Task<(double Mean, double Std)> FrameLumaAsync(string video, double at, CancellationToken ct) => Task.FromResult((90.0, 40.0));
+    public readonly List<(double Start, double Duration, int Width)> Clips = new();
+    public Task MakeAnalysisClipAsync(string video, double startSec, double durationSec, string outMp4, int width, CancellationToken ct)
+    { Clips.Add((startSec, durationSec, width)); File.WriteAllBytes(outMp4, new byte[64]); return Task.CompletedTask; }
 }
 
 internal sealed class FakeUploader : IVideoUploader

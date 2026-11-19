@@ -162,6 +162,19 @@ public sealed class FfmpegMediaProbe : IMediaProbe
             throw PipelineException.Transient("ffmpeg_cover", $"Muqova videoga qo'shilmadi: {err.Trim()}");
     }
 
+    public async Task MakeAnalysisClipAsync(string video, double startSec, double durationSec, string outMp4, int width, CancellationToken ct)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(outMp4)!);
+        var inv = CultureInfo.InvariantCulture;
+        // 15 fps yetarli: Gemini o'zi so'ralgan fps bilan kadr oladi; ovoz kerak emas (token tejaladi).
+        var args = new[] { "-hide_banner", "-v", "error", "-ss", startSec.ToString("0.###", inv), "-i", video, "-t", durationSec.ToString("0.###", inv),
+            "-an", "-vf", $"scale={width}:-2,fps=15", "-c:v", "libx264", "-preset", "veryfast", "-crf", "32", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart", "-y", outMp4 };
+        var (r, _, err) = await RunAsync(Ffmpeg, args, TimeSpan.FromMinutes(10), ct).ConfigureAwait(false);
+        if (r.ExitCode != 0 || !File.Exists(outMp4) || new FileInfo(outMp4).Length == 0)
+            throw PipelineException.Transient("ffmpeg_clip", $"Tahlil klipi yasalmadi: {err.Trim()}");
+    }
+
     public async Task<(double Mean, double Std)> FrameLumaAsync(string video, double atSec, CancellationToken ct)
     {
         var args = new[] { "-hide_banner", "-v", "error", "-ss", atSec.ToString("0.###", CultureInfo.InvariantCulture), "-i", video,

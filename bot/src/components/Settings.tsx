@@ -252,6 +252,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
             <div className="card formcard">
               <label className="chk"><input type="checkbox" checked={cfg.visuals.realMedia} onChange={(e) => V({ realMedia: e.target.checked })} /><span>Real rasm, logo va ikonlar (barchasi bepul va tijoratda ishlatish mumkin)</span></label>
               <label className="chk"><input type="checkbox" checked={cfg.visuals.templateStyleGuide} onChange={(e) => V({ templateStyleGuide: e.target.checked })} /><span>Shablon uslubini tahlil qilish (ranglar, shrift, kompozitsiya — Gemini)</span></label>
+              <label className="chk"><input type="checkbox" checked={cfg.visuals.templateMotion} onChange={(e) => V({ templateMotion: e.target.checked })} /><span>Shablon animatsiyasini tahlil qilish (o&apos;tishlar, matn va elementlar harakati, temp — Gemini videoni ko&apos;radi, har shablon uchun bir marta)</span></label>
               <label className="chk"><input type="checkbox" checked={cfg.visuals.styleReview} onChange={(e) => V({ styleReview: e.target.checked })} /><span>Tayyor videoni shablon bilan solishtirish va mos kelmasa tuzattirish</span></label>
               <div className="grid2">
                 <div className="field"><label>Bitta videoga rasmlar (0–40)</label><input className="input" inputMode="numeric" value={cfg.visuals.maxMedia} onChange={(e) => V({ maxMedia: num(e.target.value) })} /></div>
