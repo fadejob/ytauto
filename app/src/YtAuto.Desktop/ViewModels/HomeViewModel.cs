@@ -79,7 +79,7 @@ public sealed partial class HomeViewModel : ObservableObject
             ScheduleEnabled = sched.Enabled; StartTime = sched.StartTime; EndTime = sched.EndTime; TimeZoneId = sched.TimeZoneId;
             ScheduleInfo = task.Exists
                 ? $"Task Scheduler: keyingi ishga tushish {task.NextRunTime:yyyy-MM-dd HH:mm}, oxirgi natija: {TaskSchedulerService.DescribeResult(task.LastResult)}."
-                : sched.Enabled ? "Task Scheduler vazifasi topilmadi — «Saqlash» ni bosing." : "Kunlik ish o'chiq (har 10 daqiqadagi yengil tekshiruv ishlaydi).";
+                : sched.Enabled ? "Task Scheduler vazifasi topilmadi — «Saqlash» ni bosing." : "Kunlik ish o'chiq (har 2 daqiqadagi yengil tekshiruv ishlaydi).";
             Tools.Clear(); foreach (var t in tools) Tools.Add(t);
             ToolsMissing = tools.Any(t => !t.Ok && t.Key != "claude-login");
         }

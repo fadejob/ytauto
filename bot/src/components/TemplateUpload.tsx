@@ -80,7 +80,7 @@ export default function TemplateUpload({ toast }: { toast: Toast }) {
               <span>{m.name} {m.online ? "● online" : "○ offline"}{m.app.open ? "" : " · ilova yopiq"}</span></label>
           ))}
         </div>
-        <div className="hint">Kompyuterdagi YtAuto ilovasi ochiq bo&apos;lganda (~30 soniya) yuklab oladi va o&apos;rnatadi. Bepul Supabase tarifida bitta fayl 50 MB gacha.</div>
+        <div className="hint">Kompyuterdagi YtAuto ilovasi ochiq bo&apos;lganda (~2 daqiqada) yuklab oladi va o&apos;rnatadi. Bepul Supabase tarifida bitta fayl 50 MB gacha.</div>
         <button className="btn primary block" disabled={pct !== null || !file || tooBig || !name.trim() || picked.length === 0} onClick={start}>
           {pct !== null ? `Yuklanmoqda… ${pct}%` : "Yuklash"}
         </button>

@@ -140,7 +140,7 @@ Qanday ishlaydi:
 
 1. `create_demo_video` → `ytauto.jobs` da `kind = 'demo'` vazifa (`demo_spec`: loyiha, materiallarning imzolangan havolalari, talablar).
    Ovoz — botda tanlangan profil (bo'lmasa standart), shablon — bot standarti.
-2. Kompyuterdagi worker (`--poll`, ~10 daqiqada) demo navbatini jadvalni kutmasdan, **bittadan** bajaradi; disk/RAM yetmasa navbatda kutadi.
+2. Kompyuterdagi worker (`--poll`, ~2 daqiqada) demo navbatini jadvalni kutmasdan, **bittadan** bajaradi; disk/RAM yetmasa navbatda kutadi.
    Navbat bazada — kompyuter o'chib-yonsa ham yo'qolmaydi, uzilgan vazifa tayyor bosqichidan davom etadi.
 3. Ssenariy — Gemini, 2 bosqich: (1) materiallarni ko'rib (vision) sahnalar qoralamasi; (2) faqat ovozda aytiladigan matn — sahna
    ko'rsatmalari, takrorlar va ortiqcha gaplar olib tashlanadi. Sahnalar (qaysi materialda nima aytiladi, zoom joyi) alohida metadata.

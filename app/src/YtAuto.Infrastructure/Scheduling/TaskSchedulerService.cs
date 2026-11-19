@@ -26,9 +26,9 @@ public sealed class ScheduledTaskInfo
 public sealed class TaskSchedulerService
 {
     public const string TaskName = "YtAuto Daily Worker";
-    /// <summary>Masofaviy "Hozir chiqarish" buyrug'ini kutuvchi vazifa: har 10 daqiqada yengil --poll: holat yuboradi, so'rov bo'lsagina ishlaydi (navbatga tegmaydi).</summary>
+    /// <summary>Masofaviy "Hozir chiqarish" buyrug'ini kutuvchi vazifa: kunduzi har 2 daqiqada yengil --poll: holat yuboradi, so'rov bo'lsagina ishlaydi (navbatga tegmaydi).</summary>
     public const string PollTaskName = "YtAuto Remote Trigger";
-    public const int PollIntervalMinutes = 10;
+    public const int PollIntervalMinutes = 2;
     /// <summary>Bir ishga tushishda bir nechta video + har biridan keyin 15 daqiqa tanaffus: ish vaqti limiti kamida shuncha soat.</summary>
     public const int MinBatchExecutionHours = 10;
     private const int TASK_CREATE_OR_UPDATE = 6;

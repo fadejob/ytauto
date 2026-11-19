@@ -44,7 +44,7 @@ public static class Program
         bool owned;
         try { owned = mutex.WaitOne(0); }
         catch (AbandonedMutexException) { owned = true; } // oldingi worker kutilmaganda o'lgan
-        // --poll har 10 daqiqada ishga tushadi: boshqa worker ishlayotgan bo'lsa (u "hozir chiqarish"ni ham tekshiradi) jim chiqamiz.
+        // --poll har 2 daqiqada ishga tushadi: boshqa worker ishlayotgan bo'lsa (u "hozir chiqarish"ni ham tekshiradi) jim chiqamiz.
         if (!owned && (poll || batchNow)) return 3;
         AppServices svc;
         try { svc = new AppServices(dataRoot is null ? "worker" : "worker-selftest", dataRoot, console, online: dataRoot is not null && args.Contains("--online")); }
@@ -100,13 +100,13 @@ public static class Program
                 return 0;
             }
 
-            // Jadval botda o'zgargan bo'lsa Task Scheduler shu yerda yangilanadi (har --poll da, ~10 daqiqada).
+            // Jadval botda o'zgargan bo'lsa Task Scheduler shu yerda yangilanadi (har --poll da, ~2 daqiqada).
             if (dataRoot is null && (poll || scheduled)) Infrastructure.Scheduling.ScheduleSync.Apply(svc, Environment.ProcessPath);
 
-            // Heartbeat: poll har 10 daqiqada "kompyuter yoniq va online" deb yozadi (yengil: faqat holat, og'ir ish yo'q); botdan tekshiruv so'rovi bo'lsa bajaradi.
+            // Heartbeat: poll har 2 daqiqada "kompyuter yoniq va online" deb yozadi (yengil: faqat holat, og'ir ish yo'q); botdan tekshiruv so'rovi bo'lsa bajaradi.
             if (dataRoot is null && (poll || scheduled))
             {
-                if (poll) Infrastructure.Heartbeat.MachineBeat.Beat(svc, workerState: "idle", jobId: null, detail: "bo'sh (har 10 daqiqada holat yuboradi)");
+                if (poll) Infrastructure.Heartbeat.MachineBeat.Beat(svc, workerState: "idle", jobId: null, detail: "bo'sh (har 2 daqiqada holat yuboradi)");
                 if (poll) Infrastructure.Heartbeat.ToolStatus.Publish(svc); // dasturlar holati (bot ko'rsatadi)
                 await Infrastructure.Heartbeat.MachineBeat.RunCheckIfRequestedAsync(svc, Environment.ProcessPath, cts.Token);
             }
@@ -121,7 +121,7 @@ public static class Program
                 svc.Log.Info("Botdan 'Hozir ishga tushirish' so'rovi keldi - ish boshlanmoqda.");
             }
 
-            // Masofaviy buyruq kutuvchi: so'rov bo'lmasa hech narsa yozmasdan chiqadi (har 10 daqiqada log/baza to'lmasligi uchun).
+            // Masofaviy buyruq kutuvchi: so'rov bo'lmasa hech narsa yozmasdan chiqadi (har 2 daqiqada log/baza to'lmasligi uchun).
             // Yengil: YouTube holati (Processing/Scheduled -> Published) har poll'da 1-2 ta kichik so'rov bilan yangilanadi, og'ir ish yo'q.
             if (poll && dataRoot is null) await LightYouTubeRefreshAsync(svc, cts.Token);
             if (poll && !HasRemoteRequests(svc)) return 0;

@@ -32,7 +32,7 @@ public partial class App : Application
         main.Show();
     }
 
-    /// <summary>Online qism: Task Scheduler sinxroni, bot katalogi, kompyuter holati va har 30 soniyalik heartbeat/buyruqlar.</summary>
+    /// <summary>Online qism: Task Scheduler sinxroni, bot katalogi, kompyuter holati va har 2 daqiqalik heartbeat/buyruqlar.</summary>
     private void StartOnline()
     {
         if (_beat is not null) return;
@@ -47,7 +47,7 @@ public partial class App : Application
             Infrastructure.Heartbeat.ToolStatus.Publish(svc);
         });
 
-        // Heartbeat: ilova ochiqligi har 30 soniyada bazaga yoziladi; botdan tekshiruv so'rovi kelsa shu yerda ham bajariladi.
+        // Heartbeat: kunduzi faqat har 2 daqiqada so'rov almashiladi (bazaga yengil yozuv); botdan tekshiruv so'rovi kelsa shu yerda ham bajariladi.
         _beat = new System.Threading.Timer(async _ =>
         {
             Infrastructure.Heartbeat.MachineBeat.Beat(Services, appOpen: true);
@@ -57,7 +57,7 @@ public partial class App : Application
             if (System.Threading.Interlocked.Exchange(ref _templatesSynced, 1) == 0)
                 try { await Infrastructure.Templates.JobTemplates.SyncAsync(Services, CancellationToken.None); } catch { }
             try { await Infrastructure.Heartbeat.MachineBeat.RunCheckIfRequestedAsync(Services, workerExe, CancellationToken.None); } catch { }
-        }, null, TimeSpan.Zero, TimeSpan.FromSeconds(30));
+        }, null, TimeSpan.Zero, TimeSpan.FromMinutes(Infrastructure.Scheduling.TaskSchedulerService.PollIntervalMinutes));
     }
 
     private System.Threading.Timer? _beat;

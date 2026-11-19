@@ -34,7 +34,7 @@ export default function Library({ toast, canUpload = true }: { toast: Toast; can
     try {
       const r = await api<{ ok: boolean; message: string }>("/api/library", { action: "delete_template", machine: t.machine, name: t.name });
       toast(r.message, !r.ok);
-      // Kompyuter (ilova ochiq bo'lsa ~30 soniya, aks holda ≤10 daqiqa) bajargach ro'yxatdan yo'qoladi.
+      // Kompyuter (~2 daqiqada) bajargach ro'yxatdan yo'qoladi.
     } catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
     setBusy(null);
   }

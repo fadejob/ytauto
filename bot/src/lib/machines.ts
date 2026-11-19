@@ -3,8 +3,8 @@ import { sql } from "./db";
 import { isDemo } from "./demo";
 import type { CheckItem, Machine } from "./types";
 
-/** Yurak urishi shu vaqtdan eski bo'lsa kompyuter offline: yengil poll har 10 daqiqada, ilova (ochiq bo'lsa) 30 soniyada yozadi. */
-const ONLINE_MS = 25 * 60 * 1000; // poll har 10 daqiqada signal beradi: 2.5 interval
+/** Yurak urishi shu vaqtdan eski bo'lsa kompyuter offline: ilova ham, yengil poll ham har 2 daqiqada yozadi. */
+const ONLINE_MS = 6 * 60 * 1000; // har 2 daqiqada signal: 3 interval
 const APP_MS = 90 * 1000;
 const BUSY_MAX_MS = 8 * 60 * 60 * 1000; // og'ir ish davomida signal yuborilmaydi: "band" holati shu muddatgacha ishonchli
 
@@ -57,11 +57,11 @@ export async function getMachines(): Promise<Machine[]> {
   });
 }
 
-/** Tekshiruv so'rovi: kompyuter (ilova ~30 s, yengil worker poll ≤10 daqiqa ichida) oladi va natijani yozadi. */
+/** Tekshiruv so'rovi: kompyuter (~2 daqiqa ichida) oladi va natijani yozadi. */
 export async function requestCheck(machine: string): Promise<{ ok: boolean; message: string }> {
   if (isDemo()) { demoCheck = { requestedAt: new Date() }; return { ok: true, message: "Tekshiruv so'rovi yuborildi. [demo]" }; }
   const n = await sql()`UPDATE ytauto.machines SET check_requested = TRUE, check_requested_at_utc = now() WHERE machine = ${machine}`;
-  return n.count ? { ok: true, message: "Tekshiruv so'rovi yuborildi — ilova ochiq bo'lsa 30 soniyada, aks holda ≤10 daqiqada bajariladi." } : { ok: false, message: "Kompyuter topilmadi." };
+  return n.count ? { ok: true, message: "Tekshiruv so'rovi yuborildi — kompyuter ~2 daqiqada bajaradi." } : { ok: false, message: "Kompyuter topilmadi." };
 }
 
 // ------------------------------------------------------------------ demo
@@ -94,7 +94,7 @@ function demoMachines(): Machine[] {
 
 /**
  * "Hozir ishga tushirish": kompyuterda worker jadvalni kutmasdan, navbatdagi barcha mavzulardan video tayyorlashni boshlaydi.
- * Ilova ochiq bo'lsa ~30 soniyada, aks holda yengil worker (≤10 daqiqa) olganda boshlanadi. Band bo'lsa so'rov bekor (ikki marta ishlamaydi).
+ * Kompyuter ~2 daqiqada olib boshlaydi. Band bo'lsa so'rov bekor (ikki marta ishlamaydi).
  */
 export async function requestRun(machine: string): Promise<{ ok: boolean; message: string }> {
   if (isDemo()) return { ok: true, message: "Ishga tushirish so'rovi yuborildi. [demo]" };
@@ -102,5 +102,5 @@ export async function requestRun(machine: string): Promise<{ ok: boolean; messag
   if (!m) return { ok: false, message: "Kompyuter topilmadi." };
   if (toMachine(m).worker.state === "busy") return { ok: false, message: "Worker hozir band — ish tugagach qayta urinib ko'ring." };
   await sql()`UPDATE ytauto.machines SET run_requested = TRUE, run_requested_at_utc = now() WHERE machine = ${machine}`;
-  return { ok: true, message: "So'rov yuborildi — kompyuter mavzular soniga qarab ishni boshlaydi (ilova ochiq bo'lsa ~30 soniyada, aks holda ≤10 daqiqada)." };
+  return { ok: true, message: "So'rov yuborildi — kompyuter mavzular soniga qarab ishni boshlaydi (~2 daqiqada)." };
 }

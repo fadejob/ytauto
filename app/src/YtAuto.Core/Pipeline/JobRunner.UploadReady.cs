@@ -18,7 +18,7 @@ public sealed partial class JobRunner
         store.UploadRequestIds().Where(id => store.Get(id) is { } j && HasReadyArchive(j)).ToList();
 
     /// <summary>
-    /// Worker (--poll har 10 daqiqada, jadval va tanaffuslarda): botdan kelgan "tayyor videoni YouTube'ga yuklash" so'rovlarini bajaradi.
+    /// Worker (--poll har 2 daqiqada, jadval va tanaffuslarda): botdan kelgan "tayyor videoni YouTube'ga yuklash" so'rovlarini bajaradi.
     /// OS mutex ostida chaqiriladi, shuning uchun shu kompyuterdagi o'lgan worker'larning band qilishlari avval bo'shatiladi.
     /// </summary>
     public async Task<List<RunSummary>> RunUploadRequestsAsync(string runId, CancellationToken ct)

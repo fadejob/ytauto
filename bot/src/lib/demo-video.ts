@@ -292,7 +292,7 @@ export async function publishVideo(args: Record<string, unknown>) {
   return {
     job_id: r.id, ok: true,
     message: intent.when === "now"
-      ? "Chiqarish so'rovi yuborildi: kompyuter ~2–10 daqiqada tayyor videoni asosiy YouTube kanaliga public yuklaydi (qayta tayyorlanmaydi)."
+      ? "Chiqarish so'rovi yuborildi: kompyuter ~2 daqiqada tayyor videoni asosiy YouTube kanaliga public yuklaydi (qayta tayyorlanmaydi)."
       : `Chiqarish so'rovi yuborildi: video asosiy YouTube kanaliga yuklanadi va ${intent.when} da public bo'ladi.`,
     next: "Use get_video_status / get_video_result to see the YouTube link once the upload finishes.",
   };

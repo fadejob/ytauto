@@ -13,7 +13,7 @@ Ikkalasi bitta online bazadan (Supabase PostgreSQL, `ytauto` sxemasi) foydalanad
 
 1. Foydalanuvchi `YtAuto.exe` ni yuklab ochadi → papkani tanlaydi → exe o'sha yerga o'rnatiladi va ochiladi.
 2. Bitta tugma — **«Kerakli fayllarni yuklash va sozlash»**: OpenFilm, VoiceStudio, subtitr/ovoz modellari, Claude Code
-   (bori qayta yuklanmaydi) → hisob yaratiladi → sozlamalar serverga → Task Scheduler (kunlik ish + har 10 daqiqada tekshiruv).
+   (bori qayta yuklanmaydi) → hisob yaratiladi → sozlamalar serverga → Task Scheduler (kunlik ish + kunduzi har 2 daqiqada so'rov almashish).
 3. Ilova **token** ko'rsatadi (nusxalash tugmasi). Foydalanuvchi botni ochadi — birinchi kirishda token so'raladi.
 4. Gemini kaliti, YouTube, promptlar va mavzular — botda. Gemini kaliti bo'lmasa mavzu qo'shib bo'lmaydi, AI yordamchi o'chiq,
    mavjud mavzular muzlatilgan (worker video tayyorlamaydi).

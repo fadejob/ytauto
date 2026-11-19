@@ -11,7 +11,7 @@ export const POST = handler(async (req) => {
     if (!b.machine || !b.name) throw new Error("Kompyuter va shablon nomi kerak.");
     if (isDemo()) return { ok: true, message: "O'chirish so'rovi yuborildi. [demo]" };
     await queueCommand(b.machine, "delete_template", b.name);
-    return { ok: true, message: "O'chirish so'rovi yuborildi: kompyuter (ilova ochiq bo'lsa ~30 soniya, aks holda ≤10 daqiqa) bajaradi." };
+    return { ok: true, message: "O'chirish so'rovi yuborildi: kompyuter ~2 daqiqada bajaradi." };
   }
   throw new Error("Noma'lum amal.");
 });

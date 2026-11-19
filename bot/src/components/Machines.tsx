@@ -91,7 +91,7 @@ export default function Machines({ toast }: { toast: Toast }) {
               {m.worker.jobId ? <span className="id">#{m.worker.jobId}</span> : null}
             </div>
             {m.worker.state === "busy" ? <div className="notes open">⚙️ Og&apos;ir ish jarayonida (boshlangan: {ago(m.worker.seen)}). Ish davomida holat yuborilmaydi — tugagach avtomatik yangilanadi.</div> : null}
-            {!m.online ? <div className="hint">Kompyuter o&apos;chiq yoki internetga ulanmagan (25 daqiqadan beri signal yo&apos;q).</div> : null}
+            {!m.online ? <div className="hint">Kompyuter o&apos;chiq yoki internetga ulanmagan (6 daqiqadan beri signal yo&apos;q).</div> : null}
             {m.tools ? (
               <div className="card formcard" style={{ background: "transparent", boxShadow: "none", padding: 0 }}>
                 <div className="hint">Kerakli dasturlar ({ago(m.toolsUpdatedAt)}):</div>
@@ -111,7 +111,7 @@ export default function Machines({ toast }: { toast: Toast }) {
                 {pending ? "Tekshirilmoqda…" : "Integratsiyalarni tekshirish"}
               </button>
             </div>
-            {pending ? <div className="hint">So&apos;rov yuborildi. Ilova ochiq bo&apos;lsa ~30 soniyada, yopiq bo&apos;lsa keyingi yengil worker (&le;10 daqiqa) olganda natija keladi.</div> : null}
+            {pending ? <div className="hint">So&apos;rov yuborildi. Kompyuter ~2 daqiqada olib, natijani yuboradi.</div> : null}
             {m.check.results.length > 0 && !pending ? (
               <div className="card formcard" style={{ background: "transparent", boxShadow: "none", padding: 0 }}>
                 <div className="hint">Oxirgi tekshiruv: {ago(m.check.finishedAt)}{m.check.durationSec ? ` · ${m.check.durationSec.toFixed(0)} s` : ""}</div>
@@ -127,7 +127,7 @@ export default function Machines({ toast }: { toast: Toast }) {
         );
       })}
       <div className="hint" style={{ textAlign: "center" }}>
-        Online = kompyuterdan oxirgi 25 daqiqada signal kelgan (yengil worker har 10 daqiqada, ilova ochiq bo&apos;lsa har 30 soniyada). Og&apos;ir ish paytida signal yuborilmaydi, shu paytda «band» ko&apos;rinadi. Task Scheduler vazifasi o&apos;rnatilmagan va ilova yopiq bo&apos;lsa, yoniq kompyuter ham offline ko&apos;rinishi mumkin.
+        Online = kompyuterdan oxirgi 6 daqiqada signal kelgan (kunduzi kompyuter har 2 daqiqada so&apos;rov almashadi; videolar tunda, ish oynasida tayyorlanadi). Og&apos;ir ish paytida signal yuborilmaydi, shu paytda «band» ko&apos;rinadi. Task Scheduler vazifasi o&apos;rnatilmagan va ilova yopiq bo&apos;lsa, yoniq kompyuter ham offline ko&apos;rinishi mumkin.
       </div>
     </>
   );
