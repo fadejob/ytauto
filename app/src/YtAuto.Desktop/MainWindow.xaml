@@ -1,14 +1,69 @@
-<Window x:Class="YtAuto.Desktop.MainWindow"
+﻿<Window x:Class="YtAuto.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:YtAuto.Desktop.ViewModels"
         xmlns:v="clr-namespace:YtAuto.Desktop.Views"
-        Title="YtAuto" Height="820" Width="1100" MinWidth="900" MinHeight="600"
-        Background="{StaticResource Bg}" Foreground="{StaticResource Text}" WindowStartupLocation="CenterScreen" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+        xmlns:ui="clr-namespace:YtAuto.Desktop.Ui"
+        Title="YtAuto" Height="820" Width="1100" MinWidth="960" MinHeight="640"
+        Background="{StaticResource Bg}" Foreground="{StaticResource Ink}" FontFamily="{StaticResource UiFont}" FontSize="15"
+        WindowStartupLocation="CenterScreen" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
     <Window.Resources>
         <DataTemplate DataType="{x:Type vm:SettingsViewModel}"><v:SettingsView/></DataTemplate>
         <DataTemplate DataType="{x:Type vm:SetupViewModel}"><v:SetupView/></DataTemplate>
         <DataTemplate DataType="{x:Type vm:HomeViewModel}"><v:HomeView/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ToolsPage}"><v:ToolsView DataContext="{Binding Vm}"/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SchedulePage}"><v:ScheduleView DataContext="{Binding Vm}"/></DataTemplate>
+        <ui:EnumEqualsConverter x:Key="EnumEq"/>
+        <ui:InverseBoolVis x:Key="NotVis"/>
+        <!-- Segoe Fluent Icons (Windows 11) / MDL2 (Windows 10) - tizim ikon shrifti. -->
+        <FontFamily x:Key="Icons">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
     </Window.Resources>
-    <ContentControl Content="{Binding Page}" Margin="24,20,24,16"/>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Chap menyu (birinchi o'rnatishda yo'q) -->
+        <Border Grid.Column="0" Width="232" Background="{StaticResource Sunken}" Padding="12,20,12,16"
+                Visibility="{Binding IsSetup, Converter={StaticResource NotVis}}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,0,8,16">
+                    <Border Width="34" Height="34" CornerRadius="{StaticResource RSm}" Background="{StaticResource Inverse}">
+                        <TextBlock Text="&#xE714;" FontFamily="{StaticResource Icons}" FontSize="16" Foreground="{StaticResource Accent}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="YtAuto" FontSize="17" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding Home.DeviceName}" FontSize="13" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" MaxWidth="150"/>
+                    </StackPanel>
+                </StackPanel>
+                <Border DockPanel.Dock="Bottom" Background="{StaticResource CardBg}" CornerRadius="{StaticResource RMd}" Padding="12" Margin="0,8,0,0">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="8" Height="8" Fill="{StaticResource Ok}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBlock Text="{Binding Home.WorkerTitle, FallbackValue='Kutish rejimida'}" FontSize="13" FontWeight="SemiBold"/>
+                        </StackPanel>
+                        <TextBlock Text="{Binding Home.ScheduleInfo}" FontSize="13" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    </StackPanel>
+                </Border>
+                <StackPanel>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" IsChecked="{Binding Section, Converter={StaticResource EnumEq}, ConverterParameter=Home}" Command="{Binding GoCommand}" CommandParameter="{x:Static vm:Section.Home}">
+                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE80F;" FontFamily="{StaticResource Icons}" FontSize="16" Width="28" VerticalAlignment="Center"/><TextBlock Text="Bosh sahifa" VerticalAlignment="Center"/></StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" IsChecked="{Binding Section, Converter={StaticResource EnumEq}, ConverterParameter=Tools}" Command="{Binding GoCommand}" CommandParameter="{x:Static vm:Section.Tools}">
+                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE7B8;" FontFamily="{StaticResource Icons}" FontSize="16" Width="28" VerticalAlignment="Center"/><TextBlock Text="Dasturlar" VerticalAlignment="Center"/>
+                            <Ellipse Width="7" Height="7" Fill="{StaticResource Bad}" Margin="8,0,0,0" VerticalAlignment="Center" Visibility="{Binding Home.ToolsMissing, Converter={StaticResource BoolVis}}"/></StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" IsChecked="{Binding Section, Converter={StaticResource EnumEq}, ConverterParameter=Schedule}" Command="{Binding GoCommand}" CommandParameter="{x:Static vm:Section.Schedule}">
+                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE823;" FontFamily="{StaticResource Icons}" FontSize="16" Width="28" VerticalAlignment="Center"/><TextBlock Text="Jadval" VerticalAlignment="Center"/></StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource NavButton}" GroupName="nav" IsChecked="{Binding Section, Converter={StaticResource EnumEq}, ConverterParameter=Settings}" Command="{Binding GoCommand}" CommandParameter="{x:Static vm:Section.Settings}">
+                        <StackPanel Orientation="Horizontal"><TextBlock Text="&#xE713;" FontFamily="{StaticResource Icons}" FontSize="16" Width="28" VerticalAlignment="Center"/><TextBlock Text="Sozlamalar" VerticalAlignment="Center"/></StackPanel>
+                    </RadioButton>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <ContentControl Grid.Column="1" Content="{Binding Page}" Margin="36,28,36,24"/>
+    </Grid>
 </Window>

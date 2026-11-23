@@ -17,6 +17,7 @@ type TgWebApp = {
   setBackgroundColor?(c: string): void;
   showConfirm(msg: string, cb: (ok: boolean) => void): void;
   HapticFeedback?: { impactOccurred(s: "light" | "medium"): void; notificationOccurred(t: "success" | "error" | "warning"): void };
+  BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
   isVersionAtLeast?(v: string): boolean;
   openLink?(url: string): void;
 };
@@ -37,7 +38,15 @@ export function initTelegram() {
   t.ready();
   t.expand();
   try { t.disableVerticalSwipes?.(); } catch {}
-  try { t.setHeaderColor?.("secondary_bg_color"); t.setBackgroundColor?.("secondary_bg_color"); } catch {}
+  // Telegram sarlavhasi va fon ilovaning o'z rangida (Telegram mavzu ranglari emas): yorug'/qorong'i Telegram'nikiga ergashadi.
+  const applyTheme = () => {
+    const dark = t.colorScheme === "dark";
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    const bg = dark ? "#151311" : "#F5F1EA";
+    try { t.setHeaderColor?.(bg); t.setBackgroundColor?.(bg); } catch {}
+  };
+  applyTheme();
+  try { t.onEvent?.("themeChanged", applyTheme); } catch {}
   // Kompyuter yoki planshetda kichik oyna o'rniga darhol to'liq ekran (telefonda odatdagidek - pastdan ochiladigan oyna).
   if (isLargeDevice(t) && t.isVersionAtLeast?.("8.0") && !t.isFullscreen) {
     try { t.onEvent?.("fullscreenFailed", () => {}); t.requestFullscreen?.(); } catch { /* eski Telegram — oddiy oyna qoladi */ }
@@ -49,6 +58,26 @@ function isLargeDevice(t: TgWebApp): boolean {
   const p = t.platform ?? "";
   if (["tdesktop", "macos", "weba", "webk", "web", "unigram"].includes(p)) return true;
   return Math.min(window.screen.width, window.screen.height) >= 600;
+}
+
+/** Brauzerda (Telegram'siz) tizim mavzusi o'zgarsa ham kuzatadi. */
+export function followSystemTheme(): () => void {
+  if (tg() || typeof window === "undefined") return () => {};
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  const on = () => { document.documentElement.dataset.theme = mq.matches ? "dark" : "light"; };
+  on();
+  mq.addEventListener("change", on);
+  return () => mq.removeEventListener("change", on);
+}
+
+/** Telegram'ning tepadagi «orqaga» tugmasi (ichki sahifalarda). Qaytaradi: tozalash funksiyasi. */
+export function telegramBack(onBack: (() => void) | null): () => void {
+  const b = tg()?.BackButton;
+  if (!b) return () => {};
+  if (!onBack) { b.hide(); return () => {}; }
+  b.show();
+  b.onClick(onBack);
+  return () => { b.offClick(onBack); b.hide(); };
 }
 
 export const haptic = {

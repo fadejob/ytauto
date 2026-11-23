@@ -23,7 +23,7 @@ const MONTHS = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "
 const isLate = (iso: string) => new Date(iso).getTime() <= Date.now() + 30 * 60000;
 const fmt = (d: { date: string; time: string }) => `${Number(d.date.slice(8, 10))} ${MONTHS[Number(d.date.slice(5, 7)) - 1]}, ${d.time}`;
 
-export default function Topics({ state, loading, refresh, run, locked }: { state: State | null; loading: boolean; refresh: () => Promise<void>; run: Run; locked?: boolean }) {
+export default function Topics({ state, loading, refresh, run, locked }: { state: State | null; loading: boolean; refresh: () => Promise<void>; run: Run; locked?: boolean; openVideo?: (id: number) => void; openSettings?: (p: import("./settings/types").SettingsPage | null) => void }) {
   const [group, setGroup] = useState<Group>("queue");
   const [sheet, setSheet] = useState<{ mode: "new" } | { mode: "edit"; topic: Topic } | null>(null);
   const [open, setOpen] = useState<number | null>(null);

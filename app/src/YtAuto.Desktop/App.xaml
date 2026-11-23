@@ -3,58 +3,208 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:YtAuto.Desktop.Ui"
              ShutdownMode="OnMainWindowClose">
+    <!-- YtAuto dizayn tizimi (MEDEO: ytauto.dsai, Desktop sahifasi). Iliq qog'oz fon, to'q siyoh matn, bitta za'faron urg'u -
+         faqat asosiy amal va faol holat uchun; yashil - tayyor, qizil - faqat xato. Ko'k rang yo'q. -->
     <Application.Resources>
         <ResourceDictionary>
-            <SolidColorBrush x:Key="Bg" Color="#F6F7F9"/>
-            <SolidColorBrush x:Key="Panel" Color="#FFFFFF"/>
-            <SolidColorBrush x:Key="Border" Color="#E2E5EA"/>
-            <SolidColorBrush x:Key="Text" Color="#1F2329"/>
-            <SolidColorBrush x:Key="MutedBrush" Color="#6B7280"/>
-            <SolidColorBrush x:Key="Accent" Color="#2563EB"/>
-            <SolidColorBrush x:Key="Danger" Color="#B42318"/>
-            <SolidColorBrush x:Key="Nav" Color="#111827"/>
+            <!-- Ranglar (eski kalitlar ham: Bg, Panel, Border, Text, MutedBrush, Accent, Danger) -->
+            <SolidColorBrush x:Key="Bg" Color="#F5F1EA"/>
+            <SolidColorBrush x:Key="Panel" Color="#FFFDF9"/>
+            <SolidColorBrush x:Key="CardBg" Color="#FFFDF9"/>
+            <SolidColorBrush x:Key="Sunken" Color="#ECE6DC"/>
+            <SolidColorBrush x:Key="Border" Color="#E3DCD1"/>
+            <SolidColorBrush x:Key="Line" Color="#E3DCD1"/>
+            <SolidColorBrush x:Key="Text" Color="#1F1B16"/>
+            <SolidColorBrush x:Key="Ink" Color="#1F1B16"/>
+            <SolidColorBrush x:Key="MutedBrush" Color="#6E665C"/>
+            <SolidColorBrush x:Key="Faint" Color="#A39A8E"/>
+            <SolidColorBrush x:Key="Accent" Color="#F0A53A"/>
+            <SolidColorBrush x:Key="AccentInk" Color="#8A5200"/>
+            <SolidColorBrush x:Key="AccentSoft" Color="#FBEBD2"/>
+            <SolidColorBrush x:Key="OnAccent" Color="#1F1B16"/>
+            <SolidColorBrush x:Key="Ok" Color="#3F6B2A"/>
+            <SolidColorBrush x:Key="OkSoft" Color="#E5EAD6"/>
+            <SolidColorBrush x:Key="Danger" Color="#B3261E"/>
+            <SolidColorBrush x:Key="Bad" Color="#B3261E"/>
+            <SolidColorBrush x:Key="BadSoft" Color="#F7DEDA"/>
+            <SolidColorBrush x:Key="Inverse" Color="#1F1B16"/>
+            <SolidColorBrush x:Key="OnInverse" Color="#F5F1EA"/>
+            <SolidColorBrush x:Key="OnInverseMuted" Color="#B7AEA2"/>
+            <SolidColorBrush x:Key="OnInverseOk" Color="#9CCB7C"/>
+            <SolidColorBrush x:Key="Scrim" Color="#731F1B16"/>
+            <SolidColorBrush x:Key="Nav" Color="#ECE6DC"/>
+            <!-- Onest o'rnatilmagan bo'lsa Windows'ning Segoe UI Variable shrifti. -->
+            <FontFamily x:Key="UiFont">Onest, Segoe UI Variable Text, Segoe UI</FontFamily>
+            <CornerRadius x:Key="RSm">10</CornerRadius>
+            <CornerRadius x:Key="RMd">14</CornerRadius>
+            <CornerRadius x:Key="RLg">20</CornerRadius>
 
             <ui:StatusBrushConverter x:Key="StatusBrush"/>
             <ui:ThumbnailConverter x:Key="Thumb"/>
             <ui:NullToCollapsedConverter x:Key="NullCollapsed"/>
             <BooleanToVisibilityConverter x:Key="BoolVis"/>
 
+            <!-- Matn: 44 focal / 26 sarlavha / 17 karta sarlavhasi / 15 matn / 13 izoh / 12 yorliq -->
+            <Style x:Key="Focal" TargetType="TextBlock"><Setter Property="FontSize" Value="44"/><Setter Property="FontWeight" Value="ExtraBold"/><Setter Property="Foreground" Value="{StaticResource Ink}"/></Style>
+            <Style x:Key="H1" TargetType="TextBlock"><Setter Property="FontSize" Value="26"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Margin" Value="0,0,0,4"/></Style>
+            <Style x:Key="H2" TargetType="TextBlock"><Setter Property="FontSize" Value="17"/><Setter Property="FontWeight" Value="Bold"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Margin" Value="0,0,0,4"/></Style>
+            <Style x:Key="Body" TargetType="TextBlock"><Setter Property="FontSize" Value="15"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="TextWrapping" Value="Wrap"/></Style>
+            <Style x:Key="Muted" TargetType="TextBlock"><Setter Property="FontSize" Value="13"/><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/><Setter Property="TextWrapping" Value="Wrap"/></Style>
+            <Style x:Key="Label" TargetType="TextBlock"><Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/><Setter Property="Margin" Value="0,0,0,6"/></Style>
+            <Style x:Key="Error" TargetType="TextBlock"><Setter Property="FontSize" Value="13"/><Setter Property="Foreground" Value="{StaticResource Bad}"/><Setter Property="TextWrapping" Value="Wrap"/></Style>
 
-            <Style x:Key="H1" TargetType="TextBlock"><Setter Property="FontSize" Value="20"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Margin" Value="0,0,0,12"/></Style>
-            <Style x:Key="H2" TargetType="TextBlock"><Setter Property="FontSize" Value="15"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Margin" Value="0,14,0,6"/></Style>
-            <Style x:Key="Label" TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/><Setter Property="Margin" Value="0,8,0,3"/></Style>
-            <Style x:Key="Muted" TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/><Setter Property="TextWrapping" Value="Wrap"/></Style>
-            <Style TargetType="TextBox"><Setter Property="Padding" Value="6,4"/><Setter Property="BorderBrush" Value="{StaticResource Border}"/></Style>
-            <Style TargetType="PasswordBox"><Setter Property="Padding" Value="6,4"/><Setter Property="BorderBrush" Value="{StaticResource Border}"/></Style>
-            <Style TargetType="ComboBox"><Setter Property="Padding" Value="6,4"/></Style>
-            <Style TargetType="Button">
-                <Setter Property="Padding" Value="12,6"/><Setter Property="Margin" Value="0,0,8,0"/>
-                <Setter Property="Background" Value="#FFFFFF"/><Setter Property="BorderBrush" Value="{StaticResource Border}"/>
-                <Setter Property="Cursor" Value="Hand"/>
+            <!-- Kartalar -->
+            <Style x:Key="Card" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource CardBg}"/><Setter Property="CornerRadius" Value="{StaticResource RLg}"/><Setter Property="Padding" Value="20"/>
             </Style>
-            <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-                <Setter Property="Background" Value="{StaticResource Accent}"/><Setter Property="Foreground" Value="White"/><Setter Property="BorderBrush" Value="{StaticResource Accent}"/>
+            <Style x:Key="SunkenBox" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource Sunken}"/><Setter Property="CornerRadius" Value="{StaticResource RSm}"/><Setter Property="Padding" Value="12,10"/>
             </Style>
-            <Style x:Key="NavButton" TargetType="RadioButton">
-                <Setter Property="Foreground" Value="#D1D5DB"/><Setter Property="Margin" Value="0,2"/><Setter Property="Cursor" Value="Hand"/>
+            <Style x:Key="AlertBad" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource BadSoft}"/><Setter Property="CornerRadius" Value="{StaticResource RSm}"/><Setter Property="Padding" Value="12,10"/>
+            </Style>
+            <Style x:Key="Toast" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource Inverse}"/><Setter Property="CornerRadius" Value="22"/><Setter Property="Padding" Value="12,0,16,0"/>
+                <Setter Property="MinHeight" Value="44"/><Setter Property="HorizontalAlignment" Value="Right"/><Setter Property="VerticalAlignment" Value="Bottom"/>
+                <Setter Property="TextElement.Foreground" Value="{StaticResource OnInverse}"/><Setter Property="TextElement.FontWeight" Value="SemiBold"/>
+            </Style>
+            <!-- Holat belgisi: Border Style="{StaticResource PillOk}" + TextBlock -->
+            <Style x:Key="Pill" TargetType="Border">
+                <Setter Property="Background" Value="{StaticResource Sunken}"/><Setter Property="CornerRadius" Value="999"/><Setter Property="Padding" Value="10,4"/>
+                <Setter Property="TextElement.Foreground" Value="{StaticResource MutedBrush}"/><Setter Property="TextElement.FontSize" Value="12"/><Setter Property="TextElement.FontWeight" Value="SemiBold"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+            <Style x:Key="PillOk" TargetType="Border" BasedOn="{StaticResource Pill}"><Setter Property="Background" Value="{StaticResource OkSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource Ok}"/></Style>
+            <Style x:Key="PillBad" TargetType="Border" BasedOn="{StaticResource Pill}"><Setter Property="Background" Value="{StaticResource BadSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource Bad}"/></Style>
+            <Style x:Key="PillAccent" TargetType="Border" BasedOn="{StaticResource Pill}"><Setter Property="Background" Value="{StaticResource AccentSoft}"/><Setter Property="TextElement.Foreground" Value="{StaticResource AccentInk}"/></Style>
+
+            <!-- Maydonlar -->
+            <Style TargetType="TextBox">
+                <Setter Property="FontSize" Value="15"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Background" Value="{StaticResource Sunken}"/>
+                <Setter Property="BorderThickness" Value="1.5"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="Padding" Value="10,0"/><Setter Property="MinHeight" Value="42"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="CaretBrush" Value="{StaticResource Ink}"/>
                 <Setter Property="Template">
                     <Setter.Value>
-                        <ControlTemplate TargetType="RadioButton">
-                            <Border x:Name="b" Padding="16,10" Background="Transparent" CornerRadius="6">
-                                <ContentPresenter/>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource RSm}">
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                             </Border>
                             <ControlTemplate.Triggers>
-                                <Trigger Property="IsChecked" Value="True"><Setter TargetName="b" Property="Background" Value="#1F2937"/><Setter Property="Foreground" Value="White"/></Trigger>
-                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#1F2937"/></Trigger>
+                                <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="{StaticResource Accent}"/><Setter TargetName="b" Property="Background" Value="{StaticResource CardBg}"/></Trigger>
+                                <Trigger Property="IsReadOnly" Value="True"><Setter Property="Cursor" Value="Arrow"/></Trigger>
+                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/></Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
             </Style>
-            <Style x:Key="Card" TargetType="Border">
-                <Setter Property="Background" Value="{StaticResource Panel}"/><Setter Property="BorderBrush" Value="{StaticResource Border}"/>
-                <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="8"/><Setter Property="Padding" Value="16"/>
+            <Style TargetType="PasswordBox">
+                <Setter Property="FontSize" Value="15"/><Setter Property="Background" Value="{StaticResource Sunken}"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="10,10"/>
             </Style>
+            <Style TargetType="ComboBox"><Setter Property="FontSize" Value="15"/><Setter Property="Padding" Value="10,8"/><Setter Property="MinHeight" Value="42"/></Style>
+
+            <!-- Tugmalar: Primary (urg'u), Secondary (standart), Ghost, Danger; Sm - 36 px. ui:Busy.IsBusy=True - ichida spinner. -->
+            <Style TargetType="Button">
+                <Setter Property="FontSize" Value="15"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="{StaticResource Ink}"/>
+                <Setter Property="Background" Value="{StaticResource Sunken}"/><Setter Property="Padding" Value="16,0"/><Setter Property="MinHeight" Value="44"/>
+                <Setter Property="Margin" Value="0"/><Setter Property="Cursor" Value="Hand"/><Setter Property="Tag" Value="{StaticResource RMd}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}" Padding="{TemplateBinding Padding}">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Path x:Name="spin" Width="16" Height="16" Margin="0,0,8,0" Visibility="Collapsed" Stretch="Uniform" Stroke="{TemplateBinding Foreground}" StrokeThickness="2.2"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" Data="M 8,1 A 7,7 0 1 1 1,8" RenderTransformOrigin="0.5,0.5">
+                                        <Path.RenderTransform><RotateTransform x:Name="rot"/></Path.RenderTransform>
+                                    </Path>
+                                    <ContentPresenter x:Name="c" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Opacity" Value="0.92"/></Trigger>
+                                <Trigger Property="IsEnabled" Value="False"><Setter TargetName="b" Property="Background" Value="{StaticResource Sunken}"/><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/><Setter Property="Cursor" Value="Arrow"/></Trigger>
+                                <Trigger Property="ui:Busy.IsBusy" Value="True">
+                                    <Setter TargetName="spin" Property="Visibility" Value="Visible"/>
+                                    <Setter TargetName="c" Property="Opacity" Value="0.75"/>
+                                    <Setter Property="IsHitTestVisible" Value="False"/>
+                                    <Trigger.EnterActions>
+                                        <BeginStoryboard x:Name="spinning"><Storyboard><DoubleAnimation Storyboard.TargetName="rot" Storyboard.TargetProperty="Angle" From="0" To="360" Duration="0:0:0.8" RepeatBehavior="Forever"/></Storyboard></BeginStoryboard>
+                                    </Trigger.EnterActions>
+                                    <Trigger.ExitActions><StopStoryboard BeginStoryboardName="spinning"/></Trigger.ExitActions>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="Secondary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"/>
+            <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Background" Value="{StaticResource Accent}"/><Setter Property="Foreground" Value="{StaticResource OnAccent}"/>
+            </Style>
+            <Style x:Key="Ghost" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            </Style>
+            <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Background" Value="{StaticResource BadSoft}"/><Setter Property="Foreground" Value="{StaticResource Bad}"/>
+            </Style>
+            <Style x:Key="Sm" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="FontSize" Value="13"/><Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="12,0"/><Setter Property="Tag" Value="{StaticResource RSm}"/>
+            </Style>
+            <Style x:Key="PrimarySm" TargetType="Button" BasedOn="{StaticResource Primary}">
+                <Setter Property="FontSize" Value="13"/><Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="12,0"/><Setter Property="Tag" Value="{StaticResource RSm}"/>
+            </Style>
+            <Style x:Key="GhostSm" TargetType="Button" BasedOn="{StaticResource Ghost}">
+                <Setter Property="FontSize" Value="13"/><Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="12,0"/><Setter Property="Tag" Value="{StaticResource RSm}"/>
+            </Style>
+            <Style x:Key="DangerSm" TargetType="Button" BasedOn="{StaticResource DangerButton}">
+                <Setter Property="FontSize" Value="13"/><Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="12,0"/><Setter Property="Tag" Value="{StaticResource RSm}"/>
+            </Style>
+            <Style x:Key="Link" TargetType="Button">
+                <Setter Property="Foreground" Value="{StaticResource AccentInk}"/><Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><ContentPresenter VerticalAlignment="Center"/></ControlTemplate></Setter.Value></Setter>
+            </Style>
+
+            <!-- Switch: CheckBox / ToggleButton Style="{StaticResource Switch}" -->
+            <Style x:Key="Switch" TargetType="ToggleButton">
+                <Setter Property="Cursor" Value="Hand"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontSize" Value="15"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <DockPanel Background="Transparent" LastChildFill="True">
+                                <Border x:Name="track" DockPanel.Dock="Right" Width="46" Height="28" CornerRadius="14" Background="{StaticResource Line}" Padding="4" Margin="12,0,0,0" VerticalAlignment="Center">
+                                    <Ellipse x:Name="knob" Width="20" Height="20" Fill="{StaticResource CardBg}" HorizontalAlignment="Left"/>
+                                </Border>
+                                <ContentPresenter VerticalAlignment="Center"/>
+                            </DockPanel>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True"><Setter TargetName="track" Property="Background" Value="{StaticResource Ink}"/><Setter TargetName="knob" Property="HorizontalAlignment" Value="Right"/></Trigger>
+                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style TargetType="CheckBox" BasedOn="{StaticResource Switch}"/>
+            <Style TargetType="ToggleButton" BasedOn="{StaticResource Switch}"/>
+
+            <!-- Chap menyu bandi -->
+            <Style x:Key="NavButton" TargetType="RadioButton">
+                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/><Setter Property="FontSize" Value="15"/><Setter Property="Margin" Value="0,0,0,4"/><Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RadioButton">
+                            <Border x:Name="b" Height="40" Padding="12,0" Background="Transparent" CornerRadius="{StaticResource RSm}">
+                                <ContentPresenter VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{StaticResource Ink}"/></Trigger>
+                                <Trigger Property="IsChecked" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource CardBg}"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="FontWeight" Value="Bold"/></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style TargetType="ScrollViewer"><Setter Property="VerticalScrollBarVisibility" Value="Auto"/></Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>
