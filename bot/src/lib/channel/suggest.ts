@@ -5,6 +5,7 @@ import { geminiGenerate, responseJson } from "../gemini";
 import { utcToZoned } from "../time";
 import { getCatalog } from "../topics";
 import { Status } from "../types";
+import { activeChannelId } from "../youtube";
 import { insertSuggestions, listSuggestions, parseContext, readProfile, recentSuggestionTopics } from "./store";
 
 /** Kunlik mavzu tavsiyalari: kanal konteksti asosida 5 ta yangi inglizcha mavzu (kuniga bir marta). */
@@ -37,14 +38,17 @@ export async function todayLocal(): Promise<string> {
 /** Bugun tavsiyalar hali yo'q va kontekst bor bo'lsa yaratadi. Natija: yaratildimi. */
 export async function generateSuggestions(accountId: string, opts: { guest?: boolean } = {}): Promise<boolean> {
   const prep = await withAccount(accountId, async () => {
+    // Faol kanal uchun (tavsiyalar kanal bo'yicha).
+    const ch = await activeChannelId();
+    if (!ch) return null;
     const date = await todayLocal();
-    if ((await listSuggestions(date)).length) return null;
-    const ctx = parseContext(await readProfile());
+    if ((await listSuggestions(ch, date)).length) return null;
+    const ctx = parseContext(await readProfile(ch));
     if (!ctx) return null;
     const keys = await getGeminiKeys();
     if (!keys.keys.length) return null;
-    const queued = await sql()`SELECT topic FROM ytauto.jobs WHERE status <> ${Status.Cancelled} ORDER BY id DESC LIMIT 40`;
-    return { date, ctx, keys, queued: queued.map((r) => r.topic as string), recent: await recentSuggestionTopics() };
+    const queued = await sql()`SELECT topic FROM ytauto.jobs WHERE channel_id = ${ch} AND status <> ${Status.Cancelled} ORDER BY id DESC LIMIT 40`;
+    return { ch, date, ctx, keys, queued: queued.map((r) => r.topic as string), recent: await recentSuggestionTopics(ch) };
   }, { guest: opts.guest });
   if (!prep) return false;
 
@@ -65,5 +69,5 @@ export async function generateSuggestions(accountId: string, opts: { guest?: boo
     .map((i) => ({ topic: (i.topic ?? "").trim(), notes: (i.notes ?? "").trim(), reason: (i.reason ?? "").trim() }))
     .filter((i) => i.topic)
     .slice(0, COUNT);
-  return withAccount(accountId, () => insertSuggestions(prep.date, ideas), { guest: opts.guest });
+  return withAccount(accountId, () => insertSuggestions(prep.ch, prep.date, ideas), { guest: opts.guest });
 }

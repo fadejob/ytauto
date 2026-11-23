@@ -57,6 +57,12 @@ public sealed class VideoJob
     public const string DemoKind = "demo";
     public bool IsDemo => Kind == DemoKind && !string.IsNullOrWhiteSpace(DemoSpecJson);
 
+    /// <summary>
+    /// Video qaysi YouTube kanaliga yuklanadi (bot: yaratilgan paytdagi faol kanal id'si). Bo'sh - kanal tanlanmagan: hisobning faol
+    /// kanali. Bot yozadi: Update() tegmaydi. Worker shu kanal tokeni va kanal kontekstini ishlatadi (ISettingsStore.UseChannel).
+    /// </summary>
+    public string ChannelId { get; set; } = "";
+
     public bool HasManualScript => !string.IsNullOrWhiteSpace(ManualScript) && !string.IsNullOrWhiteSpace(ManualTitle);
     public bool HasManualAudio => !string.IsNullOrWhiteSpace(ManualAudioUrl);
 

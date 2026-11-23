@@ -124,6 +124,8 @@ export type State = {
   gemini: { ready: boolean };
   /** guest - qo'shimcha token hisobi: «Hozir chiqarish» va kompyuter boshqaruvi yo'q; hostLabel - token bergan hisob kompyuteri. */
   account: { guest: boolean; hostLabel: string | null };
+  /** Faol YouTube kanali (mavzular shu kanalniki; Sozlamalar → YouTube'da almashtiriladi). total - ulangan kanallar soni. */
+  channel: { id: string; title: string; total: number };
 };
 
 // ------------------------------------------------------------------ kanal konteksti

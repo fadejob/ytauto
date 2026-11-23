@@ -54,6 +54,7 @@ public sealed partial class JobRunner
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var summary = new RunSummary { JobId = jobId, PublishNow = publishNow };
         var job = _x.Store.Get(jobId) ?? throw new InvalidOperationException("Vazifa topilmadi.");
+        using var channelScope = _x.Settings.UseChannel(job.ChannelId); // vazifa bog'langan kanalga yuklanadi
         if (!string.IsNullOrEmpty(job.YouTubeVideoId))
         {
             _x.Store.SetUploadRequested(jobId, false);

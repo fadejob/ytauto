@@ -128,11 +128,14 @@ export async function analyzeChannel(accountId: string, opts: { force?: boolean;
   const prep = await withAccount(accountId, async () => {
     const creds = await youtubeCredentials();
     if (!creds) return null;
-    if (!(await tryStart())) return "busy" as const;
-    const [profile, stale, keys, cfg] = await Promise.all([readProfile(), staleSince(), getGeminiKeys(), getConfig()]);
+    // Shu kanal tahlil qilinadi: orada boshqa kanal faol qilinsa ham natija aynan shu kanalga yoziladi.
+    const chId = creds.channelId;
+    if (!(await tryStart(chId))) return "busy" as const;
+    const [profile, stale, keys, cfg] = await Promise.all([readProfile(chId), staleSince(), getGeminiKeys(), getConfig()]);
     // YtAuto o'zi yaratgan videolarning aniq matni (qo'lda kiritilgan bo'lsa) - Gemini video ko'ra olmasa ham ssenariy ma'lum.
-    const own = await sql()`SELECT youtube_video_id AS id, manual_script AS script FROM ytauto.jobs WHERE youtube_video_id IS NOT NULL AND manual_script IS NOT NULL ORDER BY id DESC LIMIT 20`;
-    return { creds, profile, stale, keys, profiles: cfg.voice.profiles, scripts: new Map(own.map((r) => [r.id as string, r.script as string])) };
+    const own = await sql()`SELECT youtube_video_id AS id, manual_script AS script FROM ytauto.jobs
+      WHERE channel_id = ${chId} AND youtube_video_id IS NOT NULL AND manual_script IS NOT NULL ORDER BY id DESC LIMIT 20`;
+    return { chId, creds, profile, stale, keys, profiles: cfg.voice.profiles, scripts: new Map(own.map((r) => [r.id as string, r.script as string])) };
   }, { guest: opts.guest });
   if (prep === null) return { status: "not_connected", message: "YouTube kanali ulanmagan." };
   if (prep === "busy") return { status: "busy", message: "Kanal hozir tahlil qilinmoqda." };
@@ -146,7 +149,7 @@ export async function analyzeChannel(accountId: string, opts: { force?: boolean;
 
     const staleNewer = !!prep.stale && (!prep.profile?.analyzed_at_utc || prep.stale > prep.profile.analyzed_at_utc);
     if (!opts.force && !staleNewer && prep.profile?.last_video_id === ids[0] && parseContext(prep.profile)) {
-      await withAccount(accountId, markChecked, { guest: opts.guest });
+      await withAccount(accountId, () => markChecked(prep.chId), { guest: opts.guest });
       return { status: "unchanged", message: "Yangi video yo'q — kontekst o'zgarmadi." };
     }
 
@@ -161,13 +164,13 @@ export async function analyzeChannel(accountId: string, opts: { force?: boolean;
       voice: { gender: g, style: a.voice?.style ?? "", pace: a.voice?.pace ?? "", recommendedProfile: pickVoiceProfile(g, prep.profiles) },
       videos, recentTitles: metas.map((m) => m.title),
     };
-    await withAccount(accountId, () => saveResult(ctx, ids[0], { script: scriptBlock(ctx), montage: montageBlock(ctx), voiceProfile: ctx.voice.recommendedProfile }), { guest: opts.guest });
+    await withAccount(accountId, () => saveResult(prep.chId, ctx, ids[0], { script: scriptBlock(ctx), montage: montageBlock(ctx), voiceProfile: ctx.voice.recommendedProfile }), { guest: opts.guest });
     const watched = videos.filter((v) => v.source === "video").length;
     return { status: "analyzed", message: `Kanal o'rganildi: ${videos.length} ta video (${watched} tasi ko'rib chiqildi).` };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[channel] tahlil xatosi:", msg);
-    await withAccount(accountId, () => saveError(msg), { guest: opts.guest }).catch(() => {});
+    await withAccount(accountId, () => saveError(prep.chId, msg), { guest: opts.guest }).catch(() => {});
     return { status: "failed", message: msg };
   }
 }

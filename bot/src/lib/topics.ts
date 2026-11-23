@@ -8,6 +8,7 @@ import { checkTopicMusic, musicCatalog, setTopicMusic, topicMusicMap } from "./m
 import { attachAudio } from "./audio";
 import { removeObjects } from "./storage";
 import { readBlocks } from "./channel/store";
+import { activeChannelId } from "./youtube";
 import { demoApply, demoCatalog, demoPrompts, demoTopics, isDemo } from "./demo";
 import { addDays, parseLocal, utcToZoned, zonedToUtc } from "./time";
 import { Status, type Action, type ActionResult, type Catalog, type NewTopic, type PromptKey, type Prompts, type Topic } from "./types";
@@ -149,11 +150,12 @@ export async function listTopics(tz: string): Promise<Topic[]> {
   const withMusic = (t: Topic): Topic => ({ ...t, music: music[String(t.id)] ?? "" });
   if (isDemo()) return demoTopics().map(withMusic);
   try { await cleanupAudio(); } catch (e) { console.warn("[audio] tozalash:", e instanceof Error ? e.message : e); }
-  // Chiqmaganlar hammasi + oxirgi 30 ta chiqqan.
+  // Faol kanal (va kanal tanlanmagan) vazifalari: chiqmaganlar hammasi + oxirgi 30 ta chiqqan.
+  const ch = await activeChannelId();
   const rows = await sql()<Row[]>`
-    (SELECT ${cols()} FROM ytauto.jobs WHERE status <> ${Status.Published} ORDER BY publish_at_utc, id LIMIT 300)
+    (SELECT ${cols()} FROM ytauto.jobs WHERE channel_id IN (${ch}, '') AND status <> ${Status.Published} ORDER BY publish_at_utc, id LIMIT 300)
     UNION ALL
-    (SELECT ${cols()} FROM ytauto.jobs WHERE status = ${Status.Published} ORDER BY publish_at_utc DESC LIMIT 30)`;
+    (SELECT ${cols()} FROM ytauto.jobs WHERE channel_id IN (${ch}, '') AND status = ${Status.Published} ORDER BY publish_at_utc DESC LIMIT 30)`;
   return rows.map((r) => withMusic(toTopic(r, tz)));
 }
 
@@ -163,9 +165,10 @@ async function getRow(id: number): Promise<Row | undefined> {
 }
 
 // ------------------------------------------------------------------ chiqish sanasi
-async function suggestDates(count: number, cat: Catalog): Promise<Date[]> {
+async function suggestDates(count: number, cat: Catalog, ch: string): Promise<Date[]> {
   const tz = cat.youtube.timeZone;
-  const [row] = await sql()`SELECT max(publish_at_utc) AS last FROM ytauto.jobs WHERE status <> ${Status.Cancelled}`;
+  // Har kanalning o'z jadvali: oraliq shu kanaldagi oxirgi videodan hisoblanadi.
+  const [row] = await sql()`SELECT max(publish_at_utc) AS last FROM ytauto.jobs WHERE channel_id IN (${ch}, '') AND status <> ${Status.Cancelled}`;
   const today = utcToZoned(new Date(), tz).date;
   let date = row?.last ? addDays(utcToZoned(row.last as Date, tz).date, GAP_DAYS) : today;
   if (date < today) date = today;
@@ -215,7 +218,9 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       if (items.length > MAX_TOPICS_PER_REQUEST) return { ok: false, message: `Bir vaqtda eng ko'pi ${MAX_TOPICS_PER_REQUEST} ta mavzu qo'shiladi.` };
       const badMusic = await checkTopicMusic(items.map((t) => (t as NewTopic).music));
       if (badMusic) return { ok: false, message: badMusic };
-      const auto = await suggestDates(items.length, cat);
+      // Mavzu hozirgi faol kanalga bog'lanadi: keyin kanal almashtirilsa ham video shu kanalga yuklanadi.
+      const channelId = await activeChannelId();
+      const auto = await suggestDates(items.length, cat, channelId);
       const rows = [];
       for (let i = 0; i < items.length; i++) {
         const t = items[i] as NewTopic;
@@ -232,7 +237,7 @@ export async function applyAction(a: Action): Promise<ActionResult> {
           topic: t.topic.slice(0, 500), notes: (t.notes ?? "").slice(0, 4000),
           language: "en", // video, subtitr va title har doim ingliz tilida
           target_duration_sec: 0, format: tf.format, template_name: tf.template, voice_profile: tf.voice,
-          publish_at_utc: at, status: Status.Queued, created_at_utc: now, updated_at_utc: now,
+          publish_at_utc: at, status: Status.Queued, created_at_utc: now, updated_at_utc: now, channel_id: channelId,
           manual_script: items[i].script || null, manual_title: items[i].title || null,
           manual_audio_path: items[i].audioPath ?? null, manual_audio_url: null as string | null,
         });

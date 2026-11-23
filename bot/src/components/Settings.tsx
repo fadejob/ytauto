@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { api, cache, confirmBox, openExternal } from "@/lib/client";
+import { useEffect, useRef, useState } from "react";
+import { api, cache, confirmBox } from "@/lib/client";
 import { FormatText, type BotConfig, type BotConfigInput, type Catalog, type VoiceInfo } from "@/lib/types";
 import type { Toast } from "./App";
 import VoiceProfiles from "./VoiceProfiles";
@@ -10,6 +10,7 @@ import Library from "./Library";
 import Guests from "./Guests";
 import McpConnect from "./McpConnect";
 import GeminiLimits from "./GeminiLimits";
+import YouTubeChannels, { type YtStatus } from "./YouTubeChannels";
 import { DEFAULT_GEMINI_CHAIN, limitsFor } from "@/lib/gemini-models";
 
 /**
@@ -58,41 +59,30 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
   /** Gemini model zanjiri matni: har qatorga bitta model (birinchisi asosiy). */
   const [voiceInfo, setVoiceInfo] = useState<VoiceInfo[]>([]);
   const [saving, setSaving] = useState(false);
-  const [yt, setYt] = useState<{ connected: boolean; channelTitle: string; connectedAt: string | null; clientConfigured: boolean; redirectUri: string } | null>(null);
-  const [ytBusy, setYtBusy] = useState(false);
-  const [ytCheck, setYtCheck] = useState<{ ok: boolean; message: string } | null>(null);
+  const [yt, setYt] = useState<YtStatus | null>(null);
+  const ytRef = useRef<YtStatus | null>(null);
+  const onSavedRef = useRef(onSaved);
+  useEffect(() => { ytRef.current = yt; onSavedRef.current = onSaved; });
 
-  // Ulanish tugagach (tashqi brauzerdan qaytilganda) holat yangilanadi.
+  // Ulanish tugagach (tashqi brauzerdan qaytilganda) holat yangilanadi. Yangi kanal ulangan bo'lsa (u faol bo'ladi) mavzular ham.
   useEffect(() => {
-    const onVis = () => { if (document.visibilityState === "visible") api<NonNullable<typeof yt>>("/api/youtube").then(setYt).catch(() => {}); };
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      api<YtStatus>("/api/youtube").then((s) => {
+        if (ytRef.current && ytRef.current.channelId !== s.channelId) onSavedRef.current?.();
+        setYt(s);
+      }).catch(() => {});
+    };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
-
-  async function connectYt() {
-    setYtBusy(true);
-    try { const { url } = await api<{ url: string }>("/api/youtube", { action: "start" }); openExternal(url); toast("Google oynasi ochildi. Ruxsat bergach shu yerga qayting."); }
-    catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
-    setYtBusy(false);
-  }
-  async function verifyYt() {
-    setYtBusy(true); setYtCheck(null);
-    try { setYtCheck(await api<{ ok: boolean; message: string }>("/api/youtube", { action: "verify" })); }
-    catch (e) { setYtCheck({ ok: false, message: e instanceof Error ? e.message : String(e) }); }
-    setYtBusy(false);
-  }
-  async function disconnectYt() {
-    if (!(await confirmBox("YouTube kanali uziladimi? Barcha kompyuterlarda yuklash to'xtaydi."))) return;
-    try { setYt(await api("/api/youtube", { action: "disconnect" })); toast("YouTube uzildi."); }
-    catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
-  }
 
   useEffect(() => {
     const c = cache.get<Sch>("schedule");
     // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage faqat mount'dan keyin o'qiladi
     if (c) { setSch(c); setSchSaved(c); }
     api<Sch>("/api/schedule").then((s) => { setSch(s); setSchSaved(s); cache.set("schedule", s); }).catch((e) => toast(e instanceof Error ? e.message : String(e), true));
-    api<NonNullable<typeof yt>>("/api/youtube").then(setYt).catch(() => {});
+    api<YtStatus>("/api/youtube").then(setYt).catch(() => {});
     api<{ voice: VoiceInfo[] }>("/api/library").then((d) => setVoiceInfo(d.voice)).catch(() => {});
     api<BotConfig>("/api/config").then((c) => { setCfgSaved(c); setCfg(toDraft(c)); }).catch((e) => toast(e instanceof Error ? e.message : String(e), true));
   }, [toast]);
@@ -137,6 +127,8 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
       <div className="list">
         {!sch || !cfg ? <div className="skeleton" style={{ height: 220 }} /> : (
           <>
+            <YouTubeChannels yt={yt} setYt={setYt} toast={toast} onSwitched={onSaved}
+              blocked={!yt?.clientConfigured ? "Avval pastdagi YouTube bo'limida OAuth Client ID va Secret'ni kiritib, «Saqlash» ni bosing." : dirty ? "Avval o'zgarishlarni saqlang." : null} />
             {guest ? (
               <>
                 <div className="sect">Qo&apos;shimcha token</div>
@@ -274,14 +266,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
               <div className="field"><label>Client Secret {cfg.youtube.clientSecretSet ? "· saqlangan ✓" : "· kiritilmagan"}</label>
                 <input className="input" type="password" autoComplete="off" value={cfg.youtube.clientSecret ?? ""} placeholder={cfg.youtube.clientSecretSet ? "O'zgartirish uchun yangisini kiriting" : ""} onChange={(e) => Y({ clientSecret: e.target.value })} /></div>
               <div className="field">
-                <label>Kanal {yt?.connected ? `· ulangan ✓ ${yt.channelTitle}` : "· ulanmagan"}</label>
-                <div className="grid2">
-                  <button className="btn primary block" disabled={ytBusy || !yt?.clientConfigured || dirty} onClick={connectYt}>{yt?.connected ? "Qayta ulash" : "YouTube'ni ulash"}</button>
-                  <button className="btn block" disabled={!yt?.connected} onClick={disconnectYt}>Uzish</button>
-                </div>
-                <button className="btn block" disabled={ytBusy || !yt?.connected} onClick={verifyYt}>Ulanishni tekshirish</button>
-                {ytCheck ? <div className={ytCheck.ok ? "hint" : "err"}>{ytCheck.ok ? "✓ " : "✗ "}{ytCheck.message}</div> : null}
-                {!yt?.clientConfigured ? <div className="hint">Avval Client ID va Secret&apos;ni kiritib, «Saqlash» ni bosing.</div> : dirty ? <div className="hint">Avval o&apos;zgarishlarni saqlang.</div> : null}
+                <div className="hint">Kanallar yuqoridagi «YouTube kanallari» bo&apos;limida ulanadi va almashtiriladi. Quyidagi sozlamalar barcha kanallar uchun umumiy.</div>
                 <div className="hint">Google Cloud → Credentials → <b>Web application</b> turidagi OAuth client yarating va «Authorized redirect URIs» ga shu manzilni qo&apos;shing:<br /><code style={{ wordBreak: "break-all" }}>{yt?.redirectUri ?? "…"}</code></div>
               </div>
               <div className="grid2">

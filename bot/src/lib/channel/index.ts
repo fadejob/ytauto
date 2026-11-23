@@ -41,16 +41,19 @@ function runInBackground(opts: { force?: boolean; suggestions?: boolean }) {
 export async function maybeRefreshChannel(): Promise<void> {
   if (isDemo()) return;
   try {
-    if (!(await youtubeCredentials())) return;
-    if (needsRefresh(await readProfile(), await staleSince())) runInBackground({});
+    const creds = await youtubeCredentials();
+    if (!creds) return;
+    if (needsRefresh(await readProfile(creds.channelId), await staleSince())) runInBackground({});
   } catch (e) { console.warn("[channel] yangilash tekshiruvi:", e instanceof Error ? e.message : e); }
 }
 
 export async function getChannelState(): Promise<ChannelState> {
   if (isDemo()) return demoChannelState();
+  // Faol kanal bo'yicha (kanal Sozlamalar → YouTube'da almashtiriladi).
   const creds = await youtubeCredentials();
-  const [p, stale, blocks, date] = await Promise.all([readProfile(), staleSince(), readBlocks(), todayLocal()]);
-  const suggestions = await listSuggestions(date);
+  const ch = creds?.channelId ?? "";
+  const [p, stale, blocks, date] = await Promise.all([ch ? readProfile(ch) : null, staleSince(), ch ? readBlocks(ch) : null, todayLocal()]);
+  const suggestions = ch ? await listSuggestions(ch, date) : [];
   const context = parseContext(p);
   let running = p?.status === "running" && Date.now() - (p.started_at_utc?.getTime() ?? 0) < RUNNING_TTL_MS;
   let suggestionsPending = false;
@@ -72,14 +75,18 @@ export async function channelAction(a: ChannelActionInput): Promise<ActionResult
   if (isDemo()) return demoChannelAction(a);
   switch (a.action) {
     case "analyze": {
-      if (!(await youtubeCredentials())) return { ok: false, message: "Avval Sozlamalar → YouTube'da kanalni ulang." };
-      const p = await readProfile();
+      const creds = await youtubeCredentials();
+      if (!creds) return { ok: false, message: "Avval Sozlamalar → YouTube'da kanalni ulang." };
+      const p = await readProfile(creds.channelId);
       if (p?.status === "running" && Date.now() - (p.started_at_utc?.getTime() ?? 0) < RUNNING_TTL_MS) return { ok: false, message: "Kanal hozir tahlil qilinmoqda — biroz kuting." };
       runInBackground({ force: true });
       return { ok: true, message: "Tahlil boshlandi: oxirgi 3 video ko'rib chiqiladi (1–3 daqiqa)." };
     }
-    case "toggle":
-      await setEnabled(!!a.enabled);
+    case "toggle": {
+      const creds = await youtubeCredentials();
+      if (!creds) return { ok: false, message: "Avval Sozlamalar → YouTube'da kanalni ulang." };
+      await setEnabled(creds.channelId, !!a.enabled);
+    }
       return { ok: true, message: a.enabled ? "Kanal konteksti promptlarga qo'shiladi." : "Kanal konteksti promptlarga qo'shilmaydi (tahlil saqlanib qoladi)." };
     case "accept": {
       const s = await getSuggestion(Number(a.id));

@@ -1,4 +1,4 @@
--- ytauto-schema-version: 5
+-- ytauto-schema-version: 6
 -- YtAuto online bazasi (Supabase PostgreSQL, "ytauto" sxemasi) - YAGONA manba. Bot (bot/src/lib/schema.ts) ham, desktop ilova
 -- (PostgresJobStore, egasi huquqi bilan ulanganda) ham shu faylni ishga tushiradi. Fayl idempotent: qayta ishga tushirish xavfsiz.
 -- Yuqoridagi versiya o'zgarmasa, fayl qayta bajarilmaydi (ytauto.schema_meta). O'zgartirganda versiyani oshiring.
@@ -109,6 +109,14 @@ ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT '';
 ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS demo_spec TEXT;
 ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS demo_result TEXT;
 CREATE INDEX IF NOT EXISTS ix_jobs_demo ON ytauto.jobs(created_at_utc, id) WHERE kind = 'demo';
+
+-- ------------------------------------------------------------------ v6: bir hisobda bir nechta YouTube kanali
+-- Kanallar ro'yxati (refresh tokenlar) va faol kanal shared_settings['youtube.channels'] da; shared_settings['youtube.oauth'] - faol
+-- kanal nusxasi (eski desktop versiyalari uchun). Har vazifa yaratilgan paytdagi faol kanalga bog'lanadi (channel_id): kanal
+-- almashtirilsa ham video o'z kanaliga yuklanadi. '' - kanal tanlanmagan (eski vazifalar: bot birinchi ochilganda to'ldiradi).
+-- Kanal tahlili va tavsiyalar ham kanal bo'yicha (channel_profile kaliti: account_id + channel_id).
+ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS channel_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE ytauto.topic_suggestions ADD COLUMN IF NOT EXISTS channel_id TEXT NOT NULL DEFAULT '';
 
 -- ------------------------------------------------------------------ v2: hisoblar va izolyatsiya
 CREATE TABLE IF NOT EXISTS ytauto.accounts (
@@ -223,8 +231,9 @@ END $$;
 SELECT ytauto._set_pk('shared_settings', 'account_id, key');
 SELECT ytauto._set_pk('machines', 'account_id, machine');
 SELECT ytauto._set_pk('templates', 'account_id, machine, name');
-SELECT ytauto._set_pk('channel_profile', 'account_id');
+SELECT ytauto._set_pk('channel_profile', 'account_id, channel_id');
 CREATE INDEX IF NOT EXISTS ix_topic_suggestions_account ON ytauto.topic_suggestions(account_id, for_date DESC, id);
+CREATE INDEX IF NOT EXISTS ix_jobs_account_channel ON ytauto.jobs(account_id, channel_id, publish_at_utc);
 CREATE INDEX IF NOT EXISTS ix_jobs_account_queue ON ytauto.jobs(account_id, status, created_at_utc, id);
 CREATE INDEX IF NOT EXISTS ix_worker_runs_account ON ytauto.worker_runs(account_id, started_at_utc DESC);
 CREATE INDEX IF NOT EXISTS ix_machine_commands_account ON ytauto.machine_commands(account_id, machine) WHERE NOT done;
@@ -339,4 +348,4 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ytauto.jobs, ytauto.job_stages, ytauto.j
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ytauto TO ytauto_device, ytauto_bot;
 REVOKE ALL ON ytauto.accounts, ytauto.account_roles, ytauto.telegram_links, ytauto.login_attempts, ytauto.schema_meta, ytauto.mcp_tokens FROM ytauto_device, ytauto_bot;
 
-INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '5') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '6') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

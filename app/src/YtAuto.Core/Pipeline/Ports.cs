@@ -76,6 +76,19 @@ public interface ISettingsStore
 {
     AppSettings Load();
     void Save(AppSettings settings);
+
+    /// <summary>
+    /// Shu async oqimda Load() berilgan YouTube kanali (vazifaning kanali) tokeni va kontekstini qaytaradi; Dispose avvalgisini tiklaydi.
+    /// Bo'sh yoki null - hisobning faol kanali. Kanallar bo'lmagan saqlagichlarda hech narsa qilmaydi.
+    /// </summary>
+    IDisposable UseChannel(string? channelId) => NoScope.Instance;
+}
+
+/// <summary>Hech narsa qilmaydigan doira.</summary>
+public sealed class NoScope : IDisposable
+{
+    public static readonly NoScope Instance = new();
+    public void Dispose() { }
 }
 
 public interface ISecretStore

@@ -74,7 +74,12 @@ export default function Topics({ state, loading, refresh, run, locked }: { state
       <header className="head">
         <div>
           <h1>Mavzular</h1>
-          <div className="sub">{state ? `${state.catalog.youtube.timeZone} · videolar ingliz tilida` : "Yuklanmoqda…"}</div>
+          <div className="sub">
+            {!state ? "Yuklanmoqda…" : <>
+              {state.channel?.title ? <b title={state.channel.total > 1 ? "Kanalni Sozlamalar → YouTube kanallari'da almashtiring" : undefined}>📺 {state.channel.title}{state.channel.total > 1 ? ` (${state.channel.total} kanaldan)` : ""} · </b> : null}
+              {state.catalog.youtube.timeZone} · videolar ingliz tilida
+            </>}
+          </div>
         </div>
         <button className="iconbtn" aria-label="Yangilash" onClick={() => { haptic.tap(); void refresh(); }} disabled={loading}><IconRefresh /></button>
       </header>
@@ -129,7 +134,7 @@ export default function Topics({ state, loading, refresh, run, locked }: { state
         <button className="fab" disabled={locked} title={locked ? "Avval Gemini kalitini qo'shing" : undefined}
           onClick={() => { haptic.tap(); setSheet({ mode: "new" }); }}><IconPlus />Mavzu</button>
       )}
-      {sheet && state && <TopicSheet sheet={sheet} catalog={state.catalog} close={() => setSheet(null)} run={run} />}
+      {sheet && state && <TopicSheet sheet={sheet} catalog={state.catalog} channelTitle={(state.channel?.total ?? 0) > 1 ? state.channel.title : ""} close={() => setSheet(null)} run={run} />}
       {resched && <RescheduleSheet topic={resched} close={() => setResched(null)} run={run} />}
     </>
   );
@@ -185,7 +190,7 @@ function rowProblem(r: Row, hasAudio: boolean): string | null {
   return null;
 }
 
-function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | { mode: "edit"; topic: Topic }; catalog: Catalog; close: () => void; run: Run }) {
+function TopicSheet({ sheet, catalog, channelTitle, close, run }: { sheet: { mode: "new" } | { mode: "edit"; topic: Topic }; catalog: Catalog; channelTitle: string; close: () => void; run: Run }) {
   const edit = sheet.mode === "edit" ? sheet.topic : null;
   // Shablon va format: yangi mavzuda standartdan boshlanadi, tahrirda mavzuning hozirgi qiymatidan.
   const [template, setTemplate] = useState(edit ? edit.template : catalog.defaults.template);
@@ -255,6 +260,7 @@ function TopicSheet({ sheet, catalog, close, run }: { sheet: { mode: "new" } | {
       <section className="sheet" role="dialog" aria-label={edit ? "Mavzuni tahrirlash" : "Yangi mavzu"}>
         <div className="grab" />
         <h2>{edit ? `#${edit.id} — tahrirlash` : "Yangi mavzular"}</h2>
+        {!edit && channelTitle ? <div className="hint" style={{ marginBottom: 8 }}>Kanal: <b>{channelTitle}</b> — videolar shu kanalga yuklanadi.</div> : null}
         <div className="list" style={{ padding: 0 }}>
           {rows.map((r, i) => {
             const manual = r.source !== "gemini";
