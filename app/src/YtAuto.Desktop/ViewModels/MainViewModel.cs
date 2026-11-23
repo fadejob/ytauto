@@ -1,61 +1,47 @@
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using YtAuto.Infrastructure;
 
 namespace YtAuto.Desktop.ViewModels;
 
-/// <summary>Chap menyu bo'limlari.</summary>
-public enum Section { Home, Tools, Schedule, Settings }
-
-/// <summary>Dasturlar va Jadval sahifalari bosh sahifa ma'lumotidan foydalanadi (bitta HomeViewModel): ko'rinish o'z DataTemplate'i bilan.</summary>
-public sealed record ToolsPage(HomeViewModel Vm);
-public sealed record SchedulePage(HomeViewModel Vm);
-
 /// <summary>
-/// Ilova: hisob sozlanmagan bo'lsa - birinchi o'rnatish ustasi (<see cref="SetupViewModel"/>, chap menyusiz), aks holda chap menyu bilan
-/// bo'limlar: Bosh sahifa (tayyorlik, token, hozirgi ish), Dasturlar, Jadval, Sozlamalar. Mavzular, promptlar, Gemini va YouTube - Telegram botda.
+/// Ilova: hisob sozlanmagan bo'lsa - bitta tugmali sozlash (<see cref="SetupViewModel"/>), aks holda bosh sahifa
+/// (<see cref="HomeViewModel"/>: token, ish vaqti, dasturlar). Mavzular, promptlar, Gemini va YouTube - Telegram botda.
+/// Kengaytirilgan sozlamalar (yo'llar, shablonlar, ovozlar) alohida oynada.
 /// </summary>
 public sealed partial class MainViewModel : ObservableObject
 {
     public AppServices Services { get; private set; }
     [ObservableProperty] private object _page;
-    [ObservableProperty] private bool _isSetup;
-    [ObservableProperty] private Section _section = Section.Home;
-    [ObservableProperty] private HomeViewModel? _home;
-    private SettingsViewModel? _settings;
 
     public MainViewModel(AppServices services, Action<AppServices> adoptOnline)
     {
         Services = services;
-        if (services.IsAccountReady) { _home = NewHome(services); _page = _home; }
-        else
-        {
-            _isSetup = true;
-            _page = new SetupViewModel(services, online =>
+        _page = services.IsAccountReady
+            ? new HomeViewModel(services, OpenAdvanced)
+            : new SetupViewModel(services, online =>
             {
                 Services = online;
                 adoptOnline(online);
-                Home = NewHome(online);
-                IsSetup = false;
-                Section = Section.Home;
-                Page = Home;
+                Page = new HomeViewModel(online, OpenAdvanced);
             });
-        }
     }
 
-    private HomeViewModel NewHome(AppServices s) => new(s, () => Go(Section.Settings));
+    private Window? _advanced;
 
-    partial void OnSectionChanged(Section value)
+    private void OpenAdvanced()
     {
-        if (IsSetup || Home is null) return;
-        Page = value switch
+        if (_advanced is { IsLoaded: true }) { _advanced.Activate(); return; }
+        _advanced = new Window
         {
-            Section.Tools => new ToolsPage(Home),
-            Section.Schedule => new SchedulePage(Home),
-            Section.Settings => _settings ??= new SettingsViewModel(Services).Load(),
-            _ => Home,
+            Title = "YtAuto — kengaytirilgan sozlamalar", Width = 1000, Height = 760, Owner = Application.Current.MainWindow,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = (System.Windows.Media.Brush)Application.Current.Resources["Bg"],
+            Content = new System.Windows.Controls.Border
+            {
+                Padding = new Thickness(24, 20, 24, 16),
+                Child = new Views.SettingsView { DataContext = new SettingsViewModel(Services).Load() },
+            },
         };
+        _advanced.Show();
     }
-
-    [RelayCommand] private void Go(Section s) => Section = s;
 }

@@ -41,8 +41,6 @@ public sealed partial class HomeViewModel : ObservableObject
     [ObservableProperty] private bool _busy;
     [ObservableProperty] private bool _toolsMissing;
     [ObservableProperty] private string _installText = "";
-    /// <summary>Chap menyu pastidagi worker holati: "Kutish rejimida" yoki tayyorlanayotgan video (Bosh sahifa ham ko'rsatadi).</summary>
-    [ObservableProperty] private string _workerTitle = "Kutish rejimida";
     public ObservableCollection<ToolItem> Tools { get; } = new();
 
     public HomeViewModel(AppServices svc, Action openAdvanced)

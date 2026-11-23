@@ -92,10 +92,3 @@ public static class EnumLists
 {
     public static readonly IReadOnlyList<TemplateKind> TemplateKinds = Enum.GetValues<TemplateKind>();
 }
-
-/// <summary>Enum qiymati parametrga tengmi (chap menyu RadioButton'lari uchun). ConvertBack ishlatilmaydi - bo'lim Command bilan o'zgaradi.</summary>
-public sealed class EnumEqualsConverter : IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => string.Equals(value?.ToString(), parameter?.ToString(), StringComparison.Ordinal);
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => Binding.DoNothing;
-}
