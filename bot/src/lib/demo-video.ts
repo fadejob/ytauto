@@ -1,7 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { currentAccountId, isGuest, sql } from "./db";
-import { geminiReady, GEMINI_REQUIRED } from "./config";
+import { geminiReady, GEMINI_REQUIRED, getConfig } from "./config";
 import { getCatalog, pickTemplateFormat } from "./topics";
 import { getMachines } from "./machines";
 import { objectInfo, signDownload, signUpload } from "./storage";
@@ -123,7 +123,22 @@ export async function createDemoVideo(args: Record<string, unknown>) {
   const format = ({ "16:9": 0, "9:16": 1, "1:1": 2 } as Record<string, number>)[fmtArg];
   if (format === undefined) fail('requirements.format "16:9", "9:16" yoki "1:1" bo\'lsin.');
   const cat = await getCatalog();
-  const tf = await pickTemplateFormat(cat, q.template === undefined ? undefined : str(q.template, 120), format, q.voice_profile === undefined ? undefined : str(q.voice_profile, 120));
+  // Ovoz tilga mos bo'lishi shart: o'zbekcha matnni inglizcha ovoz o'qisa tushunarsiz chiqadi. Aniq voice_profile berilmasa,
+  // shu tildagi profil tanlanadi (bot standarti mos bo'lsa - o'sha); topilmasa aniq yo'riqnoma bilan to'xtaydi.
+  let voiceArg = q.voice_profile === undefined ? undefined : str(q.voice_profile, 120);
+  const profiles = (await getConfig()).voice.profiles;
+  const voiceWarning: string[] = [];
+  if (!voiceArg) {
+    const defName = (await getConfig()).defaults.voiceProfile;
+    const same = profiles.filter((p) => (p.language || "en").toLowerCase() === language);
+    const pick = same.find((p) => p.name === defName) ?? same[0];
+    if (pick) voiceArg = pick.name;
+    else if (language !== "en") fail(`"${language}" tilida ovoz profili yo'q. Botda Sozlamalar → Ovoz → «Profil qo'shish» orqali shu tildagi ovoz qo'shing (til: ${language}) yoki requirements.voice_profile bering. Mavjud profillar: ${profiles.map((p) => `${p.name} (${p.language || "en"})`).join(", ") || "yo'q"}.`);
+  } else {
+    const chosen = profiles.find((p) => p.name === voiceArg);
+    if (chosen && (chosen.language || "en").toLowerCase() !== language) voiceWarning.push(`Ovoz profili "${chosen.name}" tili "${chosen.language || "en"}", video tili "${language}": talaffuz noto'g'ri bo'lishi mumkin.`);
+  }
+  const tf = await pickTemplateFormat(cat, q.template === undefined ? undefined : str(q.template, 120), format, voiceArg);
   if ("error" in tf) fail(tf.error);
   const t = tf as { template: string; format: number; voice: string };
 
@@ -152,6 +167,7 @@ export async function createDemoVideo(args: Record<string, unknown>) {
   return {
     job_id: row.id as number, status: "queued",
     voice_profile: t.voice || "(kompyuterdagi standart ovoz)", template: t.template || null, format: fmtArg, language,
+    ...(voiceWarning.length ? { warnings: voiceWarning } : {}),
     publish: publish.requested ? { requested: true, when: publish.when } : { requested: false },
     machines,
     next: "The YtAuto worker on the user's PC picks the job up within ~10 minutes (when the PC is on and online) and runs script → voice → montage → render. Poll get_video_status every few minutes; when status is \"ready\" call get_video_result.",

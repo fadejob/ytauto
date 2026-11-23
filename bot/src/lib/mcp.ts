@@ -16,7 +16,7 @@ Workflow:
 2. Run the project locally (dev server, CLI, app). Use realistic but harmless demo data. Never capture secrets, tokens, real personal data or private URLs.
 3. Capture visuals: PNG screenshots of the key screens (1920x1080 for a 16:9 video, 1080x1920 for 9:16) and short screen recordings (MP4/WebM, 4-20 s, one action each: e.g. creating an item, filtering, a successful save). Playwright (page.screenshot / recordVideo) works well for web apps. Up to ${MEDIA_LIMIT} files; screenshots up to 25 MB, recordings up to 500 MB.
 4. request_media_upload with the list of files → upload each file with the returned curl line (HTTP PUT of the raw bytes).
-5. create_demo_video with: the project context (name, summary, features), every media_id with a precise title + description of what is visible/what happens, and a highlight (the UI area to zoom into); plus requirements (language, duration, audience, tone, format, notes from the user). Set publish.requested only if the user explicitly asked to publish.
+5. create_demo_video with: the project context (name, summary, features), every media_id with a precise title + description of what is visible/what happens, and a highlight (the UI area to zoom into); plus requirements (language — ask the user if the narration should be English or Uzbek (uz) when unclear —, duration, audience, tone, format, notes from the user). Set publish.requested only if the user explicitly asked to publish.
 6. Video production is asynchronous and runs on the user's PC (minutes to an hour). Poll get_video_status every few minutes; when status is "ready" call get_video_result and give the user the download link / local path.
 7. publish_video only when the user explicitly tells you to publish; it goes to the user's main YouTube channel only.`;
 
@@ -68,7 +68,7 @@ export const TOOLS = [
         }, ["media_id", "title", "description"]),
       },
       requirements: obj({
-        language: s("Narration language, ISO 639-1 (default en)"),
+        language: s("Narration language, ISO 639-1 (default en). \"uz\" = Uzbek (Latin script): script, voice and subtitles are all Uzbek. Needs a voice profile whose language is that language (picked automatically, or pass voice_profile); other languages: ru, tr, kk, de, fr, es, ar"),
         duration_sec: { type: "integer", minimum: 0, maximum: 600, description: "Target length in seconds; 0 = automatic (default)" },
         audience: s("Who the video is for"),
         tone: s("e.g. friendly and technical"),
