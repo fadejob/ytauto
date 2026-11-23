@@ -394,8 +394,8 @@ export default function History({ state, toast }: { state: State | null; toast: 
 
       {!guest ? (
         <p className={s.footnote}>
-          Onlayn — oxirgi 6 daqiqada signal kelgan. Kunduzi kompyuter har 2 daqiqada bog&apos;lanadi, videolar esa tunda, ish oynasida tayyorlanadi.
-          Og&apos;ir ish paytida signal yuborilmaydi — shu payt «band» ko&apos;rinadi. Task Scheduler vazifasi o&apos;rnatilmagan va ilova yopiq bo&apos;lsa, yoniq kompyuter ham oflayn ko&apos;rinishi mumkin.
+          Onlayn — kompyuterdagi YtAuto agenti har 30 soniyada signal beradi va botdagi so&apos;rovlarni darhol bajaradi (Cloudflare tunnel); videolar esa tunda, ish oynasida tayyorlanadi.
+          Agent Windows&apos;ga kirilganda o&apos;zi ishga tushadi; kompyuter o&apos;chiq yoki internetsiz bo&apos;lsa oflayn ko&apos;rinadi, so&apos;rovlar esa yoqilgach bajariladi.
         </p>
       ) : null}
 

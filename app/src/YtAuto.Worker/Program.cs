@@ -45,7 +45,7 @@ public static class Program
         bool owned;
         try { owned = mutex.WaitOne(0); }
         catch (AbandonedMutexException) { owned = true; } // oldingi worker kutilmaganda o'lgan
-        // --poll har 2 daqiqada ishga tushadi: boshqa worker ishlayotgan bo'lsa (u "hozir chiqarish"ni ham tekshiradi) jim chiqamiz.
+        // --poll agent uyg'otganda (yoki 10 daqiqada) ishga tushadi: boshqa worker ishlayotgan bo'lsa (u "hozir chiqarish"ni ham tekshiradi) jim chiqamiz.
         if (!owned && (poll || batchNow)) return 3;
         AppServices svc;
         try { svc = new AppServices(dataRoot is null ? "worker" : "worker-selftest", dataRoot, console, online: dataRoot is not null && args.Contains("--online")); }
@@ -101,10 +101,10 @@ public static class Program
                 return 0;
             }
 
-            // Jadval botda o'zgargan bo'lsa Task Scheduler shu yerda yangilanadi (har --poll da, ~2 daqiqada).
+            // Jadval botda o'zgargan bo'lsa Task Scheduler shu yerda yangilanadi (har --poll da; agent ishlamayotgan bo'lsa ishga tushiriladi).
             if (dataRoot is null && (poll || scheduled)) Infrastructure.Scheduling.ScheduleSync.Apply(svc, Environment.ProcessPath);
 
-            // Heartbeat: poll har 2 daqiqada "kompyuter yoniq va online" deb yozadi (yengil: faqat holat, og'ir ish yo'q); botdan tekshiruv so'rovi bo'lsa bajaradi.
+            // Heartbeat: poll "kompyuter yoniq va online" deb yozadi (yengil: faqat holat, og'ir ish yo'q); botdan tekshiruv so'rovi bo'lsa bajaradi.
             if (dataRoot is null && (poll || scheduled))
             {
                 if (poll) Infrastructure.Heartbeat.MachineBeat.Beat(svc, workerState: "idle", jobId: null, detail: "bo'sh");
