@@ -82,10 +82,13 @@ button:disabled { cursor: default; }
 a { color: inherit; }
 .tnum { font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
+/* Faqat ekran o'quvchi uchun (ko'rinmaydi). */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 svg.i { width: 18px; height: 18px; flex: none; }
 
 .shell { min-height: 100dvh; padding: calc(var(--safe-top) + 16px) 0 calc(var(--tabbar-h) + 40px + var(--safe-bottom)); max-width: var(--shell); margin: 0 auto; }
-.page { display: grid; gap: 16px; padding: 0 16px; }
+/* minmax(0, 1fr): uzun (nowrap) bola ustunni kengaytirib, gorizontal skroll chiqarmasin. */
+.page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 0 16px; }
 
 /* ---------- sarlavhalar */
 .page-head { display: grid; gap: 4px; }
@@ -102,7 +105,7 @@ svg.i { width: 18px; height: 18px; flex: none; }
 .round { width: 40px; height: 40px; border-radius: 999px; background: var(--card); display: grid; place-items: center; color: var(--ink); flex: none; }
 
 /* ---------- karta */
-.card { background: var(--card); border-radius: var(--r-lg); padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.card { background: var(--card); border-radius: var(--r-lg); padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .card-head .t { display: grid; gap: 2px; min-width: 0; }
 .group { background: var(--card); border-radius: var(--r-lg); overflow: hidden; }
@@ -144,21 +147,23 @@ svg.i { width: 18px; height: 18px; flex: none; }
 .toggle:disabled { opacity: 0.5; }
 .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
 .toggle-row .t { display: grid; gap: 2px; min-width: 0; }
+.toggle-row .tt { font-weight: 600; }
 
 /* ---------- maydonlar */
 .field { display: grid; gap: 6px; min-width: 0; }
-.field > label, .field > .label { font-size: 12px; font-weight: 600; letter-spacing: 0.4px; color: var(--muted); text-transform: uppercase; }
-.inp, .input, .textarea { width: 100%; min-height: 46px; border: 1.5px solid transparent; background: var(--sunken); border-radius: var(--r-sm); padding: 11px 12px; outline: none; color: var(--ink); }
-.inp:focus, .input:focus, .textarea:focus { border-color: var(--accent); background: var(--card); }
-.inp.err, .input.err { border-color: var(--bad); }
-textarea.inp, .textarea { resize: vertical; min-height: 84px; line-height: 1.4; }
-.inp.code, .textarea.code { font: 12.5px/1.45 var(--mono); min-height: 52dvh; }
-select.inp, select.input { appearance: auto; }
-.inp::placeholder, .input::placeholder, .textarea::placeholder { color: var(--faint); }
+/* Faqat klassiz <label> sarlavha: maydon ichidagi boshqa label'lar (fayl tanlash, belgili input) KATTA harfga o'tmasin. */
+.field > label:not([class]), .field > .label { font-size: 12px; font-weight: 600; letter-spacing: 0.4px; color: var(--muted); text-transform: uppercase; }
+.inp { width: 100%; min-height: 46px; border: 1.5px solid transparent; background: var(--sunken); border-radius: var(--r-sm); padding: 11px 12px; outline: none; color: var(--ink); }
+.inp:focus { border-color: var(--accent); background: var(--card); }
+.inp.err { border-color: var(--bad); }
+textarea.inp { resize: vertical; min-height: 84px; line-height: 1.4; }
+select.inp { appearance: auto; min-width: 0; text-overflow: ellipsis; }
+.inp::placeholder { color: var(--faint); }
 .hint { font-size: 13px; color: var(--muted); line-height: 1.4; }
 .field-err { font-size: 13px; color: var(--bad); display: flex; gap: 6px; align-items: flex-start; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+/* minmax(0, 1fr): select'ning eng uzun varianti (masalan vaqt zonasi) ustunni kengaytirib, kartadan chiqib ketmasin. */
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 
 /* ---------- segment */
 .seg { display: flex; padding: 4px; border-radius: 999px; background: var(--sunken); gap: 2px; }
@@ -205,6 +210,7 @@ select.inp, select.input { appearance: auto; }
 
 /* ---------- xato / ogohlantirish qutisi */
 .alert { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-sm); background: var(--bad-soft); color: var(--bad); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.alert > * { min-width: 0; }
 .alert svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
 .alert.note { background: var(--sunken); color: var(--muted); }
 .alert.accent { background: var(--accent-soft); color: var(--accent-ink); }
@@ -221,7 +227,7 @@ select.inp, select.input { appearance: auto; }
 /* ---------- sheet (modal) */
 .backdrop { position: fixed; inset: 0; background: var(--scrim); z-index: 40; animation: fade 0.15s ease; }
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-height: 94dvh; overflow: auto; background: var(--card); border-radius: 24px 24px 0 0;
-  padding: 10px 16px calc(16px + var(--safe-bottom)); max-width: var(--sheet); margin: 0 auto; animation: up 0.2s ease; display: grid; gap: 18px; }
+  padding: 10px 16px calc(16px + var(--safe-bottom)); max-width: var(--sheet); margin: 0 auto; animation: up 0.2s ease; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 .sheet .grab { width: 40px; height: 5px; border-radius: 999px; background: var(--line); margin: 0 auto; }
 .sheet .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .sheet .sheet-head h2 { margin: 0; font-size: 26px; font-weight: 750; letter-spacing: -0.6px; }
@@ -276,47 +282,18 @@ select.inp, select.input { appearance: auto; }
 .logline.error { color: var(--bad); }
 .pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 var(--mono); background: var(--sunken); border-radius: var(--r-sm); padding: 10px 12px; max-height: 340px; overflow: auto; margin: 0; }
 
-/* ---------- eski komponentlar uchun moslik (ko'chirilgach ishlatilmaydi) */
-.head { display: flex; align-items: center; justify-content: space-between; padding: 0 16px 12px; gap: 12px; }
-.head h1 { font-size: 26px; font-weight: 750; letter-spacing: -0.6px; line-height: 1.2; margin: 0; }
-.head .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
-.iconbtn { width: 40px; height: 40px; border-radius: 999px; display: grid; place-items: center; background: var(--card); color: var(--ink); flex: none; }
-.iconbtn svg { width: 18px; height: 18px; }
-.list { display: grid; gap: 12px; padding: 0 16px; }
-.chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 650; background: var(--accent-soft); color: var(--accent-ink); }
-.chip.ok { background: var(--ok-soft); color: var(--ok); }
-.chip.warn { background: var(--accent-soft); color: var(--accent-ink); }
-.chip.bad { background: var(--bad-soft); color: var(--bad); }
-.chip.mute { background: var(--sunken); color: var(--muted); }
-.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--muted); }
-.err { font-size: 13px; color: var(--bad); overflow-wrap: anywhere; }
-.actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.formcard { display: grid; gap: 14px; }
-.sect { font-size: 12px; font-weight: 600; letter-spacing: 0.4px; color: var(--muted); text-transform: uppercase; margin: 8px 4px 0; }
-.chk { display: flex; align-items: center; gap: 10px; min-height: 36px; }
-.chk input { width: 18px; height: 18px; accent-color: var(--ink); }
-.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }
-.track { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
-.track:first-of-type { border-top: 0; }
-.track .info { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
-.track .btn { flex: none; }
-.play { width: 36px; height: 36px; flex: none; border-radius: 999px; background: var(--sunken); color: var(--ink); display: grid; place-items: center; }
+/* ---------- chiplar (tanlov) */
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chips button { font-size: 13px; font-weight: 600; min-height: 36px; padding: 0 14px; border-radius: 999px; background: var(--sunken); color: var(--ink); }
 .chips button.on { background: var(--ink); color: var(--bg); }
-.row2 { display: flex; gap: 8px; }
-.row2 .inp, .row2 .input { flex: 1; min-width: 0; }
-.pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ctx { display: grid; gap: 4px; font-size: 13px; line-height: 1.45; }
-.ctx b { color: var(--muted); font-weight: 600; }
-.ctx ul { margin: 2px 0 0; padding-left: 18px; display: grid; gap: 2px; }
-.pulse { animation: pulse 1.4s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: 0.45; } }
+
+/* ---------- kartalar ro'yxati: telefonda bir ustun, kompyuterda ikki ustun */
+.cards { display: grid; gap: 16px; align-items: start; min-width: 0; }
 
 /* ================================================================ katta ekranlar
    Telefonda suzuvchi pastki menyu, planshetda kengroq kontent, kompyuterda (to'liq ekrandagi Telegram'da) chap menyu. */
 @media (hover: hover) and (pointer: fine) {
-  .btn:not(:disabled):hover, .round:hover, .iconbtn:hover { filter: brightness(1.05); }
+  .btn:not(:disabled):hover, .round:hover { filter: brightness(1.05); }
   .srow:hover { background: color-mix(in srgb, var(--sunken) 40%, var(--card)); }
   .tabbar button:not(.on):not(:disabled):hover { color: var(--on-inverse); }
 }
@@ -330,7 +307,8 @@ select.inp, select.input { appearance: auto; }
 
 @media (min-width: 1024px) {
   :root { --rail: 232px; --shell: 1160px; --chat: 860px; --tabbar-h: 0px; }
-  body { padding-left: var(--rail); }
+  /* Chap menyu bo'lgan ekranlarda (kirish ekranida menyu yo'q - kontent markazda qoladi). */
+  body:has(.tabbar) { padding-left: var(--rail); }
   .shell { padding: calc(var(--safe-top) + 28px) 12px calc(32px + var(--safe-bottom)); }
   .tabbar { top: 0; left: 0; bottom: 0; right: auto; width: var(--rail); height: auto; max-width: none; margin: 0; border-radius: 0; box-shadow: none;
     flex-direction: column; gap: 4px; padding: calc(var(--safe-top) + 20px) 12px calc(16px + var(--safe-bottom)); background: var(--sunken); }
@@ -347,7 +325,7 @@ select.inp, select.input { appearance: auto; }
   .toast { left: calc(var(--rail) + 24px); right: 24px; bottom: calc(24px + var(--safe-bottom)); margin: 0 0 0 auto; }
   .fab { bottom: calc(28px + var(--safe-bottom)); }
   .fade-bottom { display: none; }
-  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; align-items: start; }
+  .cards { grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); }
   .narrow { max-width: 920px; }
   .logbox { max-height: 60vh; }
 }

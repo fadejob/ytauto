@@ -72,7 +72,7 @@ export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChang
 export function ToggleRow({ title, sub, on, onChange, disabled }: { title: ReactNode; sub?: ReactNode; on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <div className="toggle-row">
-      <div className="t"><span style={{ fontWeight: 600 }}>{title}</span>{sub ? <span className="sub">{sub}</span> : null}</div>
+      <div className="t"><span className="tt">{title}</span>{sub ? <span className="sub">{sub}</span> : null}</div>
       <Toggle on={on} onChange={onChange} disabled={disabled} label={typeof title === "string" ? title : undefined} />
     </div>
   );
@@ -108,9 +108,11 @@ export function Card({ title, sub, action, children, className, style }: { title
   );
 }
 
-/** Kartaning o'z "Saqlash" tugmasi: faqat o'zgarish bo'lsa faol, saqlanayotganda spinner. */
-export function SaveBtn({ dirty, saving, done, onClick, label = "Saqlash" }: { dirty: boolean; saving: boolean; done?: boolean; onClick: () => void; label?: string }) {
-  return <Btn size="sm" tone={dirty || saving ? "primary" : "secondary"} disabled={!dirty && !saving} loading={saving} done={done && !dirty} onClick={onClick}>{done && !dirty ? "Saqlandi" : label}</Btn>;
+/** Kartaning o'z "Saqlash" tugmasi: faqat o'zgarish bo'lsa faol, saqlanayotganda spinner. size="md"/block - karta pastidagi katta tugma. */
+export function SaveBtn({ dirty, saving, done, onClick, label = "Saqlash", size = "sm", block }: {
+  dirty: boolean; saving: boolean; done?: boolean; onClick: () => void; label?: string; size?: "md" | "sm"; block?: boolean;
+}) {
+  return <Btn size={size} block={block} tone={dirty || saving ? "primary" : "secondary"} disabled={!dirty && !saving} loading={saving} done={done && !dirty} onClick={onClick}>{done && !dirty ? "Saqlandi" : label}</Btn>;
 }
 
 export function SettingsRow({ icon: Icon, title, summary, warn, onClick }: { icon: IconT; title: string; summary?: ReactNode; warn?: boolean; onClick: () => void }) {

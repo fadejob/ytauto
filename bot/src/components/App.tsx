@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, CircleAlert, CircleCheck, Clapperboard, Lock, Settings2, Sparkles, Tv } from "lucide-react";
 import { ApiError, api, cache, followSystemTheme, haptic, initTelegram, telegramBack } from "@/lib/client";
 import type { Action, ActionResult, State } from "@/lib/types";
@@ -66,8 +66,8 @@ export default function App() {
     initTelegram();
     const stopTheme = followSystemTheme();
     const cached = cache.get<State>("state");
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage faqat mount'dan keyin o'qiladi (hydration mos kelishi uchun)
     // Darhol ko'rsatamiz, yangisini fonda olamiz. Eski versiya keshi (boshqa tuzilishdagi) ishlatilmaydi.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage faqat mount'dan keyin o'qiladi (hydration mos kelishi uchun)
     if (cached?.viewer && cached.channel && cached.catalog) setState(cached);
     void refresh();
     const onVisible = () => document.visibilityState === "visible" && void refresh();
@@ -75,9 +75,18 @@ export default function App() {
     return () => { document.removeEventListener("visibilitychange", onVisible); stopTheme(); };
   }, [refresh]);
 
+  /** Sozlama sahifasi ichidagi ichki ekran (masalan «Mening ovozim», prompt muharriri) o'z «orqaga»sini shu yerda ro'yxatdan o'tkazadi. */
+  const subBack = useRef<(() => void) | null>(null);
+  const setSubBack = useCallback((fn: (() => void) | null) => { subBack.current = fn; }, []);
+
   // Ichki sahifada (video tafsiloti, sozlama sahifasi) Telegram'ning tepadagi «orqaga» tugmasi.
+  // Sozlama sahifasining ichki ekrani ochiq bo'lsa, avval o'sha ekran yopiladi (sahifa ro'yxatiga qaytiladi).
   const inner = (tab === "videos" && videoId !== null) || (tab === "settings" && page !== null);
-  useEffect(() => telegramBack(inner ? () => { if (tab === "videos") setVideoId(null); else setPage(null); } : null), [inner, tab]);
+  useEffect(() => telegramBack(inner ? () => {
+    if (tab === "videos") setVideoId(null);
+    else if (subBack.current) subBack.current();
+    else setPage(null);
+  } : null), [inner, tab]);
 
   const run: Run = useCallback(async (actions) => {
     try {
@@ -124,7 +133,7 @@ export default function App() {
     setState(null); setNeedToken(true);
   };
   const pageProps: SettingsPageProps = {
-    state, toast: show, run, back: () => { setPage(null); window.scrollTo({ top: 0 }); }, open: (p) => openSettings(p), onChanged: () => void refresh(), onLogout: logout,
+    state, toast: show, run, back: () => { setPage(null); window.scrollTo({ top: 0 }); }, open: (p) => openSettings(p), onChanged: () => void refresh(), onLogout: logout, setSubBack,
   };
   const Page = page ? PAGES[page] : null;
 

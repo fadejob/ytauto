@@ -16,4 +16,9 @@ export type SettingsPageProps = {
   /** Umumiy holat (mavzular, faol kanal, Gemini) o'zgargan bo'lishi mumkin - /api/state qayta olinadi. */
   onChanged: () => void;
   onLogout: () => void;
+  /**
+   * Sahifa ichidagi ichki ekran ochilganda (masalan «Mening ovozim», prompt muharriri) Telegram'ning «orqaga» tugmasi avval shu
+   * funksiyani chaqiradi. Ichki ekran yopilganda null bilan tozalanadi.
+   */
+  setSubBack: (fn: (() => void) | null) => void;
 };

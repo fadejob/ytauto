@@ -1,0 +1,37 @@
+/* Kanallar va YouTube sozlamalari (dizayn: 0hBKBn, Chiqarish KKPOtH, Tavsif 5KIquu, Birinchi ulash jvx45U). */
+.tiles { display: grid; gap: 12px; }
+@media (min-width: 1024px) { .tiles { max-width: 640px; } }
+
+/* Chiqarish: public soati - kartaning asosiy raqami, yonida vaqt zonasi. */
+.slab { background: var(--sunken); border: 1.5px solid transparent; border-radius: var(--r-md); padding: 14px 16px; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.slab:focus-within { border-color: var(--accent); }
+.slabCol { display: grid; gap: 4px; min-width: 0; }
+.slab > .slabCol:first-child { flex: none; }
+.slabRight { flex: 1 1 0; }
+.slabRight { justify-items: end; text-align: right; }
+.time { font: inherit; font-size: 44px; font-weight: 800; letter-spacing: -1.4px; line-height: 1.05; font-variant-numeric: tabular-nums;
+  width: 4.6ch; min-width: 0; background: none; border: 0; outline: none; color: var(--ink); padding: 0; }
+.time::placeholder { color: var(--faint); }
+.zone { font: inherit; font-size: 15px; font-weight: 600; color: var(--ink); background: none; border: 0; outline: none; text-align: right; text-align-last: right;
+  width: 100%; max-width: 100%; min-width: 0; min-height: 36px; padding: 0 2px; cursor: pointer; text-overflow: ellipsis; }
+.zone option { color: initial; }
+.slabHint { font-size: 13px; color: var(--accent-ink); line-height: 1.4; margin-top: -6px; }
+.slabHint.bad { color: var(--bad); }
+
+/* Belgilar: switch qatorlari ajratgich chiziq bilan. */
+.rows { display: grid; }
+.rows > * + * { border-top: 1px solid var(--line); }
+.rows > * { padding: 6px 0; }
+
+/* Google ulanishi: redirect URI va nusxalash tugmasi. */
+.uri { display: flex; align-items: center; gap: 8px; background: var(--sunken); border-radius: var(--r-sm); padding: 6px 6px 6px 12px; min-height: 52px; }
+.uri code { flex: 1; min-width: 0; font: 13px/1.4 var(--mono); overflow-wrap: anywhere; user-select: all; }
+.copy { width: 40px; height: 40px; border-radius: 999px; background: var(--card); color: var(--ink); display: grid; place-items: center; flex: none; }
+.copy svg { width: 18px; height: 18px; }
+.copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.headActions { display: flex; align-items: center; gap: 6px; flex: none; }
+.collapse { width: 36px; height: 36px; border-radius: 999px; background: var(--sunken); color: var(--muted); display: grid; place-items: center; }
+.collapse svg { width: 18px; height: 18px; }
+.ulanish { overflow: hidden; border-radius: var(--r-lg); }
+/* ToggleRow sarlavhasi (ui.tsx inline 600) - dizaynda oddiy qalinlikda. */
+.rows :global(.toggle-row .tt) { font-weight: 500; font-size: 15px; }

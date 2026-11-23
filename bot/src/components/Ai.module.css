@@ -1,0 +1,96 @@
+/* AI yordamchi ekrani (dizayn: ytauto.dsai → «AI yordamchi», «· takliflar», «· natija», «· bo'sh»). Tokenlar globals.css'da. */
+
+.wrap { max-width: var(--chat); margin: 0 auto; width: 100%; }
+
+
+/* ---------- suhbat */
+.chat { display: grid; gap: 12px; min-width: 0; }
+.botrow { display: flex; align-items: flex-end; gap: 8px; min-width: 0; }
+.botrow :global(.msg) { max-width: calc(88% - 36px); }
+.avatar { width: 28px; height: 28px; flex: none; border-radius: 999px; background: var(--ink); color: var(--bg); display: grid; place-items: center; }
+
+/* ---------- taklif kartasi: holat chekka rangida */
+.prop { background: var(--card); border-radius: var(--r-lg); padding: 16px; display: grid; gap: 14px; min-width: 0; border: 1.5px solid transparent; }
+.waiting { border-color: var(--accent); }
+.invalid { border-color: var(--bad); }
+.done { border-color: transparent; }
+.failed { border-color: transparent; }
+.rejected { background: transparent; border: 1.5px dashed var(--line); }
+:global(html[data-theme="dark"]) .rejected { border-color: var(--faint); }
+
+.phead { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.picon { width: 40px; height: 40px; flex: none; border-radius: 999px; background: var(--sunken); color: var(--ink); display: grid; place-items: center; }
+.invalid .picon { background: var(--bad-soft); color: var(--bad); }
+.ptext { display: grid; gap: 2px; min-width: 0; align-self: center; }
+.ptitle { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; line-height: 1.3; overflow-wrap: anywhere; }
+.pacts { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.pacts > :global(.btn) { min-width: 0; }
+
+/* yakunlangan - ixcham qator */
+.compact { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.compact .ptitle { font-size: 15px; }
+.mark { width: 32px; height: 32px; flex: none; border-radius: 999px; display: grid; place-items: center; }
+.done .mark { background: var(--ok); color: var(--card); }
+.failed .mark { background: var(--bad); color: var(--card); }
+.rejected .mark { background: var(--sunken); color: var(--muted); }
+.pstate { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.done .pstate { color: var(--ok); }
+.failed .pstate { color: var(--bad); font-weight: 500; }
+.rejected .pstate { color: var(--muted); font-weight: 500; }
+.rejected .ptitle { color: var(--muted); text-decoration: line-through; }
+.presult { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+
+/* ---------- taklif ko'rinishi (preview) */
+.box { background: var(--sunken); border-radius: var(--r-md); padding: 12px; display: grid; gap: 12px; min-width: 0; font-size: 14px; }
+.topic { display: grid; gap: 6px; min-width: 0; }
+.topic + .topic { border-top: 1px solid var(--line); padding-top: 12px; }
+.topic > b { font-weight: 700; overflow-wrap: anywhere; }
+.hook { display: flex; align-items: flex-start; gap: 8px; color: var(--accent-ink); font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.hook svg { flex: none; margin-top: 1px; color: var(--accent-ink); }
+.meta { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.meta svg { flex: none; }
+.notes { color: var(--muted); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.kv { overflow-wrap: anywhere; line-height: 1.4; }
+.kv > span { color: var(--muted); font-size: 13px; margin-right: 6px; }
+.kv > span::after { content: ":"; }
+
+.diff { display: grid; gap: 6px; min-width: 0; }
+.diff + .diff { border-top: 1px solid var(--line); padding-top: 12px; }
+.diff > div { display: flex; gap: 10px; min-width: 0; font-size: 13px; line-height: 1.45; }
+.sign { width: 10px; flex: none; font-weight: 700; color: var(--muted); }
+.dtext { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.del .dtext { color: var(--muted); }
+.add .dtext { font-weight: 600; }
+.add .sign { color: var(--accent-ink); }
+
+/* ---------- bo'sh holat */
+.intro { gap: 16px; }
+.introHead { display: flex; align-items: flex-start; gap: 12px; }
+.introHead .avatar { width: 32px; height: 32px; margin-top: 1px; }
+.caps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.caps li { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.caps b { font-weight: 650; }
+.lang { display: flex; align-items: center; gap: 8px; background: var(--sunken); color: var(--muted); border-radius: var(--r-sm); padding: 10px 12px; font-size: 13px; }
+.lang svg { flex: none; }
+
+/* ---------- pastki blok: xato, tayyor so'rovlar, yozish maydoni */
+.dock { display: grid; gap: 8px; }
+.sendErr { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 6px 6px 16px; border-radius: 999px; background: var(--bad-soft); color: var(--bad); font-size: 14px; font-weight: 600; }
+.sendErr > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.sendErr svg { flex: none; }
+.errX { width: 32px; height: 32px; flex: none; border-radius: 999px; display: grid; place-items: center; color: var(--bad); }
+
+.chipsCol { display: grid; justify-items: start; gap: 8px; }
+.chipsRow { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.chipsRow::-webkit-scrollbar { display: none; }
+.chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-height: 40px; padding: 0 14px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); color: var(--ink); font-size: 13px; font-weight: 600; text-align: left; }
+.chipsRow .chip { white-space: nowrap; flex: none; min-height: 36px; }
+.chip svg { flex: none; color: var(--muted); }
+.chip:disabled { opacity: 0.5; }
+
+.box2 { border: 1px solid var(--line); box-shadow: none; align-items: center; padding: 5px 5px 5px 16px; min-height: 52px; }
+.send { width: 40px; height: 40px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .chip:not(:disabled):hover { background: var(--sunken); }
+}

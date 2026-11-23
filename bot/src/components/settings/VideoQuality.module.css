@@ -1,0 +1,113 @@
+/* «Video va sifat» (dizayn: Sozlamalar → Video va sifat euFqPV, to'liq sahifa yX7XZY). */
+
+/* Kartalar ustuni (kompyuterda .cards ikki ustun qiladi). */
+
+/* Karta oxiri: izoh + «Qaytarish» / «Saqlash». */
+.foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; flex-wrap: wrap; }
+.foot > .dirtyHint { color: var(--accent-ink); font-weight: 600; }
+.footActions { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+
+.divider { border: 0; border-top: 1px solid var(--line); margin: 0; }
+.groupHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+
+/* Matn + boshqaruv qatori (stepper). */
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; }
+.row > :global(.t) { display: grid; gap: 2px; min-width: 0; }
+.rowTitle { font-weight: 600; }
+
+.toggles { display: grid; gap: 8px; }
+
+/* ------------------------------------------------ format plitkalari */
+.formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.format { display: grid; gap: 2px; justify-items: start; text-align: left; padding: 12px; min-height: 124px; border-radius: var(--r-md);
+  background: var(--sunken); border: 2px solid transparent; color: var(--ink); align-content: start; }
+.format b { font-size: 15px; font-weight: 700; letter-spacing: 0.3px; margin-top: 12px; }
+.formatName { font-size: 13px; color: var(--muted); }
+.formatSub { font-size: 13px; color: var(--muted); }
+.format.on { background: var(--accent-soft); border-color: var(--accent); }
+.format.on .formatSub { color: var(--accent-ink); font-weight: 700; }
+.formatTop { display: flex; justify-content: space-between; align-items: flex-start; width: 100%; }
+.aspect { width: 32px; height: 32px; display: grid; place-items: center; }
+.aspect i { display: block; border: 2px solid var(--muted); border-radius: 3px; }
+.shape0 { width: 30px; height: 18px; }
+.shape1 { width: 16px; height: 28px; }
+.shape2 { width: 22px; height: 22px; }
+.format.on .aspect i { background: var(--accent); border-color: var(--accent); }
+.pick { width: 22px; height: 22px; border-radius: 999px; border: 1.5px solid var(--line); display: grid; place-items: center; }
+.format.on .pick { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* ------------------------------------------------ belgili tanlov qutisi */
+.select { position: relative; display: block; }
+.select select { appearance: none; -webkit-appearance: none; padding-left: 42px; padding-right: 40px; min-height: 46px; text-overflow: ellipsis; cursor: pointer; }
+.selIcon, .selChev { position: absolute; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.selIcon { left: 14px; }
+.selChev { right: 14px; }
+
+.locked { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+
+/* ------------------------------------------------ stepper */
+.stepper { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.stepBtn { width: 36px; height: 36px; border-radius: 999px; background: var(--sunken); color: var(--ink); display: grid; place-items: center; flex: none; }
+.stepBtn:disabled { color: var(--faint); }
+.stepVal { display: inline-flex; align-items: baseline; justify-content: center; gap: 3px; min-width: 52px; }
+.stepVal input { width: auto; min-width: 2ch; max-width: 5ch; border: 0; background: transparent; color: var(--ink); text-align: center;
+  font: inherit; font-size: 17px; font-weight: 700; padding: 4px 0; border-radius: 6px; outline: none; }
+.stepVal input:focus { background: var(--sunken); }
+.suffix { font-size: 15px; font-weight: 700; }
+
+/* «Rasm / sahna» va «Klip / sahna» kichik plitkalari. */
+.counter { display: grid; gap: 8px; padding: 12px; border-radius: var(--r-md); background: var(--sunken); min-width: 0; }
+.counter .stepper { justify-content: space-between; width: 100%; }
+.counter .stepBtn { background: var(--card); }
+.counter .stepVal input:focus { background: var(--card); }
+
+/* ------------------------------------------------ stok kalitlari */
+.keys { display: grid; gap: 12px; }
+.key { display: grid; gap: 10px; }
+.keyHead { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.keyTile { width: 40px; height: 40px; border-radius: var(--r-sm); background: var(--sunken); color: var(--muted); display: grid; place-items: center; flex: none; }
+.keyText { flex: 1; min-width: 0; display: grid; gap: 4px; justify-items: start; }
+.keyText b { font-weight: 650; }
+.keyHead .remove { color: var(--bad); }
+.keyInput { position: relative; display: block; }
+.keyInput input { padding-right: 48px; }
+.paste { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); border-radius: var(--r-sm); }
+
+/* ------------------------------------------------ shablon ko'rinishi va moslik bali */
+.tpl { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--r-md); background: var(--sunken); }
+.thumb { width: 64px; height: 40px; border-radius: 8px; background: var(--inverse); display: flex; align-items: center; justify-content: center; gap: 4px; flex: none; }
+.thumb i { width: 10px; height: 10px; border-radius: 999px; }
+.thumb i:nth-child(1) { background: var(--accent); }
+.thumb i:nth-child(2) { background: var(--on-inverse); }
+.thumb i:nth-child(3) { background: var(--on-inverse-muted); }
+.thumb.none { background: var(--line); }
+.thumb.none i { background: var(--faint); }
+.tplText { display: grid; gap: 2px; min-width: 0; }
+.tplText b { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.score { display: grid; gap: 10px; transition: opacity 0.15s; }
+.score.dim { opacity: 0.5; }
+.readout { display: flex; align-items: center; gap: 12px; }
+.big { font-size: 26px; font-weight: 750; letter-spacing: -0.5px; flex: none; }
+.big span { color: var(--faint); }
+.scoreText { display: grid; gap: 2px; min-width: 0; }
+.scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+
+.range { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; background: transparent; cursor: pointer; margin: 0; }
+.range::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, var(--accent) var(--p), var(--line) var(--p)); }
+.range::-moz-range-track { height: 6px; border-radius: 999px; background: var(--line); }
+.range::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--accent); }
+.range::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; margin-top: -9px; border-radius: 999px; background: var(--card); border: 3px solid var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+.range::-moz-range-thumb { width: 18px; height: 18px; border-radius: 999px; background: var(--card); border: 3px solid var(--accent); }
+.range:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 999px; }
+
+/* ------------------------------------------------ fps / LUFS tanlovi (faol - urg'u) */
+.pills { display: flex; gap: 8px; }
+.pills button { flex: 1; min-height: 44px; padding: 0 8px; border-radius: 999px; background: var(--sunken); color: var(--ink); font-size: 14px; font-weight: 650;
+  white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pills button.on { background: var(--accent); color: var(--on-accent); }
+
+@media (max-width: 360px) {
+  .format { padding: 10px; }
+  .pills button { font-size: 13px; padding: 0 4px; }
+}

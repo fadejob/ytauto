@@ -1,0 +1,4 @@
+/* Hisob sahifasi (dizayn: Hisob HK8SGh) - «Hisobdan chiqish» kartasi: markazda qizil matnli tugma va izoh. */
+.logout { justify-items: center; text-align: center; gap: 8px; }
+/* .btn.ghost (globals) rangidan ustun bo'lishi uchun: karta + element + klass. */
+.logout button.logoutBtn { color: var(--bad); }

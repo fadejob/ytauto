@@ -1,40 +1,97 @@
 "use client";
 
+/**
+ * «Videolar» ekrani (dizayn: ytauto.dsai → Screens → Videolar). Fokus - navbatdagi videolar soni va keyingi chiqish; e'tibor
+ * kerak bo'lgan, tayyor yoki jarayondagi videolar to'liq karta (bosqichlar chizig'i, xato, bitta asosiy amal), oddiy navbat va
+ * chiqqanlar - ixcham qatorlar. Karta yoki qator bosilsa video tafsiloti ochiladi (u yerda barcha amallar ham bor).
+ */
 import { useEffect, useMemo, useState } from "react";
-import { api, confirmBox, haptic, putFile } from "@/lib/client";
-import { FormatText, StatusText, type Action, type Catalog, type PreparedAudio, type ScriptSource, type State, type Topic } from "@/lib/types";
+import {
+  CalendarClock, ChevronRight, ChevronsUpDown, CircleX, CloudUpload, Ellipsis, ExternalLink, Inbox, ListVideo, Pencil, Plus, RotateCcw, RotateCw,
+  Trash2, Undo2, Upload, Zap, CircleCheck, LoaderCircle,
+} from "lucide-react";
+import { confirmBox, haptic, openExternal } from "@/lib/client";
+import { StatusText, type Action, type State, type Topic } from "@/lib/types";
 import type { Run } from "./App";
-import { checkHook, countWords, FormatLength, HOOK_MAX_WORDS, manualLengthProblem } from "@/lib/video-rules";
-import { IconBolt, IconEdit, IconPlay, IconPlus, IconRefresh, IconTrash, IconUpload } from "./icons";
+import type { SettingsPage } from "./settings/types";
+import { Alert, Btn, Empty, HookLine, Segmented, Sheet, Skel, SkelCard, StageStrip, Status, useBusy, type IconT, type StageState } from "./ui";
+import TopicSheet, { RescheduleSheet, MONTHS, fmtWhen, formatShort, isLate, todayIn } from "./TopicSheet";
+import s from "./Topics.module.css";
 
 type Group = "queue" | "work" | "done";
 const groupOf = (t: Topic): Group => (t.status === 11 ? "done" : [0, 12, 13, 14].includes(t.status) && !t.claimed ? "queue" : "work");
 
-function chipClass(s: number) {
-  if (s === 11) return "chip ok";
-  if (s === 13 || s === 12) return "chip bad";
-  if (s === 14) return "chip mute";
-  if (s === 10 || s === 9) return "chip warn";
-  return "chip";
+// ------------------------------------------------------------------ bosqichlar chizig'i (holatdan)
+const STAGES = ["Ssenariy", "Ovoz", "Montaj", "Render", "YouTube"] as const;
+/** Ish holati → hozirgi bosqich: 1 ssenariy; 2-3 ovoz va subtitr vaqtlari; 4 montaj; 5-6 render va sifat; 7-10 arxiv, yuklash, YouTube. */
+const STAGE_OF: Record<number, number> = { 1: 0, 2: 1, 3: 1, 4: 2, 5: 3, 6: 3, 7: 4, 8: 4, 9: 4, 10: 4 };
+
+export function stagesOf(t: Topic): { name: string; state: StageState }[] {
+  const make = (fn: (i: number) => StageState) => STAGES.map((name, i) => ({ name, state: fn(i) }));
+  const st = t.status;
+  if (st === 11) return make(() => "done");
+  // Video tayyor (arxivda yoki YouTube'da): Render'gacha hammasi bajarilgan.
+  const made = !!t.youtubeUrl || t.canUploadReady || t.canForceUpload || t.uploadRequested;
+  if (st === 15) return make((i) => (i < 4 ? "done" : "todo"));
+  if (st in STAGE_OF) { const at = STAGE_OF[st]; return make((i) => (i < at ? "done" : i === at ? "now" : "todo")); }
+  if (st === 12 || st === 13) {
+    // Qaysi bosqichda to'xtagani mavzuda yo'q: video tayyor bo'lsa - YouTube, aks holda birinchi bajarilmagan bosqich.
+    const at = made ? 4 : 0;
+    return make((i) => (i < at ? "done" : i === at ? "fail" : "todo"));
+  }
+  if (st === 14) return make((i) => (made && i < 4 ? "done" : "todo"));
+  // Navbatda: worker endi olgan bo'lsa ssenariy boshlanmoqda.
+  return make((i) => (t.claimed && i === 0 ? "now" : "todo"));
 }
 
-const MONTHS = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"];
-/** Desktop ilovadagi qoida: vaqt o'tib ketgan yoki 30 daqiqadan yaqin bo'lsa, video yuklangandan 1 soat keyin chiqadi. */
-const isLate = (iso: string) => new Date(iso).getTime() <= Date.now() + 30 * 60000;
-const fmt = (d: { date: string; time: string }) => `${Number(d.date.slice(8, 10))} ${MONTHS[Number(d.date.slice(5, 7)) - 1]}, ${d.time}`;
+function statusTone(t: Topic): "neutral" | "accent" | "ok" | "bad" {
+  if (t.status === 11) return "ok";
+  if (t.status === 12 || t.status === 13) return "bad";
+  if (t.status === 14 || (t.status === 0 && !t.claimed)) return "neutral";
+  return "accent";
+}
 
-export default function Topics({ state, loading, refresh, run, locked }: { state: State | null; loading: boolean; refresh: () => Promise<void>; run: Run; locked?: boolean; openVideo?: (id: number) => void; openSettings?: (p: import("./settings/types").SettingsPage | null) => void }) {
+const sourceText = (t: Topic) => (t.hasAudio ? "tayyor audio" : t.manualScript ? "o'z matni" : null);
+
+function musicText(t: Topic, state: State | null) {
+  if (t.music === "none") return "musiqasiz";
+  if (t.music) return state?.catalog.music?.tracks.find((m) => m.id === t.music)?.title ?? "tanlangan musiqa";
+  return null;
+}
+
+/** «bugun, 18:00» / «ertaga, 18:00» / «24 noy, 18:00» - kanal vaqt zonasi bo'yicha. */
+function relWhen(d: { date: string; time: string }, tz: string) {
+  const today = todayIn(tz);
+  const [y, m, dd] = today.split("-").map(Number);
+  const tomorrow = new Date(Date.UTC(y, m - 1, dd + 1)).toISOString().slice(0, 10);
+  if (d.date === today) return `bugun, ${d.time}`;
+  if (d.date === tomorrow) return `ertaga, ${d.time}`;
+  return fmtWhen(d);
+}
+
+type Kind = "publish" | "unpublish" | "upload" | "unupload" | "delete" | "retry" | "retry_settings" | "cancel" | "force_upload";
+type Item = { key: string; label: string; icon: IconT; danger?: boolean; kind?: Kind; onClick?: () => void };
+
+type Props = {
+  state: State | null; loading: boolean; refresh: () => Promise<void>; run: Run; locked?: boolean;
+  openVideo?: (id: number) => void; openSettings?: (p: SettingsPage | null) => void;
+};
+
+export default function Topics({ state, loading, refresh, run, locked, openVideo, openSettings }: Props) {
   const [group, setGroup] = useState<Group>("queue");
   const [sheet, setSheet] = useState<{ mode: "new" } | { mode: "edit"; topic: Topic } | null>(null);
-  const [open, setOpen] = useState<number | null>(null);
-  const [busy, setBusy] = useState<number | null>(null);
   const [resched, setResched] = useState<Topic | null>(null);
+  const [more, setMore] = useState<number | null>(null);
+  const busy = useBusy();
 
+  const topics = useMemo(() => state?.topics ?? [], [state]);
   const counts = useMemo(() => {
     const c = { queue: 0, work: 0, done: 0 };
-    for (const t of state?.topics ?? []) c[groupOf(t)]++;
+    for (const t of topics) c[groupOf(t)]++;
     return c;
-  }, [state]);
+  }, [topics]);
+  const tz = state?.catalog.youtube.timeZone ?? "Asia/Tashkent";
+
   // Shablon serverdan kompyuterga tushayotgan bo'lsa, ro'yxat o'zi yangilanadi: o'rnatilishi bilan tanlash mumkin bo'ladi.
   const waitingTemplates = (state?.catalog.pendingTemplates?.length ?? 0) > 0;
   useEffect(() => {
@@ -42,20 +99,32 @@ export default function Topics({ state, loading, refresh, run, locked }: { state
     const t = window.setInterval(() => document.visibilityState === "visible" && void refresh(), 8000);
     return () => window.clearInterval(t);
   }, [waitingTemplates, refresh]);
-  const items = (state?.topics ?? []).filter((t) => groupOf(t) === group);
+
+  const items = topics.filter((t) => groupOf(t) === group);
   if (group === "done") items.sort((a, b) => b.publishAt.localeCompare(a.publishAt));
 
-  async function act(t: Topic, kind: "publish" | "unpublish" | "upload" | "unupload" | "delete" | "retry" | "retry_settings" | "cancel" | "force_upload") {
-    if (kind === "retry_settings" && !(await confirmBox("Vazifa joriy sozlamalar va promptlar bilan qayta snapshot qilinadi, o'zgargan bosqichlar qayta bajariladi. Davom etilsinmi?"))) return;
-    if (kind === "cancel" && !(await confirmBox(`"${t.topic}" bekor qilinsinmi? YouTube'ga yuklangan video o'chirilmaydi.`))) return;
-    if (kind === "force_upload" && !(await confirmBox("YouTube Studio'da bu video YO'QLIGINI tekshirdingizmi? Aks holda ikki marta yuklanadi.\n\nYangi upload boshlansinmi?"))) return;
+  // Fokus: navbatdagi videolar, keyingi chiqish va e'tibor kerak bo'lganlar.
+  const serverNow = state?.now;
+  const summary = useMemo(() => {
+    // Server vaqti (/api/state): render toza qolishi uchun Date.now() ishlatilmaydi.
+    const now = serverNow ? new Date(serverNow).getTime() : 0;
+    const next = topics
+      .filter((t) => t.status !== 11 && t.status !== 14 && new Date(t.publishAt).getTime() >= now)
+      .sort((a, b) => a.publishAt.localeCompare(b.publishAt))[0];
+    const attention = topics.filter((t) => t.status === 12 || t.status === 13).length;
+    return { next, attention };
+  }, [topics, serverNow]);
+
+  async function act(t: Topic, kind: Kind): Promise<boolean> {
+    if (kind === "retry_settings" && !(await confirmBox("Vazifa joriy sozlamalar va promptlar bilan qayta snapshot qilinadi, o'zgargan bosqichlar qayta bajariladi. Davom etilsinmi?"))) return false;
+    if (kind === "cancel" && !(await confirmBox(`"${t.topic}" bekor qilinsinmi? YouTube'ga yuklangan video o'chirilmaydi.`))) return false;
+    if (kind === "force_upload" && !(await confirmBox("YouTube Studio'da bu video YO'QLIGINI tekshirdingizmi? Aks holda ikki marta yuklanadi.\n\nYangi upload boshlansinmi?"))) return false;
     if (kind === "publish" && !(await confirmBox(t.youtubeUrl
       ? `"${t.topic}" YouTube'da hozir public qilinsinmi?`
-      : `"${t.topic}" hozir tayyorlanib, YouTube'ga darhol chiqarilsinmi?`))) return;
+      : `"${t.topic}" hozir tayyorlanib, YouTube'ga darhol chiqarilsinmi?`))) return false;
     if (kind === "upload" && !(await confirmBox(
-      `"${t.title || t.topic}" tayyor videosi YouTube'ga yuklansinmi?\n\nVideo qayta tayyorlanmaydi. Chiqish vaqti: ${isLate(t.publishAt) ? "o'tib ketgan — yuklangandan 1 soat keyin" : fmt(t.publishLocal)}.`))) return;
-    if (kind === "delete" && !(await confirmBox(`"${t.topic}" o'chirilsinmi? Qaytarib bo'lmaydi.`))) return;
-    setBusy(t.id);
+      `"${t.title || t.topic}" tayyor videosi YouTube'ga yuklansinmi?\n\nVideo qayta tayyorlanmaydi. Chiqish vaqti: ${isLate(t.publishAt) ? "o'tib ketgan — yuklangandan 1 soat keyin" : fmtWhen(t.publishLocal)}.`))) return false;
+    if (kind === "delete" && !(await confirmBox(`"${t.topic}" o'chirilsinmi? Qaytarib bo'lmaydi.`))) return false;
     const action: Action =
       kind === "publish" ? { type: "publish_now", id: t.id }
       : kind === "unpublish" ? { type: "cancel_publish_now", id: t.id }
@@ -66,343 +135,220 @@ export default function Topics({ state, loading, refresh, run, locked }: { state
       : kind === "cancel" ? { type: "cancel", id: t.id }
       : kind === "force_upload" ? { type: "force_new_upload", id: t.id }
       : { type: "delete_topic", id: t.id };
-    await run([action]);
-    setBusy(null);
+    // Natija xabari (toast) App'da; xato bo'lsa tugmada «✓» chiqmasin.
+    const ok = await busy.run(`${kind}:${t.id}`, async () => {
+      const [r] = await run([action]);
+      if (!r?.ok) throw new Error(r?.message ?? "Xato");
+      return true;
+    });
+    return ok === true;
   }
 
-  return (
-    <>
-      <header className="head">
-        <div>
-          <h1>Mavzular</h1>
-          <div className="sub">
-            {!state ? "Yuklanmoqda…" : <>
-              {state.channel?.title ? <b title={state.channel.total > 1 ? "Kanalni Sozlamalar → YouTube kanallari'da almashtiring" : undefined}>📺 {state.channel.title}{state.channel.total > 1 ? ` (${state.channel.total} kanaldan)` : ""} · </b> : null}
-              {state.catalog.youtube.timeZone} · videolar ingliz tilida
-            </>}
-          </div>
-        </div>
-        <button className="iconbtn" aria-label="Yangilash" onClick={() => { haptic.tap(); void refresh(); }} disabled={loading}><IconRefresh /></button>
-      </header>
+  /** Kartaning asosiy amali: xatoda - qayta urinish, tayyorda - yuklash, navbatda - hozir chiqarish. */
+  function primaryOf(t: Topic): { kind: Kind; label: string; icon: IconT; tone?: "primary" | "secondary" } | null {
+    if (t.canRetry) return { kind: "retry", label: "Qayta urinish", icon: RotateCcw };
+    if (t.canUploadReady) return { kind: "upload", label: "YouTube'ga yuklash", icon: Upload };
+    if (t.canPublishNow) return { kind: "publish", label: "Hozir chiqarish", icon: Zap };
+    if (t.uploadRequested) return { kind: "unupload", label: "Yuklashni bekor qilish", icon: Undo2, tone: "secondary" };
+    if (t.publishNow) return { kind: "unpublish", label: "Bekor qilish", icon: Undo2, tone: "secondary" };
+    return null;
+  }
 
-      <div className="seg" role="tablist">
-        {([["queue", "Navbatda"], ["work", "Jarayonda"], ["done", "Chiqqan"]] as const).map(([g, label]) => (
-          <button key={g} className={group === g ? "on" : ""} onClick={() => { haptic.tap(); setGroup(g); }}>
-            {label}<span className="n">{counts[g]}</span>
+  /** Qolgan amallar («⋯» oynasida). */
+  function secondaryOf(t: Topic): Item[] {
+    const p = primaryOf(t)?.kind;
+    const list: Item[] = [];
+    // Asosiy amal takrorlanmaydi. kind'siz bandlar (tahrirlash, vaqt, YouTube) doim qoladi - asosiy amal yo'q bo'lsa ham.
+    const add = (cond: boolean, it: Item) => { if (cond && (!it.kind || it.kind !== p)) list.push(it); };
+    add(t.canPublishNow, { key: "publish", kind: "publish", label: "Hozir chiqarish", icon: Zap });
+    add(t.canUploadReady, { key: "upload", kind: "upload", label: "YouTube'ga yuklash", icon: Upload });
+    add(t.uploadRequested, { key: "unupload", kind: "unupload", label: "Yuklashni bekor qilish", icon: Undo2 });
+    add(t.publishNow, { key: "unpublish", kind: "unpublish", label: "Hozir chiqarishni bekor qilish", icon: Undo2 });
+    add(t.editable, { key: "edit", label: "Tahrirlash", icon: Pencil, onClick: () => setSheet({ mode: "edit", topic: t }) });
+    add(t.canRetry, { key: "retry_settings", kind: "retry_settings", label: "Joriy sozlamalar bilan qayta", icon: RotateCw });
+    add(t.canForceUpload, { key: "force_upload", kind: "force_upload", label: "Yangi upload", icon: CloudUpload });
+    add(t.canReschedule, { key: "resched", label: "Vaqtni o'zgartirish", icon: CalendarClock, onClick: () => setResched(t) });
+    add(!!t.youtubeUrl, { key: "yt", label: "YouTube'da ochish", icon: ExternalLink, onClick: () => t.youtubeUrl && openExternal(t.youtubeUrl) });
+    add(t.canCancel && !t.deletable, { key: "cancel", kind: "cancel", label: "Videoni bekor qilish", icon: CircleX, danger: true });
+    add(t.deletable, { key: "delete", kind: "delete", label: "O'chirish", icon: Trash2, danger: true });
+    return list;
+  }
+
+  // Bir video «to'liq karta» bo'ladimi: qilinadigan ish yoki jarayon bor. Oddiy navbat va chiqqanlar - ixcham qator.
+  const featured = (t: Topic) =>
+    groupOf(t) === "work" || !!t.error || t.canRetry || t.canUploadReady || t.uploadRequested || t.publishNow || t.canForceUpload || t.status === 15;
+  const cards = items.filter(featured);
+  const rows = items.filter((t) => !featured(t));
+
+  const open = (t: Topic) => { haptic.tap(); openVideo?.(t.id); };
+  const moreTopic = more !== null ? topics.find((t) => t.id === more) ?? null : null;
+  const channel = state?.channel;
+
+  return (
+    <div className="page">
+      <div className={s.top}>
+        {state ? (
+          <button type="button" className={s.chip} onClick={() => openSettings?.("channels")}
+            aria-label={channel?.title ? `Kanal: ${channel.title}. Almashtirish` : "Kanal tanlash"}>
+            <span className={s.avatar} aria-hidden>{(channel?.title || "?").trim().charAt(0) || "?"}</span>
+            <span className={s.name}>{channel?.title || "Kanal tanlanmagan"}</span>
+            {channel && channel.total > 1 ? <span className={s.total}>{channel.total} ta</span> : null}
+            <ChevronsUpDown size={16} />
           </button>
-        ))}
+        ) : <Skel h={44} w={200} r={999} />}
+        <button type="button" className={`round ${s.refresh}`} aria-label="Yangilash" disabled={loading} onClick={() => { haptic.tap(); void refresh(); }}>
+          <RotateCw size={18} className={loading && state ? "spin" : undefined} />
+        </button>
       </div>
 
-      <div className="list cards" style={{ paddingBottom: group !== "done" ? 64 : 0 }}>
-        {!state && loading && [0, 1, 2].map((i) => <div key={i} className="skeleton" />)}
-        {state && items.length === 0 && <div className="empty">{group === "queue" ? "Navbat bo'sh. Pastdagi “Mavzu” tugmasi yoki AI yordamchi orqali qo'shing." : "Bu yerda hozircha hech narsa yo'q."}</div>}
-        {items.map((t) => (
-          <article key={t.id} className="card topic">
-            <div className="row">
-              <div className="title" onClick={() => setOpen(open === t.id ? null : t.id)}>{t.title || t.topic}</div>
-              <span className="id">#{t.id}</span>
+      <div className={s.summary}>
+        {state ? (
+          <>
+            <h1 className="focal">
+              {counts.queue > 0 ? <>{counts.queue} <span className="dim">video navbatda</span></> : <>Navbat <span className="dim">bo&apos;sh</span></>}
+            </h1>
+            <div className="sub">
+              {[
+                summary.next ? `Keyingisi ${relWhen(summary.next.publishLocal, tz)}` : counts.work > 0 ? `${counts.work} ta video tayyorlanmoqda` : null,
+                summary.attention > 0 ? `${summary.attention} tasiga e'tibor kerak` : null,
+              ].filter(Boolean).join(" · ") || "Yangi video qo'shing — qolganini kompyuter bajaradi."}
             </div>
-            {t.hook ? <div className="notes" style={{ color: "var(--text)" }}>❓ {t.hook}</div> : null}
-            {t.notes ? <div className={`notes${open === t.id ? " open" : ""}`} onClick={() => setOpen(open === t.id ? null : t.id)}>{t.notes}</div> : null}
-            <div className="meta">
-              <span className={chipClass(t.status)}>{t.claimed && t.status < 9 ? "⏳ " : ""}{StatusText[t.status]}</span>
-              {t.publishNow ? <span className="chip warn">⚡ hozir chiqarish kutilmoqda</span> : null}
-              {t.uploadRequested ? <span className="chip warn">⬆ YouTube'ga yuklash kutilmoqda</span> : null}
-              {t.hasAudio ? <span className="chip mute">🎙 tayyor audio</span> : t.manualScript ? <span className="chip mute">✍ o&apos;z matni</span> : null}
-              {t.music === "none" ? <span className="chip mute">🔇 musiqasiz</span>
-                : t.music ? <span className="chip mute">🎵 {state?.catalog.music?.tracks.find((m) => m.id === t.music)?.title ?? "tanlangan musiqa"}</span> : null}
-              <span>📅 {fmt(t.publishLocal)}</span>
-            </div>
-            {t.error ? <div className="err">{t.error}</div> : null}
-            <div className="actions">
-              {t.canUploadReady ? <button className="btn primary" disabled={busy === t.id} onClick={() => act(t, "upload")}><IconUpload />YouTube'ga yuklash</button> : null}
-              {t.uploadRequested ? <button className="btn ghost" disabled={busy === t.id} onClick={() => act(t, "unupload")}>Yuklashni bekor qilish</button> : null}
-              {t.canPublishNow ? <button className="btn primary" disabled={busy === t.id} onClick={() => act(t, "publish")}><IconBolt />Hozir chiqarish</button> : null}
-              {t.publishNow ? <button className="btn ghost" disabled={busy === t.id} onClick={() => act(t, "unpublish")}>Bekor qilish</button> : null}
-              {t.editable ? <button className="btn" onClick={() => { haptic.tap(); setSheet({ mode: "edit", topic: t }); }}><IconEdit />Tahrirlash</button> : null}
-              {t.canRetry ? <button className="btn primary" disabled={busy === t.id} onClick={() => act(t, "retry")}><IconRefresh />Qayta urinish</button> : null}
-              {t.canRetry ? <button className="btn" disabled={busy === t.id} onClick={() => act(t, "retry_settings")}>Joriy sozlamalar bilan qayta</button> : null}
-              {t.canForceUpload ? <button className="btn" disabled={busy === t.id} onClick={() => act(t, "force_upload")}><IconUpload />Yangi upload</button> : null}
-              {t.canReschedule ? <button className="btn" disabled={busy === t.id} onClick={() => { haptic.tap(); setResched(t); }}>Vaqtni o&apos;zgartirish</button> : null}
-              {t.canCancel && !t.deletable ? <button className="btn danger" disabled={busy === t.id} onClick={() => act(t, "cancel")}>Bekor qilish</button> : null}
-              {t.deletable ? <button className="btn danger" disabled={busy === t.id} onClick={() => act(t, "delete")}><IconTrash /></button> : null}
-              {t.youtubeUrl ? <a className="btn" href={t.youtubeUrl} target="_blank" rel="noreferrer"><IconPlay />YouTube</a> : null}
-            </div>
-          </article>
-        ))}
+            <div className={s.tz}>{tz} vaqti · videolar ingliz tilida</div>
+          </>
+        ) : (
+          <><Skel h={42} w="70%" /><Skel h={14} w="55%" /></>
+        )}
       </div>
 
-      {group !== "done" && (
-        <button className="fab" disabled={locked} title={locked ? "Avval Gemini kalitini qo'shing" : undefined}
-          onClick={() => { haptic.tap(); setSheet({ mode: "new" }); }}><IconPlus />Mavzu</button>
-      )}
-      {sheet && state && <TopicSheet sheet={sheet} catalog={state.catalog} channelTitle={(state.channel?.total ?? 0) > 1 ? state.channel.title : ""} close={() => setSheet(null)} run={run} />}
-      {resched && <RescheduleSheet topic={resched} close={() => setResched(null)} run={run} />}
-    </>
-  );
-}
+      <Segmented<Group> label="Videolar guruhi" value={group}
+        onChange={(g) => { haptic.tap(); setGroup(g); }}
+        items={[
+          { key: "queue", label: "Navbatda", count: state ? counts.queue : undefined },
+          { key: "work", label: "Jarayonda", count: state ? counts.work : undefined },
+          { key: "done", label: "Chiqqan", count: state ? counts.done : undefined },
+        ]} />
 
-/** Tayyor (yoki tayyorlanayotgan) vazifaning chiqish vaqtini o'zgartirish. */
-function RescheduleSheet({ topic, close, run }: { topic: Topic; close: () => void; run: Run }) {
-  const [date, setDate] = useState(topic.publishLocal.date);
-  const [time, setTime] = useState(topic.publishLocal.time);
-  const [saving, setSaving] = useState(false);
-  async function save() {
-    setSaving(true);
-    const [r] = await run([{ type: "reschedule", id: topic.id, publishAt: `${date} ${time || "18:00"}` }]);
-    setSaving(false);
-    if (r?.ok) close();
-  }
-  return (
-    <>
-      <div className="backdrop" onClick={close} />
-      <section className="sheet" role="dialog" aria-label="Chiqish vaqtini o'zgartirish">
-        <div className="grab" />
-        <h2>#{topic.id} — chiqish vaqti</h2>
-        <div className="card formcard">
-          <div className="grid2">
-            <div className="field"><label>Sana</label><input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
-            <div className="field"><label>Soat</label><input className="input" type="time" value={time} onChange={(e) => setTime(e.target.value)} /></div>
-          </div>
-          <div className="hint">Kamida 30 daqiqa kelajakda bo&apos;lsin. Video qayta yaratilmaydi.</div>
-        </div>
-        <button className="btn primary block" style={{ marginTop: 12 }} disabled={saving || !date} onClick={save}>{saving ? "Saqlanmoqda…" : "Saqlash"}</button>
-      </section>
-    </>
-  );
-}
+      {!state && loading ? (
+        <div className={`cards ${s.list}`}><SkelCard lines={4} /><SkelCard lines={2} /><SkelCard lines={2} /></div>
+      ) : null}
 
-type Row = { topic: string; notes: string; hook: string; date: string; time: string; source: ScriptSource; title: string; script: string; file: File | null };
+      {state && items.length === 0 ? (
+        group === "queue" ? (
+          <Empty icon={Inbox} title="Navbat bo'sh"
+            action={!locked ? <Btn icon={Plus} onClick={() => { haptic.tap(); setSheet({ mode: "new" }); }}>Yangi video</Btn> : undefined}>
+            «Yangi video» tugmasi yoki AI yordamchi orqali qo&apos;shing.
+          </Empty>
+        ) : group === "work" ? (
+          <Empty icon={ListVideo} title="Hozir hech narsa tayyorlanmayapti">Navbatdagi video vaqti kelganda kompyuter uni shu yerda tayyorlaydi.</Empty>
+        ) : (
+          <Empty icon={CircleCheck} title="Hali chiqqan video yo'q">YouTube&apos;ga chiqqan videolar shu yerda ko&apos;rinadi.</Empty>
+        )
+      ) : null}
 
-const emptyRow = (): Row => ({ topic: "", notes: "", hook: "", date: "", time: "", source: "gemini", title: "", script: "", file: null });
-const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.webm,audio/*";
-const AUDIO_MAX_MB = 200;
-const MB = 1048576;
-
-const SOURCES: [ScriptSource, string][] = [["gemini", "Gemini yozadi"], ["manual", "O'z matnim"], ["audio", "Tayyor audio"]];
-
-/**
- * Qatorni saqlashdan oldin tekshiradi: Gemini rejimida mavzu va boshlang'ich savol (hook), qo'lda rejimda subtitr va title (matn
- * formatga sig'ishi kerak), audio rejimda fayl ham kerak. legacyHook - hook'siz qo'shilgan eski mavzu: hook bo'sh qolishi mumkin.
- */
-function rowProblem(r: Row, hasAudio: boolean, format: number, legacyHook: boolean): string | null {
-  if (r.source === "gemini") {
-    if (!r.topic.trim()) return "";
-    if (legacyHook && !r.hook.trim()) return null;
-    const h = checkHook(r.hook);
-    return "error" in h ? h.error : null;
-  }
-  if (!r.title.trim() || !r.script.trim()) return "Subtitr matni va title majburiy.";
-  if (r.title.trim().length > 100) return "Title 100 belgidan oshmasin.";
-  if (/[<>]/.test(r.title)) return "Title ichida < yoki > bo'lmasin.";
-  if (r.source === "audio" && !hasAudio && !r.file) return "Audio faylni tanlang.";
-  if (r.file && r.file.size > AUDIO_MAX_MB * MB) return `Audio ${AUDIO_MAX_MB} MB dan katta.`;
-  if (r.source === "manual") return manualLengthProblem(r.script, format);
-  return null;
-}
-
-function TopicSheet({ sheet, catalog, channelTitle, close, run }: { sheet: { mode: "new" } | { mode: "edit"; topic: Topic }; catalog: Catalog; channelTitle: string; close: () => void; run: Run }) {
-  const edit = sheet.mode === "edit" ? sheet.topic : null;
-  // Shablon va format: yangi mavzuda standartdan boshlanadi, tahrirda mavzuning hozirgi qiymatidan.
-  const [template, setTemplate] = useState(edit ? edit.template : catalog.defaults.template);
-  const [format, setFormat] = useState(edit ? edit.format : catalog.defaults.format);
-  const [voice, setVoice] = useState(edit ? edit.voice : catalog.defaults.voiceProfile || catalog.voiceProfiles[0] || "");
-  // Fon musiqasi: "" - avtomatik (kutubxonadan navbat bilan), "none" - musiqasiz, aks holda tanlangan trek.
-  const lib = catalog.music ?? { enabled: false, tracks: [] };
-  const [music, setMusic] = useState(edit?.music ?? "");
-  const [rows, setRows] = useState<Row[]>(
-    edit
-      ? [{
-          topic: edit.topic, notes: edit.notes, hook: edit.hook ?? "", date: edit.publishLocal.date, time: edit.publishLocal.time,
-          source: edit.hasAudio ? "audio" : edit.manualScript ? "manual" : "gemini", title: edit.manualTitle ?? "", script: edit.manualScript ?? "", file: null,
-        }]
-      : [emptyRow()],
-  );
-  const [saving, setSaving] = useState<string | null>(null);
-  const set = (i: number, patch: Partial<Row>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-  const at = (r: Row) => (r.date ? `${r.date} ${r.time || "18:00"}` : undefined);
-  const hasAudio = !!edit?.hasAudio;
-  // Qo'lda/audio rejimda alohida mavzu yo'q: mavzu nomi title bo'ladi.
-  const filled = rows.filter((r) => (r.source === "gemini" ? r.topic.trim() : r.title.trim() || r.script.trim() || r.file));
-  const topicOf = (r: Row) => (r.source === "gemini" ? r.topic : r.title);
-  const legacyHook = !!edit && edit.hook === null;
-  const problems = filled.map((r) => rowProblem(r, hasAudio, format, legacyHook));
-  // Hali kompyuterga tushmagan shablon tanlanmaydi (tahrirdagi eski mavzuda tanlangan bo'lsa, saqlash ham to'xtaydi).
-  const pending = catalog.pendingTemplates ?? [];
-  const templatePending = !!template && pending.some((p) => p.name === template);
-  const canSave = filled.length > 0 && problems.every((p) => p === null) && !templatePending;
-  const allAudio = rows.every((r) => r.source === "audio");
-
-  async function save() {
-    if (!canSave) return;
-    try {
-      // Tayyor audio avval Storage'ga yuboriladi (Vercel so'rov chegarasini chetlab), mavzu esa faqat fayl yo'li bilan yaratiladi.
-      const audioPaths: (string | undefined)[] = [];
-      for (let i = 0; i < filled.length; i++) {
-        const r = filled[i];
-        if (r.source !== "audio" || !r.file) { audioPaths.push(undefined); continue; }
-        const label = filled.length > 1 ? `Audio ${i + 1}/${filled.length}` : "Audio";
-        setSaving(`${label} yuklanmoqda… 0%`);
-        const prep = await api<PreparedAudio>("/api/audio", { filename: r.file.name, size: r.file.size });
-        if (prep.uploadUrl) await putFile(prep.uploadUrl, r.file, (p) => setSaving(`${label} yuklanmoqda… ${p}%`));
-        audioPaths.push(prep.path);
-      }
-      setSaving("Saqlanmoqda…");
-      const manual = (r: Row) => (r.source === "gemini" ? { script: "", title: "" } : { script: r.script, title: r.title });
-      const results = await run(edit
-        ? [{
-            type: "update_topic", id: edit.id, topic: topicOf(filled[0]), notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice, music, ...manual(filled[0]),
-            hook: filled[0].source === "gemini" && (filled[0].hook.trim() || !legacyHook) ? filled[0].hook : undefined,
-          }]
-        : [{
-            type: "create_topics",
-            topics: filled.map((r, i) => ({
-              topic: topicOf(r), notes: r.source === "gemini" ? r.notes : "", hook: r.source === "gemini" ? r.hook : undefined, publishAt: at(r), template, format, voice, music,
-              ...(r.source === "gemini" ? {} : { script: r.script, title: r.title }), audioPath: audioPaths[i],
-            })),
-          }]);
-      if (results.every((r) => r.ok)) close();
-    } catch (e) {
-      haptic.fail();
-      alert(e instanceof Error ? e.message : String(e));
-    }
-    setSaving(null);
-  }
-
-  return (
-    <>
-      <div className="backdrop" onClick={close} />
-      <section className="sheet" role="dialog" aria-label={edit ? "Mavzuni tahrirlash" : "Yangi mavzu"}>
-        <div className="grab" />
-        <h2>{edit ? `#${edit.id} — tahrirlash` : "Yangi mavzular"}</h2>
-        {!edit && channelTitle ? <div className="hint" style={{ marginBottom: 8 }}>Kanal: <b>{channelTitle}</b> — videolar shu kanalga yuklanadi.</div> : null}
-        <div className="list" style={{ padding: 0 }}>
-          {rows.map((r, i) => {
-            const manual = r.source !== "gemini";
-            const problem = filled.includes(r) ? problems[filled.indexOf(r)] : null;
+      {cards.length > 0 ? (
+        <div className={`cards ${s.list}`}>
+          {cards.map((t) => {
+            const p = primaryOf(t);
+            const extra = secondaryOf(t);
+            const meta = [formatShort(t.format), sourceText(t), musicText(t, state), relWhen(t.publishLocal, tz)].filter(Boolean).join(" · ");
             return (
-              <div key={i} className="card formcard">
-                <div className="seg" role="tablist" aria-label="Matn manbai" style={{ margin: 0 }}>
-                  {SOURCES.map(([s, label]) => (
-                    <button key={s} className={r.source === s ? "on" : ""} disabled={hasAudio && s !== "audio"}
-                      onClick={() => { haptic.tap(); set(i, { source: s }); }}>{label}</button>
-                  ))}
+              <article key={t.id} className={`card ${s.card}`} onClick={() => open(t)}>
+                <div className={s.head}>
+                  <button type="button" className={s.title} onClick={(e) => { e.stopPropagation(); open(t); }}>{t.title || t.topic}</button>
+                  <Status tone={statusTone(t)}>{StatusText[t.status]}</Status>
                 </div>
-                {manual ? null : (
-                  <div className="field">
-                    <label>{rows.length > 1 ? `Mavzu ${i + 1}` : "Mavzu"}</label>
-                    <input className="input" value={r.topic} maxLength={500} placeholder="Masalan: How black holes form"
-                      onChange={(e) => set(i, { topic: e.target.value })} autoFocus={i === rows.length - 1} />
-                  </div>
-                )}
-                {manual ? null : (
-                  <div className="field">
-                    <label>Boshlang&apos;ich savol (hook) · {countWords(r.hook)}/{HOOK_MAX_WORDS} so&apos;z</label>
-                    <input className="input" value={r.hook} maxLength={200} placeholder="Masalan: What really happens inside a black hole?"
-                      onChange={(e) => set(i, { hook: e.target.value })} />
-                    <div className="hint">Video aynan shu savol bilan boshlanadi (inglizcha, «?» bilan) — montaj ham shu savoldan quriladi, qolgan qismi unga javob beradi.</div>
-                  </div>
-                )}
-                {manual ? (
-                  <>
-                    <div className="field">
-                      <label>{rows.length > 1 ? `Title ${i + 1}` : "Title"} (YouTube) · {r.title.trim().length}/100</label>
-                      <input className="input" value={r.title} maxLength={120} placeholder="Masalan: How Black Holes Are Born" onChange={(e) => set(i, { title: e.target.value })} />
-                    </div>
-                    <div className="field">
-                      <label>Subtitr matni</label>
-                      <textarea className="textarea" style={{ minHeight: 160 }} value={r.script} maxLength={30000}
-                        placeholder={r.source === "audio" ? "Audioda aytilgan matn — so'zma-so'z." : "Ovozga o'qiladigan va subtitr bo'ladigan aniq matn."}
-                        onChange={(e) => set(i, { script: e.target.value })} />
-                    </div>
-                    {r.source === "audio" ? (
-                      <div className="field">
-                        <label>Audio fayl{r.file ? ` · ${(r.file.size / MB).toFixed(1)} MB` : ""}</label>
-                        {hasAudio
-                          ? <div className="hint">Audio yuklangan ✓ (almashtirish uchun mavzuni o&apos;chirib, qaytadan qo&apos;shing).</div>
-                          : <input className="input" type="file" accept={AUDIO_ACCEPT} onChange={(e) => set(i, { file: e.target.files?.[0] ?? null })} />}
-                      </div>
+                {t.hook ? <HookLine>{t.hook}</HookLine> : null}
+                <StageStrip stages={stagesOf(t)} />
+                {t.error ? <Alert>{t.error}</Alert> : null}
+                {t.publishNow ? <Alert tone="accent" icon={Zap}>Hozir chiqarish kutilmoqda — kompyuter navbatdan oldin tayyorlaydi.</Alert> : null}
+                {t.uploadRequested ? <Alert tone="accent" icon={Upload}>YouTube&apos;ga yuklash kutilmoqda.</Alert> : null}
+                <div className={s.foot} onClick={(e) => e.stopPropagation()}>
+                  <span className={`${s.meta} tnum`}>{meta}</span>
+                  <div className={s.acts}>
+                    {extra.length > 0 ? (
+                      <button type="button" className={`round ${s.moreBtn}`} aria-label="Boshqa amallar" onClick={() => { haptic.tap(); setMore(t.id); }}>
+                        <Ellipsis size={18} />
+                      </button>
                     ) : null}
-                    <div className="hint">
-                      {r.source === "audio"
-                        ? "Gemini va VoiceStudio ishlatilmaydi: audio kompyuterga tushadi, subtitr vaqtlari shu audiodan olinadi. Matn audio bilan mos bo'lishi shart."
-                        : "Gemini ishlatilmaydi: ovoz shu matndan yaratiladi va aynan shu matn subtitr bo'ladi."}
-                    </div>
-                  </>
-                ) : (
-                  <div className="field">
-                    <label>Tushuntirish</label>
-                    <textarea className="textarea" value={r.notes} maxLength={4000} placeholder="Nimalarni yoritish kerak, auditoriya, ohang…" onChange={(e) => set(i, { notes: e.target.value })} />
+                    {p ? (
+                      <Btn size="sm" tone={p.tone ?? "primary"} icon={p.icon} loading={busy.is(`${p.kind}:${t.id}`)} done={busy.done(`${p.kind}:${t.id}`)}
+                        onClick={() => void act(t, p.kind)}>{p.label}</Btn>
+                    ) : null}
                   </div>
-                )}
-                <div className="grid2">
-                  <div className="field"><label>Sana</label><input className="input" type="date" value={r.date} onChange={(e) => set(i, { date: e.target.value })} /></div>
-                  <div className="field"><label>Soat</label><input className="input" type="time" value={r.time} onChange={(e) => set(i, { time: e.target.value })} /></div>
                 </div>
-                {!edit && !r.date ? <div className="hint">Sana bo'sh bo'lsa avtomatik: oxirgi rejadan +2 kun.</div> : null}
-                {problem ? <div className="hint" style={{ color: "var(--danger)" }}>{problem}</div> : null}
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {rows.length > 0 ? (
+        <div className={`group ${s.rows}`}>
+          {rows.map((t) => {
+            const meta = (group === "done"
+              ? ["Chiqdi", t.publishLocal.time, formatShort(t.format)]
+              : [t.publishLocal.time, formatShort(t.format), sourceText(t), musicText(t, state)]).filter(Boolean).join(" · ");
+            return (
+              <div key={t.id} className={s.row}>
+                <button type="button" className={s.rowMain} onClick={() => open(t)}>
+                  <span className={s.date}>
+                    <b className="tnum">{Number(t.publishLocal.date.slice(8, 10))}</b>
+                    <span>{MONTHS[Number(t.publishLocal.date.slice(5, 7)) - 1]}</span>
+                  </span>
+                  <span className={s.texts}>
+                    <span className={s.rowTitle}>{t.title || t.topic}</span>
+                    {t.hook ? <HookLine>{t.hook}</HookLine> : null}
+                    <span className={`${s.meta} tnum`}>{meta}</span>
+                    {t.status === 14 || t.claimed ? <span><Status tone={statusTone(t)}>{StatusText[t.status]}</Status></span> : null}
+                  </span>
+                  <ChevronRight className={s.chev} size={18} />
+                </button>
+                {t.youtubeUrl ? (
+                  <button type="button" className={`round ${s.yt}`} aria-label="YouTube'da ochish" onClick={() => { haptic.tap(); openExternal(t.youtubeUrl!); }}>
+                    <ExternalLink size={17} />
+                  </button>
+                ) : null}
               </div>
             );
           })}
         </div>
-        <div className="card formcard" style={{ marginTop: 10 }}>
-          <div className="grid2">
-            <div className="field">
-              <label>Shablon</label>
-              <select className="input" value={template} onChange={(e) => setTemplate(e.target.value)}>
-                <option value="">Shablonsiz</option>
-                {catalog.templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
-                {pending.map((p) => (
-                  <option key={`pending:${p.name}`} value={p.name} disabled>⏳ {p.name} — serverga yuklanmoqda{p.progress > 0 ? ` ${p.progress}%` : "…"}</option>
-                ))}
-                {template && !templatePending && !catalog.templates.some((t) => t.name === template) ? <option value={template}>{template}</option> : null}
-              </select>
-            </div>
-            <div className="field">
-              <label>Format</label>
-              <select className="input" value={format} onChange={(e) => setFormat(Number(e.target.value))}>
-                {[0, 1, 2].map((f) => <option key={f} value={f}>{FormatText[f]} · {FormatLength[f].label}</option>)}
-              </select>
-            </div>
+      ) : null}
+
+      {group !== "done" ? (
+        <>
+          {/* Oxirgi karta/qator «Yangi video» tugmasi ostida qolib ketmasin. */}
+          <div className={s.fabSpace} aria-hidden />
+          <div className="fade-bottom" aria-hidden />
+          <Btn className="fab" icon={Plus} disabled={locked} title={locked ? "Avval Gemini kalitini qo'shing" : undefined}
+            onClick={() => { haptic.tap(); setSheet({ mode: "new" }); }}>Yangi video</Btn>
+        </>
+      ) : null}
+
+      {moreTopic ? (
+        <Sheet title={moreTopic.title || moreTopic.topic} sub={`#${moreTopic.id} · ${StatusText[moreTopic.status]}`} onClose={() => setMore(null)} label="Video amallari">
+          <div className={`group ${s.menu}`}>
+            {secondaryOf(moreTopic).map((it) => {
+              const key = it.kind ? `${it.kind}:${moreTopic.id}` : "";
+              const spinning = !!it.kind && busy.is(key);
+              return (
+                <button key={it.key} type="button" className={`${s.menuItem}${it.danger ? " " + s.danger : ""}`} disabled={spinning}
+                  onClick={async () => {
+                    haptic.tap();
+                    if (it.onClick) { setMore(null); it.onClick(); return; }
+                    if (it.kind && (await act(moreTopic, it.kind))) setMore(null);
+                  }}>
+                  <span className={s.menuIc}>{spinning ? <LoaderCircle size={18} className="spin" /> : <it.icon size={18} />}</span>
+                  <span>{it.label}</span>
+                </button>
+              );
+            })}
           </div>
-          {allAudio ? null : (
-            <div className="field">
-              <label>Ovoz</label>
-              <select className="input" value={voice} onChange={(e) => setVoice(e.target.value)}>
-                {catalog.voiceProfiles.length === 0 ? <option value="">Kompyuterdagi standart</option> : null}
-                {catalog.voiceProfiles.map((v) => <option key={v} value={v}>{v}</option>)}
-                {voice && !catalog.voiceProfiles.includes(voice) ? <option value={voice}>{voice}</option> : null}
-              </select>
-            </div>
-          )}
-          <div className="field">
-            <label>Fon musiqasi</label>
-            <select className="input" value={music} onChange={(e) => setMusic(e.target.value)}>
-              <option value="">{lib.enabled && lib.tracks.length > 0 ? "Avtomatik — kutubxonadan navbat bilan" : "Avtomatik (hozir musiqasiz)"}</option>
-              <option value="none">Musiqasiz</option>
-              {lib.tracks.map((m) => <option key={m.id} value={m.id}>🎵 {m.title}{m.creator ? ` — ${m.creator}` : ""}</option>)}
-              {music && music !== "none" && !lib.tracks.some((m) => m.id === music) ? <option value={music}>O&apos;chirilgan trek</option> : null}
-            </select>
-            {lib.tracks.length === 0 ? <div className="hint">Kutubxona bo&apos;sh: Sozlamalar → Fon musiqasi&apos;dan trek qo&apos;shing.</div>
-              : music && music !== "none" && !lib.enabled ? <div className="hint">Umumiy fon musiqasi o&apos;chiq, lekin shu mavzuga tanlangan trek baribir qo&apos;yiladi.</div> : null}
-          </div>
-          <div className="hint">
-            Video uzunligi formatdan: <b>{FormatText[format]}</b> — {FormatLength[format]?.label ?? ""}.
-            {format === 0 ? " Ssenariy shu oraliqqa yoziladi." : " 55 soniyadan oshsa ovoz biroz tezlashtiriladi yoki video to'xtatiladi."}
-          </div>
-          {templatePending ? (
-            <div className="hint" style={{ color: "var(--danger)" }}>«{template}» shabloni hali serverga yuklanmoqda: kompyuterga tushib o&apos;rnatilgach tanlash mumkin bo&apos;ladi.</div>
-          ) : pending.length > 0 ? (
-            <div className="hint">⏳ {pending.map((p) => `«${p.name}»`).join(", ")} serverga yuklanmoqda: kompyuterga tushib o&apos;rnatilgach shu ro&apos;yxatda tanlash mumkin bo&apos;ladi.</div>
-          ) : null}
-          {!catalog.known ? <div className="hint">Shablonlar ro&apos;yxati desktop ilova katalog yuborgach chiqadi.</div> : null}
-        </div>
-        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-          {!edit && rows.length < 5 ? <button className="btn block" onClick={() => setRows((r) => [...r, emptyRow()])}><IconPlus />Yana mavzu ({rows.length}/5)</button> : null}
-          <div className="hint" style={{ textAlign: "center" }}>Video, subtitr va title har doim ingliz tilida tayyorlanadi.</div>
-          <button className="btn primary block" disabled={saving !== null || !canSave} onClick={save}>{saving ?? (edit ? "Saqlash" : "Qo'shish")}</button>
-        </div>
-      </section>
-    </>
+          <Btn tone="secondary" block onClick={() => { setMore(null); openVideo?.(moreTopic.id); }}>Tafsilotni ochish</Btn>
+        </Sheet>
+      ) : null}
+
+      {sheet && state ? <TopicSheet sheet={sheet} catalog={state.catalog} channelTitle={(state.channel?.total ?? 0) > 1 ? state.channel.title : ""} close={() => setSheet(null)} run={run} /> : null}
+      {resched ? <RescheduleSheet topic={resched} close={() => setResched(null)} run={run} /> : null}
+    </div>
   );
 }

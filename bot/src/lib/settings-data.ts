@@ -5,7 +5,7 @@
  * Har karta o'z qismini saqlaydi: saveConfig(patch) saqlangan config'dan qoralama yasaydi, faqat patch o'zgartirgan qismni
  * almashtiradi va butun config'ni yuboradi (server qolganini o'zgarishsiz qoldiradi: sirlar bo'sh bo'lsa eskisi saqlanadi).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, cache } from "./client";
 import type { BotConfig, BotConfigInput } from "./types";
 
@@ -36,13 +36,23 @@ export function useBotConfig() {
     if (c) setConfig(c);
     void reload();
   }, [reload]);
-  /** Faqat shu kartaning o'zgarishi bilan saqlaydi. Xato bo'lsa throw (useBusy toast qiladi). */
-  const saveConfig = useCallback(async (patch: (d: ConfigDraft) => ConfigDraft) => {
-    const base = config ?? (await api<BotConfig>("/api/config"));
-    const next = await api<BotConfig>("/api/config", patch(toDraft(base)));
-    setConfig(next); cache.set("config", next);
-    return next;
-  }, [config]);
+  /**
+   * Faqat shu kartaning o'zgarishi bilan saqlaydi. Xato bo'lsa throw (useBusy toast qiladi).
+   * Asos har safar serverdan yangi olinadi: ko'rsatilgan config keshdan (localStorage) bo'lishi yoki boshqa qurilma/kompyuterda
+   * o'zgargan bo'lishi mumkin - eski asos bilan saqlansa boshqa qismlar (masalan boshqa joyda qo'shilgan Gemini kalitlari) qaytib qolardi.
+   * Saqlashlar navbat bilan bajariladi: ikki karta birdan saqlansa, ikkinchisi birinchisining natijasi ustiga yoziladi.
+   */
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const saveConfig = useCallback((patch: (d: ConfigDraft) => ConfigDraft): Promise<BotConfig> => {
+    const job = queue.current.catch(() => {}).then(async () => {
+      const base = await api<BotConfig>("/api/config");
+      const next = await api<BotConfig>("/api/config", patch(toDraft(base)));
+      setConfig(next); cache.set("config", next); setError(null);
+      return next;
+    });
+    queue.current = job;
+    return job;
+  }, []);
   return { config, error, reload, saveConfig };
 }
 

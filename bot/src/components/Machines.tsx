@@ -1,17 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Check, Cog, History as HistoryIcon, Laptop, Lock, Monitor, Play, RotateCw, Stethoscope, TriangleAlert, X } from "lucide-react";
 import { api, confirmBox, haptic } from "@/lib/client";
-import type { Machine } from "@/lib/types";
+import type { CheckItem, Machine } from "@/lib/types";
 import type { Toast } from "./App";
+import { Alert, Btn, Empty, Skel, Status, useBusy } from "./ui";
+import s from "./Machines.module.css";
 
-const ago = (iso: string | null) => {
+/** "1 daqiqa oldin" - oxirgi signal, tekshiruv va h.k. uchun. */
+export const ago = (iso: string | null) => {
   if (!iso) return "—";
-  const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-  if (s < 60) return `${s} soniya oldin`;
-  if (s < 3600) return `${Math.round(s / 60)} daqiqa oldin`;
-  if (s < 86400) return `${Math.round(s / 3600)} soat oldin`;
-  return `${Math.round(s / 86400)} kun oldin`;
+  const sec = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (sec < 60) return `${sec} soniya oldin`;
+  if (sec < 3600) return `${Math.round(sec / 60)} daqiqa oldin`;
+  if (sec < 86400) return `${Math.round(sec / 3600)} soat oldin`;
+  return `${Math.round(sec / 86400)} kun oldin`;
+};
+
+/** "3 soatdan beri" - oflayn kompyuter uchun. */
+const since = (iso: string | null) => {
+  if (!iso) return "uzoq vaqtdan beri";
+  const sec = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (sec < 3600) return `${Math.max(1, Math.round(sec / 60))} daqiqadan beri`;
+  if (sec < 86400) return `${Math.round(sec / 3600)} soatdan beri`;
+  return `${Math.round(sec / 86400)} kundan beri`;
 };
 
 /** Kerakli dastur qatorining matni: dasturlar "o'rnatilgan", YouTube "ulangan", Gemini/jadval esa kompyuter yozgan izoh. */
@@ -22,113 +35,227 @@ function toolText(t: NonNullable<Machine["tools"]>[number]) {
   return t.detail && t.name.startsWith("Ovoz") ? `o'rnatilgan · ${t.detail}` : "o'rnatilgan";
 }
 
-const LEVEL: Record<string, { icon: string; cls: string }> = { Ok: { icon: "✓", cls: "" }, Warning: { icon: "!", cls: "warn" }, Failed: { icon: "✗", cls: "error" } };
+/** Tekshiruv so'rovi yuborilgan, kompyuter hali natija yozmagan. */
+export const checkPending = (m: Machine) =>
+  m.check.requested && (!m.check.finishedAt || (!!m.check.requestedAt && m.check.finishedAt < m.check.requestedAt));
 
-/** Kompyuterlar: online/offline, ilova ochiqligi, worker faoliyati va botdan integratsiyalarni tekshirish. */
-export default function Machines({ toast }: { toast: Toast }) {
+/**
+ * Kompyuterlar ro'yxati: har 15 soniyada yangilanadi ("necha soniya oldin" yozuvlari ham shu paytda yangilanadi).
+ * enabled=false (qo'shimcha token) bo'lsa so'rov yuborilmaydi: kompyuter asosiy hisob egasiniki.
+ */
+export function useMachines(toast: Toast, enabled: boolean) {
   const [list, setList] = useState<Machine[] | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [, tick] = useState(0);
 
-  const load = useCallback(async () => {
-    try { setList(await api<Machine[]>("/api/machines")); }
-    catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
+  const reload = useCallback(async () => {
+    try { setList(await api<Machine[]>("/api/machines")); setError(null); }
+    catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toast(msg, true);
+    }
   }, [toast]);
 
-  // Har 15 soniyada yangilanadi; "necha soniya oldin" yozuvlari har soniyada emas, shu paytda ham yangilanadi.
   useEffect(() => {
+    if (!enabled) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mount'da bir marta yuklanadi
-    void load();
-    const t = window.setInterval(() => { void load(); tick((n) => n + 1); }, 15000);
+    void reload();
+    const t = window.setInterval(() => { void reload(); tick((n) => n + 1); }, 15000);
     return () => window.clearInterval(t);
-  }, [load]);
+  }, [reload, enabled]);
+
+  return { list, error, reload };
+}
+
+/** Kompyuter kartalari skeleti: faqat shu bo'lim o'rnida. */
+export function MachinesSkeleton() {
+  return (
+    <div className="card" aria-busy="true" aria-label="Kompyuterlar yuklanmoqda">
+      <div className={s.head}>
+        <Skel h={44} w={44} r={14} />
+        <div className={s.name}><Skel h={17} w="45%" /><Skel h={12} w="65%" /></div>
+      </div>
+      <div className={s.strip}>
+        {[0, 1, 2].map((i) => <div key={i} className={s.sig}><Skel h={6} r={999} /><Skel h={11} w="60%" /></div>)}
+      </div>
+      <div className={s.actions}><Skel h={44} r={14} /><Skel h={44} r={14} /></div>
+    </div>
+  );
+}
+
+const MARK: Record<CheckItem["level"], { icon: typeof Check; cls: string }> = {
+  Ok: { icon: Check, cls: s.ok }, Warning: { icon: TriangleAlert, cls: s.warn }, Failed: { icon: X, cls: s.bad },
+};
+
+/** Kompyuterlar: online/offline, ilova ochiqligi, worker faoliyati, kerakli dasturlar va botdan integratsiyalarni tekshirish. */
+export default function Machines({ list, error, reload, toast }: { list: Machine[] | null; error: string | null; reload: () => Promise<void>; toast: Toast }) {
+  const busy = useBusy((m) => toast(m, true));
 
   async function check(name: string) {
     haptic.tap();
-    setBusy(name);
-    try {
+    const r = await busy.run(`check:${name}`, async () => {
       const r = await api<{ ok: boolean; message: string }>("/api/machines/check", { machine: name });
-      toast(r.message, !r.ok);
-      await load();
-    } catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
-    setBusy(null);
+      await reload();
+      if (!r.ok) throw new Error(r.message);
+      return r;
+    });
+    if (r) toast(r.message, false);
   }
 
   async function runNow(name: string) {
     if (!(await confirmBox(`${name}: ishni hozir boshlaymi? Worker jadvalni kutmasdan, navbatdagi barcha mavzulardan video tayyorlaydi (chiqish vaqti yaqinlari birinchi).`))) return;
     haptic.tap();
-    setBusy(name);
-    try {
+    const r = await busy.run(`run:${name}`, async () => {
       const r = await api<{ ok: boolean; message: string }>("/api/machines/run", { machine: name });
-      toast(r.message, !r.ok);
-      await load();
-    } catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
-    setBusy(null);
+      await reload();
+      if (!r.ok) throw new Error(r.message);
+      return r;
+    });
+    if (r) toast(r.message, false);
   }
 
-  if (!list) return <div className="skeleton" />;
-  if (list.length === 0) return <div className="empty">Hali hech bir kompyuter xabar bermagan. YtAuto ilovasini yangi versiyada bir marta oching.</div>;
+  if (!list && error) {
+    return (
+      <div className="card">
+        <Alert>Kompyuterlar holatini olib bo&apos;lmadi: {error}</Alert>
+        <Btn tone="secondary" icon={RotateCw} loading={busy.is("reload")} onClick={() => void busy.run("reload", reload)}>Qayta urinish</Btn>
+      </div>
+    );
+  }
+  if (!list) return <MachinesSkeleton />;
+  if (list.length === 0) {
+    return (
+      <div className="card">
+        <Empty icon={Monitor} title="Kompyuter hali ulanmagan">Hali hech bir kompyuter xabar bermagan. YtAuto ilovasini yangi versiyada bir marta oching.</Empty>
+      </div>
+    );
+  }
 
   return (
     <>
       {list.map((m) => {
-        const pending = m.check.requested && (!m.check.finishedAt || (m.check.requestedAt && m.check.finishedAt < m.check.requestedAt));
+        const pending = checkPending(m);
+        const isBusy = m.worker.state === "busy";
+        const DeviceIcon = m.online ? Monitor : Laptop;
+        const runLabel = m.run.requested ? "Ishga tushirish kutilmoqda" : isBusy ? "Worker band" : "Hozir ishga tushirish";
+        const showCheck = m.check.results.length > 0 && !pending;
         return (
-          <article key={m.name} className="card topic">
-            <div className="row">
-              <div className="title">💻 {m.name}</div>
-              <span className={m.online ? "chip ok" : "chip bad"}>{m.online ? "● online" : "○ offline"}</span>
-            </div>
-            <div className="meta">
-              <span>Oxirgi signal: {ago(m.lastSeen)}</span>
-              {m.version ? <span>v{m.version}</span> : null}
-            </div>
-            <div className="meta">
-              <span className={m.app.open ? "chip ok" : "chip mute"}>Ilova: {m.app.open ? "ochiq" : "yopiq"}</span>
-              <span className={m.worker.state === "busy" ? "chip warn" : "chip mute"}>
-                Worker: {m.worker.state === "busy" ? "ishlayapti" : m.worker.state === "idle" ? "bo'sh" : "ma'lumot yo'q"}
-              </span>
-              {m.worker.jobId ? <span className="id">#{m.worker.jobId}</span> : null}
-            </div>
-            {m.worker.state === "busy" ? <div className="notes open">⚙️ Og&apos;ir ish jarayonida (boshlangan: {ago(m.worker.seen)}). Ish davomida holat yuborilmaydi — tugagach avtomatik yangilanadi.</div> : null}
-            {!m.online ? <div className="hint">Kompyuter o&apos;chiq yoki internetga ulanmagan (6 daqiqadan beri signal yo&apos;q).</div> : null}
-            {m.tools ? (
-              <div className="card formcard" style={{ background: "transparent", boxShadow: "none", padding: 0 }}>
-                <div className="hint">Kerakli dasturlar ({ago(m.toolsUpdatedAt)}):</div>
-                {m.tools.map((t) => (
-                  <div key={t.name} className={`logline ${t.ok ? "" : "error"}`}>
-                    <span className="t">{t.ok ? "✓" : "✗"}</span><b>{t.name}</b> — {toolText(t)}
-                  </div>
-                ))}
+          <div key={m.name} className={s.pair}>
+            <article className={`card ${m.online ? "" : s.offline}`} aria-label={`Kompyuter ${m.name}`}>
+              <div className={s.head}>
+                <span className={`${s.tile} ${m.online ? "" : s.dim}`}><DeviceIcon size={22} /></span>
+                <div className={s.name}>
+                  <h2 className={`h2 ${m.online ? "" : s.dimText}`}>{m.name}</h2>
+                  <span className="sub tnum">Signal {ago(m.lastSeen)}{m.version ? ` · v${m.version}` : ""}</span>
+                </div>
               </div>
-            ) : null}
 
-            <div className="actions">
-              <button className="btn primary" disabled={busy === m.name || m.run.requested || m.worker.state === "busy"} onClick={() => runNow(m.name)}>
-                {m.run.requested ? "Ishga tushirish kutilmoqda…" : m.worker.state === "busy" ? "Worker band" : "Hozir ishga tushirish"}
-              </button>
-              <button className="btn" disabled={busy === m.name || !!pending} onClick={() => check(m.name)}>
-                {pending ? "Tekshirilmoqda…" : "Integratsiyalarni tekshirish"}
-              </button>
-            </div>
-            {pending ? <div className="hint">So&apos;rov yuborildi. Kompyuter ~2 daqiqada olib, natijani yuboradi.</div> : null}
-            {m.check.results.length > 0 && !pending ? (
-              <div className="card formcard" style={{ background: "transparent", boxShadow: "none", padding: 0 }}>
-                <div className="hint">Oxirgi tekshiruv: {ago(m.check.finishedAt)}{m.check.durationSec ? ` · ${m.check.durationSec.toFixed(0)} s` : ""}</div>
-                {m.check.stale ? <div className="notes open">⚠️ Bu natija eski: undan keyin sozlamalar (Gemini, jadval yoki YouTube) o&apos;zgargan. Hozirgi holat yuqoridagi «Kerakli dasturlar» ro&apos;yxatida — to&apos;liq tekshiruv uchun «Integratsiyalarni tekshirish»ni bosing.</div> : null}
-                {m.check.results.map((r) => (
-                  <div key={r.name} className={`logline ${m.check.stale ? "" : LEVEL[r.level]?.cls ?? ""}`} style={m.check.stale ? { opacity: 0.55 } : undefined}>
-                    <span className="t">{LEVEL[r.level]?.icon ?? "•"}</span><b>{r.name}</b> — {r.message}
-                  </div>
-                ))}
+              <div className={s.strip}>
+                <div className={s.sig}>
+                  <i className={m.online ? s.barOn : ""} />
+                  <span className={m.online ? s.on : ""}>{m.online ? "Onlayn" : "Oflayn"}</span>
+                </div>
+                <div className={s.sig}>
+                  <i className={m.app.open ? s.barOn : ""} />
+                  <span className={m.app.open ? s.on : ""}>{m.app.open ? "Ilova ochiq" : "Ilova yopiq"}</span>
+                </div>
+                <div className={s.sig}>
+                  <i className={isBusy ? s.barAccent : m.worker.state === "idle" ? s.barOn : ""} />
+                  <span className={isBusy ? s.accent : m.worker.state === "idle" ? s.on : ""}>
+                    {isBusy ? `Band${m.worker.jobId ? ` · #${m.worker.jobId}` : ""}` : m.worker.state === "idle" ? "Worker bo'sh" : "Ma'lumot yo'q"}
+                  </span>
+                </div>
               </div>
+
+              {isBusy ? (
+                <div className={s.note}>
+                  <Cog size={16} />
+                  <span>Og&apos;ir ish paytida kompyuter holat yubormaydi — ish tugagach bu yer o&apos;zi yangilanadi. Boshlangan: {ago(m.worker.seen)}.</span>
+                </div>
+              ) : null}
+              {!m.online ? <div className="hint">Kompyuter o&apos;chiq yoki internetga ulanmagan — {since(m.lastSeen)} signal yo&apos;q.</div> : null}
+
+              <div className={s.actions}>
+                <Btn
+                  tone={m.online && !isBusy && !m.run.requested ? "primary" : "secondary"}
+                  icon={isBusy ? Lock : Play}
+                  loading={busy.is(`run:${m.name}`) || m.run.requested}
+                  disabled={isBusy}
+                  onClick={() => void runNow(m.name)}
+                >{runLabel}</Btn>
+                <Btn
+                  tone="secondary"
+                  icon={Stethoscope}
+                  loading={busy.is(`check:${m.name}`) || pending}
+                  done={busy.done(`check:${m.name}`) && !pending}
+                  onClick={() => void check(m.name)}
+                >{pending ? "Tekshirilmoqda" : "Tekshirish"}</Btn>
+              </div>
+              {pending ? <div className="hint">So&apos;rov yuborildi. Kompyuter ~2 daqiqada olib, natijani yuboradi.</div> : null}
+            </article>
+
+            {m.tools || showCheck ? (
+              <section className="card" aria-label={`${m.name}: kerakli dasturlar`}>
+                {m.tools ? (
+                  <>
+                    <div className="card-head">
+                      <div className="t">
+                        <h2 className="h2">Kerakli dasturlar</h2>
+                        {list.length > 1 ? <span className="sub">{m.name}</span> : null}
+                      </div>
+                      <span className="sub tnum">{ago(m.toolsUpdatedAt)}</span>
+                    </div>
+                    <ul className={s.tools}>
+                      {m.tools.map((t) => (
+                        <li key={t.name}>
+                          <span className={`${s.mark} ${t.ok ? s.ok : s.bad}`} aria-label={t.ok ? "tayyor" : "yetishmaydi"}>{t.ok ? <Check size={13} /> : <X size={13} />}</span>
+                          <b>{t.name}</b>
+                          <span className={t.ok ? s.detail : `${s.detail} ${s.detailBad}`}>{toolText(t)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+
+                {showCheck ? (
+                  <>
+                    {m.tools ? <div className={s.divider} /> : null}
+                    <div className="card-head">
+                      <div className="t">
+                        <span className={s.checkTitle}>Oxirgi tekshiruv</span>
+                        <span className="sub tnum">{ago(m.check.finishedAt)}{m.check.durationSec ? ` · ${m.check.durationSec.toFixed(0)} s` : ""}</span>
+                      </div>
+                      {m.check.stale ? <Status>Eskirgan</Status> : null}
+                    </div>
+                    {m.check.stale ? (
+                      <div className={s.note}>
+                        <HistoryIcon size={16} />
+                        <span>Tekshiruvdan keyin sozlamalar (Gemini, jadval yoki YouTube) o&apos;zgargan. Hozirgi holat {m.tools ? "yuqoridagi ro'yxatda" : "«Kerakli dasturlar» ro'yxatida"} — to&apos;liq tekshiruv uchun «Tekshirish»ni bosing.</span>
+                      </div>
+                    ) : null}
+                    <ul className={`${s.results} ${m.check.stale ? s.stale : ""}`}>
+                      {m.check.results.map((r) => {
+                        const mk = MARK[r.level] ?? { icon: Check, cls: "" };
+                        const Icon = mk.icon;
+                        return (
+                          <li key={r.name}>
+                            <span className={`${s.mark} ${m.check.stale ? "" : mk.cls}`} aria-label={r.level}><Icon size={13} /></span>
+                            <div>
+                              <b>{r.name}</b>
+                              <span>{r.message}</span>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                ) : null}
+              </section>
             ) : null}
-          </article>
+          </div>
         );
       })}
-      <div className="hint" style={{ textAlign: "center" }}>
-        Online = kompyuterdan oxirgi 6 daqiqada signal kelgan (kunduzi kompyuter har 2 daqiqada so&apos;rov almashadi; videolar tunda, ish oynasida tayyorlanadi). Og&apos;ir ish paytida signal yuborilmaydi, shu paytda «band» ko&apos;rinadi. Task Scheduler vazifasi o&apos;rnatilmagan va ilova yopiq bo&apos;lsa, yoniq kompyuter ham offline ko&apos;rinishi mumkin.
-      </div>
     </>
   );
 }

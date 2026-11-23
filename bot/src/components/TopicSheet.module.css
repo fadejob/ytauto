@@ -1,0 +1,111 @@
+/* «Yangi video» va «Chiqish vaqti» oynalari (dizayn: ytauto.dsai → Yangi video AXrKFc, zSF4wo, PYtMKJ; Vaqtni o'zgartirish biE5Sk). */
+
+.section { display: grid; gap: 8px; }
+
+/* format plitkalari */
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tile {
+  display: grid; gap: 2px; text-align: left; padding: 10px 12px; min-height: 72px; border-radius: var(--r-md); background: var(--sunken);
+  border: 1.5px solid transparent; color: var(--ink); min-width: 0;
+}
+.tile:disabled { opacity: 0.6; }
+.tileTop { display: flex; align-items: center; gap: 6px; }
+.tileTop svg { color: var(--muted); flex: none; }
+.tileTop b { font-size: 15px; font-weight: 750; }
+.tileName { font-size: 13px; color: var(--muted); }
+.tileLen { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.on { background: var(--accent-soft); border-color: var(--accent); }
+.tile.on .tileTop svg { color: var(--accent-ink); }
+.tile.on .tileLen { color: var(--accent-ink); font-weight: 700; }
+
+/* ochiq video kartasi */
+.rowCard { display: grid; gap: 14px; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-lg); min-width: 0; }
+.rowHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* boshlang'ich savol - qorong'i «slab» ichida katta matn maydoni */
+.hookInput {
+  width: 100%; border: 0; outline: 0; background: transparent; resize: none; padding: 0; color: var(--on-inverse);
+  font-size: 20px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.3; min-height: 52px;
+}
+.hookInput::placeholder { color: var(--on-inverse-muted); opacity: 0.7; }
+.hookInput:focus-visible { box-shadow: 0 2px 0 var(--accent); }
+
+.script { min-height: 160px; }
+
+/* matn uzunligi o'lchagichi */
+.meter { display: grid; gap: 6px; }
+.bar { height: 6px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 999px; background: var(--accent); transition: width 0.15s; }
+.bar i.bad { background: var(--bad); }
+.meterRow { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); }
+.meterRow b { color: var(--ink); font-weight: 750; white-space: nowrap; }
+.meterRow b span { color: var(--muted); font-weight: 500; }
+.meterRow b.bad { color: var(--bad); }
+
+/* sana va soat: chapda ikonka */
+.iconInp { position: relative; display: block; min-width: 0; }
+.iconInp svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.iconInp input { padding-left: 40px; }
+/* Tizim belgisi (kalendar/soat) yashirin, lekin butun maydon ustida: istalgan joy bosilsa tanlov oynasi ochiladi. */
+.iconInp input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; opacity: 0; cursor: pointer; }
+/* Bo'sh qiymat: «dd/mm/yyyy» o'rniga dizayndagi «Avtomatik» / «18:00» (fokusda tizim ko'rinishi qaytadi). */
+.iconInp input[data-empty]::-webkit-datetime-edit { color: transparent; }
+.iconInp input[data-empty]:focus::-webkit-datetime-edit { color: inherit; }
+.ph { position: absolute; left: 41px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; white-space: nowrap; }
+.iconInp:focus-within .ph { display: none; }
+@supports not selector(::-webkit-datetime-edit) { .ph { display: none; } }
+
+/* yopiq video qatori */
+.collapsed {
+  display: grid; gap: 8px; width: 100%; text-align: left; padding: 12px 14px; min-height: 52px; border: 1px solid var(--line);
+  border-radius: var(--r-lg); background: var(--card);
+}
+.cHead { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.no { color: var(--muted); font-size: 13px; font-weight: 700; flex: none; }
+.cTitle { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.cChev { color: var(--faint); flex: none; }
+.cLen { font-size: 13px; font-weight: 750; color: var(--ink); white-space: nowrap; flex: none; }
+.cLen span { font-weight: 500; color: var(--muted); }
+.cLen.bad, .cLen.bad span { color: var(--bad); }
+.cBar { display: block; height: 6px; border-radius: 999px; background: var(--bad); }
+.cBar i { display: none; }
+
+/* audio fayl tanlash */
+.file {
+  position: relative; display: flex; align-items: center; gap: 12px; padding: 12px; min-height: 64px; border-radius: var(--r-md);
+  background: var(--sunken); cursor: pointer; overflow: hidden; border: 1.5px solid transparent;
+}
+.file:focus-within { border-color: var(--accent); }
+.fileOff { cursor: default; }
+.fileInput { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.fileIc { width: 40px; height: 40px; border-radius: var(--r-sm); background: var(--card); color: var(--ink); display: grid; place-items: center; flex: none; }
+.fileT { display: grid; gap: 2px; min-width: 0; }
+.fileT b { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fileT > span { font-size: 13px; color: var(--muted); }
+.fileT em { font-style: normal; font-weight: 650; color: var(--accent-ink); }
+.fileBar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--line); }
+.fileBar i { display: block; height: 100%; background: var(--accent); transition: width 0.15s; }
+
+/* shablon, ovoz va musiqa */
+.moreWrap { display: grid; gap: 12px; }
+.more { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; min-height: 60px; text-align: left; border-radius: var(--r-md); background: var(--sunken); }
+.moreIc { width: 40px; height: 40px; border-radius: var(--r-sm); background: var(--card); color: var(--ink); display: grid; place-items: center; flex: none; }
+.moreT { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.moreT b { font-size: 15px; font-weight: 700; }
+.moreT span { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.moreChev { color: var(--faint); flex: none; transition: transform 0.15s; }
+.moreChev.open { transform: rotate(90deg); }
+.moreBody { display: grid; gap: 14px; }
+
+/* pastki tugmalar */
+/* minmax(0, 1fr): tor telefonda (375px) ikki tugma sheet'dan chiqib ketmasin - yorliq qisqaradi. */
+.footRow { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.footRow :global(.btn) { min-width: 0; padding: 0 8px; gap: 6px; }
+.footRow :global(.btn .lbl) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* chiqish vaqti: eski → yangi */
+.when { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 17px; color: var(--muted); }
+.when svg { color: var(--muted); }
+.when b { color: var(--accent-ink); font-weight: 750; }
+
+.bad { color: var(--bad); }

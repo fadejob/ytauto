@@ -26,12 +26,12 @@ export const countWords = (s: string) => (s.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]
  */
 export function checkHook(raw: string | null | undefined): { hook: string } | { error: string } {
   const hook = (raw ?? "").replace(/\s+/g, " ").trim();
-  if (!hook) return { error: "Boshlang'ich savol (hook) kiritilmagan: video shu savol bilan boshlanadi." };
-  if (hook.length > HOOK_MAX_CHARS) return { error: `Hook juda uzun (${hook.length} > ${HOOK_MAX_CHARS} belgi): bir-ikki qisqa gap bo'lsin.` };
-  if (countWords(hook) > HOOK_MAX_WORDS) return { error: `Hook juda uzun (${countWords(hook)} so'z, eng ko'pi ${HOOK_MAX_WORDS}): videoning birinchi soniyalari uchun qisqa savol yozing.` };
-  if (countWords(hook) < 3) return { error: "Hook juda qisqa: to'liq savol yozing." };
-  if (!hook.includes("?")) return { error: "Hook savol bo'lishi kerak («?» bilan): video savol bilan boshlanadi." };
-  if (/https?:\/\/|www\.|[<>[\]{}#*]/i.test(hook)) return { error: "Hook ovozga o'qiladigan oddiy matn bo'lsin: havola, [ ], < >, # va * belgilarisiz." };
+  if (!hook) return { error: "Boshlang'ich savol kiritilmagan: video shu savol bilan boshlanadi." };
+  if (hook.length > HOOK_MAX_CHARS) return { error: `Boshlang'ich savol juda uzun (${hook.length} > ${HOOK_MAX_CHARS} belgi): bir-ikki qisqa gap bo'lsin.` };
+  if (countWords(hook) > HOOK_MAX_WORDS) return { error: `Boshlang'ich savol juda uzun (${countWords(hook)} so'z, eng ko'pi ${HOOK_MAX_WORDS}): videoning birinchi soniyalari uchun qisqa savol yozing.` };
+  if (countWords(hook) < 3) return { error: "Boshlang'ich savol juda qisqa: to'liq savol yozing." };
+  if (!hook.includes("?")) return { error: "Boshlang'ich savol «?» bilan tugashi kerak: video shu savol bilan boshlanadi." };
+  if (/https?:\/\/|www\.|[<>[\]{}#*]/i.test(hook)) return { error: "Boshlang'ich savol ovozga o'qiladigan oddiy matn bo'lsin: havola, [ ], < >, # va * belgilarisiz." };
   return { hook };
 }
 
