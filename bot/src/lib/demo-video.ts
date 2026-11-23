@@ -78,6 +78,24 @@ export async function requestMediaUpload(args: Record<string, unknown>): Promise
 // ------------------------------------------------------------------ 2. video yaratish
 type SpecMedia = { id: string; kind: string; title: string; description: string; feature?: string; highlight?: string; url: string; size_bytes: number; content_type?: string };
 
+/** Montaj effektlari (worker'dagi YtAuto.Core/Demo/DemoEffects.cs bilan bir xil kalitlar). */
+export const DEMO_EFFECTS = [
+  "zoom_in", "zoom_out", "pan", "ken_burns", "scroll_through", "parallax_3d", "split_screen", "picture_in_picture",
+  "crossfade", "slide_push", "whip_pan", "zoom_through", "wipe", "blur_dissolve", "glitch",
+  "spotlight", "outline_box", "cursor_click", "magnifier", "callout",
+  "title_reveal", "kinetic_text",
+  "cut_ins", "speed_ramp", "freeze_frame", "impact_shake",
+] as const;
+
+function demoEffects(v: unknown): string[] | undefined {
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) fail("requirements.effects ro'yxat bo'lsin.");
+  const list = [...new Set((v as unknown[]).map((x) => String(x).trim().toLowerCase()).filter(Boolean))];
+  const bad = list.filter((x) => !(DEMO_EFFECTS as readonly string[]).includes(x));
+  if (bad.length) fail(`Noma'lum effekt: ${bad.join(", ")}. Mumkinlari: ${DEMO_EFFECTS.join(", ")}.`);
+  return list.length ? list : undefined;
+}
+
 export async function createDemoVideo(args: Record<string, unknown>) {
   if (!(await geminiReady())) fail(GEMINI_REQUIRED);
   const p = (args.project ?? {}) as Record<string, unknown>;
@@ -123,7 +141,8 @@ export async function createDemoVideo(args: Record<string, unknown>) {
   const format = ({ "16:9": 0, "9:16": 1, "1:1": 2 } as Record<string, number>)[fmtArg];
   if (format === undefined) fail('requirements.format "16:9", "9:16" yoki "1:1" bo\'lsin.');
   const cat = await getCatalog();
-  const tf = await pickTemplateFormat(cat, q.template === undefined ? undefined : str(q.template, 120), format, q.voice_profile === undefined ? undefined : str(q.voice_profile, 120));
+  // Demo videoda kanal shabloni ishlatilmaydi (faqat loyiha materiallari): bu yerda faqat format va ovoz tanlanadi.
+  const tf = await pickTemplateFormat(cat, undefined, format, q.voice_profile === undefined ? undefined : str(q.voice_profile, 120));
   if ("error" in tf) fail(tf.error);
   const t = tf as { template: string; format: number; voice: string };
 
@@ -138,19 +157,19 @@ export async function createDemoVideo(args: Record<string, unknown>) {
     version: 1,
     project: { name, summary, url: opt(p.url, 300), repository: opt(p.repository, 300), tech_stack: opt(p.tech_stack, 300), features },
     media,
-    requirements: { language, duration_sec: duration, audience: opt(q.audience, 300), tone: opt(q.tone, 200), notes: opt(q.notes, 2000) },
+    requirements: { language, duration_sec: duration, audience: opt(q.audience, 300), tone: opt(q.tone, 200), notes: opt(q.notes, 2000), effects: demoEffects(q.effects) },
     publish,
   };
   const now = new Date();
   const [row] = await sql()`INSERT INTO ytauto.jobs ${sql()({
-    topic: name, notes: summary.slice(0, 4000), language, target_duration_sec: duration, format: t.format, template_name: t.template,
+    topic: name, notes: summary.slice(0, 4000), language, target_duration_sec: duration, format: t.format, template_name: "",
     voice_profile: t.voice, publish_at_utc: publish.at ?? now, status: Status.Queued, created_at_utc: now, updated_at_utc: now,
     kind: "demo", demo_spec: JSON.stringify({ ...spec, publish: { requested: publish.requested, when: publish.when } }),
   })} RETURNING id::int AS id`;
   const machines = await machineSummary();
   return {
     job_id: row.id as number, status: "queued",
-    voice_profile: t.voice || "(kompyuterdagi standart ovoz)", template: t.template || null, format: fmtArg, language,
+    voice_profile: t.voice || "(kompyuterdagi standart ovoz)", effects: spec.requirements.effects ?? "auto (varied mix)", format: fmtArg, language,
     publish: publish.requested ? { requested: true, when: publish.when } : { requested: false },
     machines,
     next: "The YtAuto worker on the user's PC picks the job up within ~10 minutes (when the PC is on and online) and runs script → voice → montage → render. Poll get_video_status every few minutes; when status is \"ready\" call get_video_result.",

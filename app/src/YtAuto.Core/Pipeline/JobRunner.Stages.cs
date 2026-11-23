@@ -464,7 +464,8 @@ public sealed partial class JobRunner
     private async Task<StageOutputs> EditStageAsync(JobContext c, VideoScript script)
     {
         var fixMode = c.Job.QaFixCycles > 0 && File.Exists(c.FilmHtml) && File.Exists(c.QaFeedback);
-        var tpl = c.S.FindTemplate(c.Job.TemplateName);
+        // Demo video: faqat loyihaning o'z materiallari - kanal shabloni (fon, bezak, uslub kadrlari) ishlatilmaydi.
+        var tpl = c.Job.IsDemo ? null : c.S.FindTemplate(c.Job.TemplateName);
         var assets = Path.Combine(c.FilmDir, "assets");
         if (!fixMode)
         {
