@@ -10,15 +10,33 @@
 .name h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dimText { color: var(--muted); }
 
-/* Uch qismli signal chizig'i: kompyuter, ilova, worker. */
-.strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
-.sig { display: grid; gap: 6px; min-width: 0; }
-.sig i { display: block; height: 6px; border-radius: 999px; background: var(--line); }
-.sig i.barOn { background: var(--ink); }
-.sig i.barAccent { background: var(--accent); }
-.sig span { font-size: 12px; font-weight: 500; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sig span.on { color: var(--ink); }
-.sig span.accent { color: var(--accent-ink); font-weight: 700; }
+/* Holat belgisi: plitka burchagida (yashil - onlayn, urg'u - band, kulrang - oflayn). */
+.tile { position: relative; }
+.dot { position: absolute; right: -3px; bottom: -3px; width: 14px; height: 14px; border-radius: 999px; border: 3px solid var(--card); background: var(--faint); }
+.dotOn { background: var(--ok); }
+.dotBusy { background: var(--accent); }
+.dotOff { background: var(--faint); }
+
+/* «Real vaqt» belgisi (doimiy agent). */
+.live { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 26px; padding: 0 10px; border-radius: 999px;
+  background: var(--ok-soft); color: var(--ok); font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+/* Uch ko'rsatkich: holat, aloqa, worker - bitta botiq panelda, ajratgich bilan. */
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; padding: 10px 4px; border-radius: var(--r-md); background: var(--sunken); }
+.stat { display: grid; gap: 4px; align-content: start; min-width: 0; padding: 0 10px; }
+@media (max-width: 400px) { .stat { padding: 0 8px; } }
+.stat + .stat { border-left: 1px solid var(--line); }
+.stat dt { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); }
+.stat dd { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; min-width: 0; font-size: 14px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.stat dd small { font-size: 12px; font-weight: 600; opacity: 0.85; }
+.stat dd i { width: 8px; height: 8px; border-radius: 999px; flex: none; background: currentColor; }
+.vOk { color: var(--ok); }
+.vWarn { color: var(--accent-ink); }
+.vBusy { color: var(--accent-ink); }
+.vInk { color: var(--ink); }
+.vInk i { background: var(--ok) !important; }
+.vMuted { color: var(--muted); }
+.vMuted i { background: var(--faint) !important; }
 
 .note { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-sm); background: var(--sunken); color: var(--ink); font-size: 13px; line-height: 1.4; }
 .note svg { flex: none; color: var(--muted); margin-top: 1px; }

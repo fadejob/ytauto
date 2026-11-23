@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Cog, History as HistoryIcon, Laptop, Lock, Monitor, Play, RotateCw, Stethoscope, TriangleAlert, X } from "lucide-react";
+import { Check, Cog, History as HistoryIcon, Laptop, Lock, Monitor, Play, RotateCw, Stethoscope, TriangleAlert, X, Zap } from "lucide-react";
 import { api, confirmBox, haptic } from "@/lib/client";
 import { useLiveRefresh } from "@/lib/live";
 import type { CheckItem, Machine } from "@/lib/types";
@@ -148,34 +148,47 @@ export default function Machines({ list, error, reload, toast }: { list: Machine
           <div key={m.name} className={s.pair}>
             <article className={`card ${m.online ? "" : s.offline}`} aria-label={`Kompyuter ${m.name}`}>
               <div className={s.head}>
-                <span className={`${s.tile} ${m.online ? "" : s.dim}`}><DeviceIcon size={22} /></span>
+                <span className={`${s.tile} ${m.online ? "" : s.dim}`}>
+                  <DeviceIcon size={22} />
+                  <i className={`${s.dot} ${!m.online ? s.dotOff : isBusy ? s.dotBusy : s.dotOn}`} aria-hidden />
+                </span>
                 <div className={s.name}>
                   <h2 className={`h2 ${m.online ? "" : s.dimText}`}>{m.name}</h2>
-                  <span className="sub tnum">Signal {ago(m.lastSeen)}{m.version ? ` · v${m.version}` : ""}</span>
+                  <span className="sub tnum">{m.version ? `v${m.version.replace(/\.0$/, "")} · ` : ""}signal {ago(m.lastSeen)}</span>
                 </div>
+                {m.online && m.agent.live ? (
+                  <span className={s.live} title="Doimiy agent (Cloudflare tunnel): bot so'rovlari darhol bajariladi, holat jonli keladi">
+                    <Zap size={13} strokeWidth={2.5} />Real vaqt
+                  </span>
+                ) : null}
               </div>
 
-              <div className={s.strip}>
-                <div className={s.sig} title={m.agent.live ? "Doimiy agent (Cloudflare tunnel): so'rovlar darhol bajariladi" : undefined}>
-                  <i className={m.online ? s.barOn : ""} />
-                  <span className={m.online ? s.on : ""}>{m.online ? (m.agent.live ? "Onlayn · real vaqt" : "Onlayn") : "Oflayn"}</span>
+              <dl className={s.stats}>
+                <div className={s.stat}>
+                  <dt>Holat</dt>
+                  <dd className={m.online ? s.vOk : s.vMuted}><i aria-hidden />{m.online ? "Onlayn" : "Oflayn"}</dd>
                 </div>
-                <div className={s.sig}>
-                  <i className={m.app.open ? s.barOn : ""} />
-                  <span className={m.app.open ? s.on : ""}>{m.app.open ? "Ilova ochiq" : "Ilova yopiq"}</span>
+                <div className={s.stat}>
+                  <dt>Aloqa</dt>
+                  <dd className={!m.online ? s.vMuted : m.agent.live ? s.vOk : s.vWarn}><i aria-hidden />
+                    {!m.online ? "—" : m.agent.live ? "Darhol" : "Sekin"}
+                  </dd>
                 </div>
-                <div className={s.sig}>
-                  <i className={isBusy ? s.barAccent : m.worker.state === "idle" ? s.barOn : ""} />
-                  <span className={isBusy ? s.accent : m.worker.state === "idle" ? s.on : ""}>
-                    {isBusy ? `Band${m.worker.jobId ? ` · #${m.worker.jobId}` : ""}` : m.worker.state === "idle" ? "Worker bo'sh" : "Ma'lumot yo'q"}
-                  </span>
+                <div className={s.stat}>
+                  <dt>Worker</dt>
+                  <dd className={isBusy ? s.vBusy : m.worker.state === "idle" ? s.vInk : s.vMuted}><i aria-hidden />
+                    {isBusy ? <>Band{m.worker.jobId ? <small className="tnum">#{m.worker.jobId}</small> : null}</> : m.worker.state === "idle" ? "Bo'sh" : "—"}
+                  </dd>
                 </div>
-              </div>
+              </dl>
+              {m.online && !m.agent.live ? (
+                <div className="hint">Agent ishlamayapti: bot so&apos;rovlari kompyuter keyingi tekshiruvida bajariladi. YtAuto&apos;ning yangi versiyasini o&apos;rnating yoki ilovani bir marta oching.</div>
+              ) : null}
 
               {isBusy ? (
                 <div className={s.note}>
                   <Cog size={16} />
-                  <span>Og&apos;ir ish paytida kompyuter holat yubormaydi — ish tugagach bu yer o&apos;zi yangilanadi. Boshlangan: {ago(m.worker.seen)}.</span>
+                  <span>{m.worker.detail ? <><b>{m.worker.detail}</b> · </> : null}Boshlangan: {ago(m.worker.seen)}.{m.agent.live ? " Holat jonli yangilanadi." : " Ish tugagach bu yer o'zi yangilanadi."}</span>
                 </div>
               ) : null}
               {!m.online ? <div className="hint">Kompyuter o&apos;chiq yoki internetga ulanmagan — {since(m.lastSeen)} signal yo&apos;q.</div> : null}

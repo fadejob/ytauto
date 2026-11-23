@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Check, CircleCheck, CircleX, Link2Off, LoaderCircle, Lock, Plus, ShieldCheck, Tv } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Check, ChevronDown, CircleCheck, CircleX, Link2Off, LoaderCircle, Lock, Plus, ShieldCheck, Tv } from "lucide-react";
 import { api, confirmBox, openExternal } from "@/lib/client";
 import type { Toast } from "./App";
 import { Alert, Btn, SkelCard, useBusy } from "./ui";
@@ -18,7 +18,8 @@ type CheckResult = { ok: boolean; message: string };
 /**
  * Ulangan YouTube kanallari: bir hisobga bir nechta kanal, bittasi faol. Faol kanal almashtirilsa mavzular, kanal tahlili va
  * yangi videolar shu kanal bo'yicha bo'ladi. Avval qo'shilgan videolar o'z kanaliga yuklanaveradi.
- * Dizayn: Kanallar va YouTube (0hBKBn) - faol kanal ko'tarilgan karta, boshqasini bosib faol qilinadi; Birinchi ulash (jvx45U).
+ * Ko'rinish: chiroyli tanlov (custom select) - faol kanal tugmada; bosilsa kanallar ro'yxati ochiladi, tanlangan kanal faol bo'ladi
+ * va bot shu kanal bilan ishlaydi. Ro'yxat oxirida «Yana kanal ulash». Ostida faol kanal uchun tekshirish va uzish.
  */
 export default function YouTubeChannels({ yt, setYt, toast, blocked, onSwitched, error, onRetry }: {
   yt: YtStatus | null; setYt: (s: YtStatus) => void; toast: Toast;
@@ -31,10 +32,23 @@ export default function YouTubeChannels({ yt, setYt, toast, blocked, onSwitched,
 }) {
   const busy = useBusy((m) => toast(m, true));
   const [checks, setChecks] = useState<Record<string, CheckResult>>({});
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
   const channels = yt?.channels ?? [];
   const full = !!yt && channels.length >= yt.maxChannels;
   /** Kanal ro'yxatini o'zgartiradigan amal ketayotganda boshqa o'zgartiruvchi tugmalar kutadi (tekshirish bundan mustasno). */
   const mutating = busy.is("connect") || channels.some((c) => busy.is(`switch:${c.id}`) || busy.is(`remove:${c.id}`));
+
+  // Ochiq ro'yxat: tashqariga bosilsa yopiladi; ochilganda tanlangan kanalga fokus (klaviatura bilan ham tanlash mumkin).
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("pointerdown", away);
+    menu.current?.querySelector<HTMLElement>("[aria-selected=true]")?.focus();
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
 
   async function connect() {
     await busy.run("connect", async () => {
@@ -44,13 +58,15 @@ export default function YouTubeChannels({ yt, setYt, toast, blocked, onSwitched,
     });
   }
   async function makeActive(c: YtChannelInfo) {
+    setOpen(false);
+    trigger.current?.focus();
     if (c.active || mutating) return;
     const prev = channels.find((x) => x.active);
     const r = await busy.run(`switch:${c.id}`, () => api<YtStatus>("/api/youtube", { action: "switch", id: c.id }));
     if (r === false) return;
     setYt(r);
     onSwitched?.();
-    // «Bekor qilish»: oldingi faol kanalga qaytariladi (dizayn: Holatlar → Xabarlar va tugmalar → ma'lumot + amal toast).
+    // «Bekor qilish»: oldingi faol kanalga qaytariladi.
     toast(`Faol kanal: ${c.title || c.id}`, false, prev ? { label: "Bekor qilish", run: () => revert(prev) } : undefined);
   }
   async function revert(prev: YtChannelInfo) {
@@ -128,73 +144,87 @@ export default function YouTubeChannels({ yt, setYt, toast, blocked, onSwitched,
     );
   }
 
+  const active = channels.find((c) => c.active) ?? channels[0];
+  const activeName = active.title || active.id;
+  const switching = channels.find((c) => busy.is(`switch:${c.id}`));
+  const res = checks[active.id];
+  const checking = busy.is(`verify:${active.id}`);
+  const removing = busy.is(`remove:${active.id}`);
+
+  function menuKey(e: KeyboardEvent<HTMLDivElement>) {
+    const items = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "Escape") { e.preventDefault(); setOpen(false); trigger.current?.focus(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); items[(at + 1) % items.length]?.focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(at - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === "Tab") setOpen(false);
+  }
+
   return (
     <section className={styles.list} aria-label="YouTube kanallari">
       {head}
-      <div className={styles.list} role="radiogroup" aria-label="Faol kanal">
-        {channels.map((c) => {
-          const name = c.title || c.id;
-          const switching = busy.is(`switch:${c.id}`);
-          const checking = busy.is(`verify:${c.id}`);
-          const removing = busy.is(`remove:${c.id}`);
-          const res = checks[c.id];
-          const result = res ? (
-            <div className={`${styles.check} ${res.ok ? styles.ok : styles.bad}`} role="status">
-              {res.ok ? <CircleCheck /> : <CircleX />}<span>{res.message}</span>
-            </div>
-          ) : null;
-          return (
-            <article key={c.id} className={`${styles.tile}${c.active ? " " + styles.active : ""}`}>
-              <button type="button" role="radio" aria-checked={c.active} className={styles.pick}
-                disabled={c.active || mutating} onClick={() => void makeActive(c)}
-                aria-label={c.active ? `${name} — faol kanal` : `${name} — faol qilish`}>
-                <span className={styles.avatar} aria-hidden>{initial(name)}</span>
-                <span className={styles.names}>
-                  {c.active ? <span className={styles.kicker}>Faol kanal</span> : null}
-                  <span className={styles.title}>{name}</span>
-                  {c.expired ? <span className={styles.expired}><CircleX size={14} />Token eskirgan — uzib, qayta ulang</span> : null}
-                  {!c.active ? (
-                    <span className={styles.meta}>
-                      {switching ? "Faol qilinmoqda…" : `${c.pending ? `${c.pending} ta video navbatda · ` : ""}bosib faol qiling`}
+      <div className={styles.select} ref={wrap}>
+        <button type="button" ref={trigger} className={`${styles.trigger}${open ? " " + styles.open : ""}`}
+          aria-haspopup="listbox" aria-expanded={open} aria-label={`Faol kanal: ${activeName}. Almashtirish`}
+          disabled={mutating && !switching} onClick={() => setOpen((o) => !o)}
+          onKeyDown={(e) => { if (e.key === "ArrowDown" && !open) { e.preventDefault(); setOpen(true); } }}>
+          <span className={styles.avatar} aria-hidden>{initial(switching ? switching.title || switching.id : activeName)}</span>
+          <span className={styles.names}>
+            <span className={styles.kicker}>{switching ? "Almashtirilmoqda" : "Faol kanal"}</span>
+            <span className={styles.title}>{switching ? switching.title || switching.id : activeName}</span>
+            {active.expired && !switching ? <span className={styles.expired}><CircleX size={14} />Token eskirgan — uzib, qayta ulang</span>
+              : <span className={styles.meta}>{active.pending ? `${active.pending} ta video navbatda` : "Navbat bo'sh"}{channels.length > 1 ? ` · jami ${channels.length} ta kanal` : ""}</span>}
+          </span>
+          <span className={styles.chev} aria-hidden>{switching ? <LoaderCircle className="spin" /> : <ChevronDown />}</span>
+        </button>
+
+        {open ? (
+          <div className={styles.menu} ref={menu} role="listbox" aria-label="Kanalni tanlang" onKeyDown={menuKey}>
+            {channels.map((c) => {
+              const name = c.title || c.id;
+              return (
+                <button key={c.id} type="button" role="option" aria-selected={c.active} className={`${styles.option}${c.active ? " " + styles.on : ""}`}
+                  onClick={() => void makeActive(c)}>
+                  <span className={styles.oAvatar} aria-hidden>{initial(name)}</span>
+                  <span className={styles.oNames}>
+                    <span className={styles.oTitle}>{name}</span>
+                    <span className={c.expired ? styles.oBad : styles.oMeta}>
+                      {c.expired ? "Token eskirgan" : c.pending ? `${c.pending} ta video navbatda` : "Navbat bo'sh"}
                     </span>
-                  ) : null}
-                </span>
-                <span className={styles.radio} aria-hidden>
-                  {c.active ? <Check strokeWidth={3} /> : switching ? <LoaderCircle className="spin" /> : null}
-                </span>
-              </button>
-
-              {c.active ? (
-                <>
-                  <div className={styles.queue}>
-                    <span className={`focal ${styles.count}`}>{c.pending}</span>
-                    <b>ta video navbatda</b>
-                  </div>
-                  <p className={styles.desc}>Mavzular, kanal tahlili va yangi videolar shu kanal uchun.</p>
-                </>
-              ) : null}
-              {result}
-
-              <div className={styles.actions}>
-                <Btn tone="secondary" size="sm" icon={ShieldCheck} loading={checking} onClick={() => void verify(c)}>
-                  {checking ? "Tekshirilmoqda" : "Tekshirish"}
-                </Btn>
-                <Btn tone="ghost" size="sm" icon={Link2Off} loading={removing} disabled={mutating && !removing} onClick={() => void remove(c)}>
-                  Uzish
-                </Btn>
-              </div>
-            </article>
-          );
-        })}
+                  </span>
+                  {c.active ? <Check className={styles.oCheck} strokeWidth={3} aria-hidden /> : null}
+                </button>
+              );
+            })}
+            <div className={styles.sep} role="separator" />
+            <button type="button" className={styles.add} disabled={connectDisabled} onClick={() => { setOpen(false); void connect(); }}>
+              <span className={styles.addIc} aria-hidden>{connectDisabled ? <Lock /> : <Plus />}</span>
+              <span className={styles.oNames}>
+                <span className={styles.oTitle}>Yana kanal ulash</span>
+                <span className={styles.oMeta}>{blocked ?? (full ? `Eng ko'pi ${yt.maxChannels} ta kanal` : "Google orqali · darhol faol bo'ladi")}</span>
+              </span>
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      <Btn tone="secondary" block icon={Plus} loading={busy.is("connect")} disabled={connectDisabled} onClick={() => void connect()}>Yana kanal ulash</Btn>
+      {res ? (
+        <div className={`${styles.check} ${res.ok ? styles.ok : styles.bad}`} role="status">
+          {res.ok ? <CircleCheck /> : <CircleX />}<span>{res.message}</span>
+        </div>
+      ) : null}
+      <div className={styles.actions}>
+        <Btn tone="secondary" size="sm" icon={ShieldCheck} loading={checking} onClick={() => void verify(active)}>
+          {checking ? "Tekshirilmoqda" : "Ulanishni tekshirish"}
+        </Btn>
+        <Btn tone="ghost" size="sm" icon={Link2Off} loading={removing} disabled={mutating && !removing} onClick={() => void remove(active)}>
+          Uzish
+        </Btn>
+        {busy.is("connect") ? <span className={styles.connecting}><LoaderCircle className="spin" />Google oynasi ochilmoqda…</span> : null}
+      </div>
       <div className={`hint ${styles.foot}`}>
-        {lockHint}
-        <span>
-          Google oynasida kerakli hisob yoki brend kanalini tanlang. Ulangan kanal darhol faol bo&apos;ladi; avval qo&apos;shilgan videolar
-          o&apos;z kanaliga yuklanaveradi — kanalni almashtirish ularga ta&apos;sir qilmaydi.
-        </span>
+        Mavzular, kanal tahlili va yangi videolar faol kanal uchun. Avval qo&apos;shilgan videolar o&apos;z kanaliga yuklanaveradi —
+        kanalni almashtirish ularga ta&apos;sir qilmaydi.
       </div>
     </section>
   );
