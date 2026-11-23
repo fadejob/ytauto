@@ -108,8 +108,8 @@ public sealed partial class TunnelSupervisor
             catch (Exception e) { Error = e.Message; _log.Warn("Tunnel xatosi: " + e.Message); }
             SetUrl(null);
             if (ct.IsCancellationRequested) return;
-            // Uzoq ishlagan bo'lsa (masalan internet uzilib qolgan) - darhol; tez-tez yiqilsa - tobora kechroq.
-            backoff = DateTime.UtcNow - started > TimeSpan.FromMinutes(10) ? TimeSpan.FromSeconds(3) : Next(backoff);
+            // 2 daqiqadan ko'p ishlagan bo'lsa (masalan internet uzilib qolgan) - 3 s da; tez-tez yiqilsa - tobora kechroq.
+            backoff = DateTime.UtcNow - started > TimeSpan.FromMinutes(2) ? TimeSpan.FromSeconds(3) : Next(backoff);
             _log.Info($"Tunnel qayta ishga tushiriladi ({backoff.TotalSeconds:0} s dan keyin).");
             await Delay(backoff, ct);
         }
