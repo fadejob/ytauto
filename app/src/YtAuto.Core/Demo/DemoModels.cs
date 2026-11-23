@@ -78,6 +78,8 @@ public sealed class DemoRequirements
     [JsonPropertyName("tone")] public string? Tone { get; set; }
     /// <summary>Foydalanuvchining qo'shimcha talablari (erkin matn).</summary>
     [JsonPropertyName("notes")] public string? Notes { get; set; }
+    /// <summary>Montaj effektlari (<see cref="DemoEffects"/> kalitlari). Bo'sh - hammasi ruxsat, Claude sahnaga mosini tanlaydi.</summary>
+    [JsonPropertyName("effects")] public List<string>? Effects { get; set; }
 }
 
 /// <summary>Video yaratish bilan birga chiqarish so'ralganmi (faqat asosiy hisob, YouTube ulangan bo'lsa - bot tekshiradi).</summary>

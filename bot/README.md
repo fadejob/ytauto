@@ -131,7 +131,7 @@ So'ng Claude Code'ga: *«Shu loyihaning demo videosini YtAuto orqali yarat»* (c
 | Tool | Vazifasi |
 |---|---|
 | `request_media_upload` | Har screenshot/video uchun bir martalik Storage havolasi (PUT, 2 soat). Katta fayllar MCP orqali o'tmaydi. Screenshot ≤ 25 MB, video ≤ 500 MB, ko'pi bilan 30 ta. |
-| `create_demo_video` | Loyiha konteksti + materiallar (har birida nima ko'rinishi, zoom joyi) + talablar (til, davomiylik, auditoriya, ohang, format). Darhol `job_id` qaytaradi — ish asinxron. |
+| `create_demo_video` | Loyiha konteksti + materiallar (har birida nima ko'rinishi, zoom joyi) + talablar (til, davomiylik, auditoriya, ohang, format, `effects` — montaj effektlari ro'yxati, bo'sh bo'lsa aralash). Darhol `job_id` qaytaradi — ish asinxron. |
 | `get_video_status` | Bosqichlar (script → voice → align → edit → render → validate → archive), foiz, navbatdagi o'rni, kompyuter online'mi, oxirgi loglar. |
 | `get_video_result` | Title, tavsif, davomiylik, MP4 / muqova / SRT uchun 24 soatlik havolalar, kompyuterdagi arxiv yo'li, YouTube havolasi. |
 | `publish_video` | Faqat foydalanuvchi aniq buyurganda (`confirm: true`) — **faqat asosiy hisob YouTube kanaliga**. Tayyor fayl yuklanadi (qayta render qilinmaydi). |
@@ -144,8 +144,9 @@ Qanday ishlaydi:
    Navbat bazada — kompyuter o'chib-yonsa ham yo'qolmaydi, uzilgan vazifa tayyor bosqichidan davom etadi.
 3. Ssenariy — Gemini, 2 bosqich: (1) materiallarni ko'rib (vision) sahnalar qoralamasi; (2) faqat ovozda aytiladigan matn — sahna
    ko'rsatmalari, takrorlar va ortiqcha gaplar olib tashlanadi. Sahnalar (qaysi materialda nima aytiladi, zoom joyi) alohida metadata.
-4. Ovoz (VoiceStudio) → subtitr vaqtlari (faster-whisper) → montaj (Claude + OpenFilm: screenshot/videolar sahna vaqtlari bilan, zoom/pan,
-   o'tishlar, fon musiqasi, SFX) → render → sifat tekshiruvi → arxiv.
+4. Ovoz (VoiceStudio) → subtitr vaqtlari (faster-whisper) → montaj (Claude + OpenFilm: faqat loyihaning o'z screenshot/videolari,
+   to'liq kadrda — kanal shabloni, bezak fonlar, mockup va stok media yo'q; kamera harakatlari, o'tishlar, ajratib ko'rsatish,
+   kinetik matn, ritm effektlari (`DemoEffects.cs` katalogi), fon musiqasi, SFX) → render → sifat tekshiruvi → arxiv.
 5. Natija (MP4, muqova, SRT) bot orqali Storage'ga (`acc/<hisob>/demo-result/`) yuboriladi, vazifa **«Tayyor»** (holat 15) bo'ladi.
    Chiqarish so'ralgan bo'lsa — asosiy kanalga yuklanadi; mehmon (qo'shimcha token) hisoblari uchun MCP orqali chiqarish yo'q.
 

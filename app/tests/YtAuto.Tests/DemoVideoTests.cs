@@ -139,6 +139,14 @@ public class DemoVideoTests
         Assert.Contains("temperature gauge", h.Editor.LastInstructions);
         Assert.Contains("THIRD audio track", h.Editor.LastInstructions);
         Assert.DoesNotContain("Group these lines into scenes by meaning (one idea per scene). Make one page", h.Editor.LastInstructions!.Split("## Product demo")[1]);
+        // Faqat loyiha materiallari: fon/bezak, kanal brifi va umumiy dizayn talablari yo'q; effektlar katalogi bor.
+        Assert.Contains("Only the product on screen", h.Editor.LastInstructions);
+        Assert.Contains(EditorInstructions.DemoBriefText, h.Editor.LastInstructions);
+        Assert.DoesNotContain("Design quality bar", h.Editor.LastInstructions);
+        Assert.DoesNotContain("Background with depth", h.Editor.LastInstructions);
+        Assert.DoesNotContain("device or app-window frame", h.Editor.LastInstructions);
+        Assert.DoesNotContain("Brief (Claude prompt from the channel settings)", h.Editor.LastInstructions);
+        foreach (var k in new[] { "zoom_in", "whip_pan", "spotlight", "cursor_click", "kinetic_text", "cut_ins" }) Assert.Contains($"`{k}`", h.Editor.LastInstructions);
         // Natija serverga yuborildi va saqlandi.
         Assert.Equal(1, r.Calls);
         var res = JsonSerializer.Deserialize<DemoResult>(j.DemoResultJson!, DemoSpec.Json)!;
@@ -227,6 +235,47 @@ public class DemoVideoTests
     }
 
     // ------------------------------------------------------------------ qoidalar
+    [Fact]
+    public void DemoEffects_Resolve_KeepsKnownAddsTransitionAndCamera()
+    {
+        var unknown = new List<string>();
+        var e = DemoEffects.Resolve(new[] { "spotlight", "SPOTLIGHT", "nope", "cursor_click" }, unknown);
+        Assert.Equal(new[] { "spotlight", "cursor_click", "crossfade", "ken_burns" }, e.Select(x => x.Key));
+        Assert.Equal(new[] { "nope" }, unknown);
+        Assert.Equal(DemoEffects.Catalog.Count, DemoEffects.Resolve(null).Count);
+        Assert.Equal(DemoEffects.Catalog.Count, DemoEffects.Resolve(new[] { "x" }).Count);
+        Assert.Equal(DemoEffects.Catalog.Count, DemoEffects.Keys.Distinct().Count());
+        Assert.Equal(4, DemoEffects.MinDistinct(1, 26));
+        Assert.Equal(2, DemoEffects.MinDistinct(5, 2));
+    }
+
+    [Fact]
+    public void DemoEffects_MatchBotList()
+    {
+        // Bot (MCP schema) va worker bir xil kalitlarni bilishi kerak.
+        var root = AppContext.BaseDirectory;
+        while (root is not null && !File.Exists(Path.Combine(root, "bot", "src", "lib", "demo-video.ts"))) root = Path.GetDirectoryName(root);
+        if (root is null) return;
+        var ts = File.ReadAllText(Path.Combine(root, "bot", "src", "lib", "demo-video.ts"));
+        var block = ts[ts.IndexOf("DEMO_EFFECTS = [", StringComparison.Ordinal)..];
+        block = block[..block.IndexOf("] as const", StringComparison.Ordinal)];
+        var keys = System.Text.RegularExpressions.Regex.Matches(block, "\"([a-z0-9_]+)\"").Select(m => m.Groups[1].Value);
+        Assert.Equal(DemoEffects.Keys.OrderBy(x => x), keys.OrderBy(x => x));
+    }
+
+    [Fact]
+    public void DemoEffects_ChosenByUser_OnlyThoseInInstructions()
+    {
+        var spec = new DemoSpec { Project = new DemoProject { Name = "P", Summary = "S" }, Requirements = new DemoRequirements { Effects = new() { "magnifier", "glitch" } } };
+        var sb = new System.Text.StringBuilder();
+        typeof(EditorInstructions).GetMethod("AppendDemoEffects", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!
+            .Invoke(null, new object[] { sb, new DemoBrief(spec, new List<DemoPlanScene> { new(), new() }) });
+        var t = sb.ToString();
+        Assert.Contains("chosen by the user", t);
+        Assert.Contains("`magnifier`", t); Assert.Contains("`glitch`", t); Assert.Contains("`ken_burns`", t);
+        Assert.DoesNotContain("`whip_pan`", t);
+    }
+
     [Fact]
     public void CleanNarration_RemovesDirectionsLabelsAndUrls()
     {

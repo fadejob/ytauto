@@ -39,11 +39,22 @@ internal static class EditorInstructions
         sb.AppendLine("You are running unattended in a fresh session. Never ask questions. Work only inside this folder.");
         sb.AppendLine("Do not render the final video and do not delete anything outside `film/`.");
         sb.AppendLine();
-        sb.AppendLine("## Brief (Claude prompt from the channel settings)");
-        sb.AppendLine();
-        sb.AppendLine(string.IsNullOrWhiteSpace(c.S.Claude.MontagePrompt) ? DefaultPrompts.Montage : c.S.Claude.MontagePrompt.Trim());
-        sb.AppendLine();
-        if (c.S.ChannelContext?.MontageBlock is { Length: > 0 } channel)
+        if (demo is not null)
+        {
+            // Demo: kanal brifi va kanal uslubi (fonlar, bezaklar) emas - faqat loyiha materiallari ustida montaj.
+            sb.AppendLine("## Brief");
+            sb.AppendLine();
+            sb.AppendLine(DemoBriefText);
+            sb.AppendLine();
+        }
+        else
+        {
+            sb.AppendLine("## Brief (Claude prompt from the channel settings)");
+            sb.AppendLine();
+            sb.AppendLine(string.IsNullOrWhiteSpace(c.S.Claude.MontagePrompt) ? DefaultPrompts.Montage : c.S.Claude.MontagePrompt.Trim());
+            sb.AppendLine();
+        }
+        if (demo is null && c.S.ChannelContext?.MontageBlock is { Length: > 0 } channel)
         {
             // Shablon bor bo'lsa - kanal odatlari shablondan past: foydalanuvchi yuklagan shablon har doim ustun.
             sb.AppendLine(tpl is null ? MontageHeading : MontageHeadingBelowTemplate);
@@ -80,7 +91,7 @@ internal static class EditorInstructions
             sb.AppendLine($"- Template: {refFrames.Count} frames from the channel's template video{(tpl is null ? "" : $" \"{tpl.Name}\"")}. Open ALL of them with the Read tool before designing; copy their look (colours, typography, layout, backgrounds, how images and icons are framed, recurring brand elements), not their content:");
             foreach (var f in refFrames) sb.AppendLine($"  - `{f}`");
         }
-        if (tpl is null) sb.AppendLine("- Template: none for this video. Use the default design from the brief.");
+        if (tpl is null && demo is null) sb.AppendLine("- Template: none for this video. Use the default design from the brief.");
         if (!string.IsNullOrWhiteSpace(tpl?.Notes)) sb.AppendLine($"- Template notes: {tpl!.Notes}");
         sb.AppendLine();
         sb.AppendLine("## Subtitles with timings (seconds)");
@@ -94,7 +105,7 @@ internal static class EditorInstructions
         if (stock is { Total: > 0 }) AppendStock(sb, stock, w, h, audioSec, inv);
         if (media is { Assets.Count: > 0 }) AppendMedia(sb, media, inv);
         if (demo is not null) AppendDemo(sb, demo, inv, w, h);
-        AppendDesignBar(sb, w, h, tpl is not null || refFrames.Count > 0, hasMotionGuide);
+        if (demo is null) AppendDesignBar(sb, w, h, tpl is not null || refFrames.Count > 0, hasMotionGuide);
         sb.AppendLine("## Hard requirements (the worker checks them automatically)");
         sb.AppendLine();
         sb.AppendLine($"1. `film/film.html` with `<meta name=\"viewport\" content=\"width={w}, height={h}\">`.");
@@ -123,7 +134,7 @@ internal static class EditorInstructions
         sb.AppendLine("7. Leave `film/assets/voice.wav` and `film/assets/voice.vtt` untouched.");
         sb.AppendLine("8. `film/cover.html`: the video cover (see below). It is NOT on the timeline.");
         sb.AppendLine();
-        AppendCover(sb, script, w, h);
+        AppendCover(sb, script, w, h, demo is not null);
         sb.AppendLine("## Check, then finish");
         sb.AppendLine();
         sb.AppendLine("- Run `openfilm look` in `film/` and open the contact sheet PNGs it prints. Use `openfilm look <t>` for single frames around each scene start.");
@@ -279,17 +290,56 @@ internal static class EditorInstructions
             sb.AppendLine($"   - Voice says: \"{OneLine(s.Narration, 400)}\"");
         }
         sb.AppendLine();
-        sb.AppendLine("How to present the product (it must look like a polished product launch video, not a slideshow):");
-        sb.AppendLine($"- Put each screenshot/recording inside a clean device or app-window frame (rounded corners, soft shadow, subtle title bar) on the video's background, large: it fills 75–90% of the free area above the subtitle zone. Never stretch or crop away the UI the narration talks about; keep the aspect ratio (`object-fit: contain` inside the frame).");
-        sb.AppendLine("- Camera motion on every scene (the picture depends only on t): start on the whole screen, then a smooth push-in (scale 1.0→1.6–2.2, translate) onto the Focus area while the voice talks about it, hold, and ease out before the cut. Screens with no Focus get a slow Ken Burns drift (scale 1.00→1.08). Use ease-in-out curves; no jerky jumps.");
-        sb.AppendLine("- Highlight what the voice names: a soft spotlight (dim everything except the Focus region), an outline box or a short animated cursor/click ripple on the exact UI element. Keep highlights in the accent colour.");
-        sb.AppendLine("- Screen recordings: a `<video>` clip with `muted` (never its own sound), starting at the scene start. If the recording is shorter than the scene, hold its last frame (freeze) — do not loop visibly; if longer, trim it. Recordings may also get a gentle zoom on the action.");
-        sb.AppendLine("- Transitions between scenes: 0.3–0.6 s (slide, zoom-through or crossfade between frames), consistent across the video, finished exactly at the scene boundary so the clips still cover the timeline end to end.");
-        sb.AppendLine("- First scene: open on the product name as a short title over the first screen (1–2 s). Last scene: end card with the project name" + (string.IsNullOrWhiteSpace(p.Url) ? "" : $" and `{OneLine(p.Url!, 80)}` as plain text") + ".");
-        sb.AppendLine("- Sound effects (optional, tasteful, at most one every few seconds): " + string.Join("; ", Media.Sfx.Catalog.Select(kv => $"`assets/sfx/{kv.Key}` = {kv.Value}")) + ". Place each as its own audio clip at the exact moment (volume 0.15–0.3).");
-        sb.AppendLine($"- Do not draw fake UI or invent features: everything about the product comes from these materials. Text you add (labels, titles) is short and matches the narration.");
+        sb.AppendLine("### Only the product on screen (no backgrounds)");
+        sb.AppendLine();
+        sb.AppendLine("Every frame of this video is the project itself: its screenshots and screen recordings, moved, cut and highlighted. Nothing else is drawn.");
+        sb.AppendLine($"- Each material fills the whole {w}x{h} stage edge to edge (full-bleed). Use `object-fit: cover` when the crop keeps the UI the voice talks about; otherwise `contain`.");
+        sb.AppendLine("- When `contain` leaves empty bars (e.g. a 16:9 screenshot in a 9:16 video), fill them ONLY with the same material: a blurred, darkened, enlarged copy of it behind (`filter: blur(40px) brightness(0.45)`, `object-fit: cover`). Never a colour, gradient or pattern.");
+        sb.AppendLine("- Forbidden: decorative backgrounds (gradients, glows, blurred blobs, grids, particles, bokeh), device or laptop mockups, desks and rooms, a window frame floating on a backdrop, stock photos or clips, icons and illustrations, drawn fake UI, emoji. Do not invent features.");
+        sb.AppendLine("- Allowed on top of the product: the highlight effects below, the short on-screen label, the title and the end card text. They sit directly on the product image (the title and end card over the dimmed product screen, not on an empty background).");
+        sb.AppendLine("- Do not use `style.css` tokens for background colours; the only colours you add are one accent (for outlines/labels) and near-white text with a dark shadow.");
+        sb.AppendLine();
+        AppendDemoEffects(sb, demo);
+        sb.AppendLine("### Montage");
+        sb.AppendLine();
+        sb.AppendLine("It must feel like a polished, energetic product intro — a real edit, not a slideshow:");
+        sb.AppendLine("- A new shot every 2–4 s: within one scene cut between the whole screen, close-ups of the Focus area and other parts of the same material (cut on the narration's phrases). Never hold one static framing for a whole long scene.");
+        sb.AppendLine("- Screen recordings: a `<video>` clip with `muted` (never its own sound), on the timeline at the scene start. If the recording is shorter than the scene, freeze its last frame (and keep the camera moving) — never loop visibly; if longer, trim it or speed-ramp the dull part.");
+        sb.AppendLine("- Every move uses ease-in-out curves; no jerky jumps. Frame 0 of each scene is already a sharp, readable product frame — never black or empty.");
+        sb.AppendLine("- Transitions finish exactly at the scene boundary so the clips cover the timeline end to end. Do not use the same transition twice in a row.");
+        sb.AppendLine("- First scene: the product name as a short title over the first product screen (1–2 s). Last scene: end card with the project name" + (string.IsNullOrWhiteSpace(p.Url) ? "" : $" and `{OneLine(p.Url!, 80)}` as plain text") + " over the last product screen, dimmed.");
+        sb.AppendLine("- Sound effects, synced to what happens on screen (a whoosh on transitions and fast moves, a click on cursor clicks, a pop when a label or outline appears), at most one every ~2 s: " + string.Join("; ", Media.Sfx.Catalog.Select(kv => $"`assets/sfx/{kv.Key}` = {kv.Value}")) + ". Place each as its own audio clip at the exact moment (volume 0.15–0.3).");
+        sb.AppendLine("- Text you add (labels, titles) is short, matches the narration and stays out of the lower 22% (subtitles).");
+        sb.AppendLine();
+        sb.AppendLine("Self-review with `openfilm look`: check frame 0, the middle and the end of every scene. Any frame that shows something other than the product (an empty background, a decorative layer, a gap) or looks static, cut off or unreadable must be fixed before finishing.");
         sb.AppendLine();
     }
+
+    /// <summary>Demo uchun effektlar: foydalanuvchi tanlagani (yoki butun katalog), guruhlab, turli-tumanlik talabi bilan.</summary>
+    private static void AppendDemoEffects(StringBuilder sb, DemoBrief demo)
+    {
+        var effects = DemoEffects.Resolve(demo.Spec.Requirements.Effects);
+        var chosenByUser = demo.Spec.Requirements.Effects is { Count: > 0 } && effects.Count < DemoEffects.Catalog.Count;
+        var min = DemoEffects.MinDistinct(demo.Scenes.Count, effects.Count);
+        sb.AppendLine(chosenByUser ? "### Effects (chosen by the user — use these)" : "### Effects (pick the right one for each moment)");
+        sb.AppendLine();
+        sb.AppendLine($"Use at least {min} different effects across the video, mixed from several groups — not only zoom. Every scene has at least one camera move and at least one highlight, text or rhythm effect; vary them from scene to scene so the edit never repeats itself.");
+        foreach (var g in new[] { (DemoEffects.Camera, "Camera (on the product image)"), (DemoEffects.Transition, "Transitions"), (DemoEffects.Highlight, "Highlights"), (DemoEffects.Text, "Text"), (DemoEffects.Rhythm, "Rhythm") })
+        {
+            var list = effects.Where(e => e.Group == g.Item1).ToList();
+            if (list.Count == 0) continue;
+            sb.AppendLine($"- {g.Item2}:");
+            foreach (var e in list) sb.AppendLine($"  - `{e.Key}`: {e.Recipe}.");
+        }
+        sb.AppendLine("Write in `film/BUILD_NOTES.md` which effects each scene uses.");
+        sb.AppendLine();
+    }
+
+    /// <summary>Demo video uchun montaj brifi (kanal sozlamasidagi Claude prompti o'rniga).</summary>
+    internal const string DemoBriefText =
+        "Edit a short, high-energy product intro video for a software project. The product's own screenshots and screen recordings are the " +
+        "only visuals: bring them to life with camera moves, cuts, transitions, highlights, short kinetic labels and sound effects, timed to the voice. " +
+        "No decorative or invented backgrounds, mockups or stock media.";
 
     private static string OneLine(string? s, int max)
     {
@@ -301,7 +351,7 @@ internal static class EditorInstructions
     /// Video muqovasi (cover): YouTube thumbnail bo'ladi va MP4 ichiga rasm bo'lib qo'shiladi — video ochilmaganda ko'rinadigan rasm.
     /// Worker uni `openfilm look cover.html` bilan rasmga aylantiradi; sahifa bo'lmasa videodan kadr olinadi (subtitrsiz).
     /// </summary>
-    private static void AppendCover(StringBuilder sb, VideoScript script, int w, int h)
+    private static void AppendCover(StringBuilder sb, VideoScript script, int w, int h, bool demo = false)
     {
         var title = string.IsNullOrWhiteSpace(script.YouTubeTitle) ? "" : script.YouTubeTitle.Trim();
         sb.AppendLine("## Cover (required)");
@@ -309,7 +359,9 @@ internal static class EditorInstructions
         sb.AppendLine("Make `film/cover.html`: one still picture that is shown before the video is opened (YouTube thumbnail and the cover inside the MP4).");
         sb.AppendLine($"- Same stage: `<meta name=\"viewport\" content=\"width={w}, height={h}\">`, fills the stage edge to edge, uses the same shared style (`film/style.css`, colours, fonts) as the scenes.");
         sb.AppendLine($"- A short, punchy headline of 2–5 words taken from the video title{(title.Length > 0 ? $" \"{title}\"" : "")} — huge (at least {(int)Math.Round(Math.Min(w, h) * 0.11)} px), bold, max 2 lines, near-white with a dark outline or shadow, one key word in the accent colour.");
-        sb.AppendLine("- One big focal visual that makes the topic obvious at a glance (object, diagram, contrast/comparison, big number). Strong contrast, readable at phone thumbnail size.");
+        sb.AppendLine(demo
+            ? "- The picture is the product itself: the most telling screenshot from `assets/demo/` fills the whole stage (cropped/zoomed onto its best part, slightly darkened under the headline). No other background, shapes or stock images. Strong contrast, readable at phone thumbnail size."
+            : "- One big focal visual that makes the topic obvious at a glance (object, diagram, contrast/comparison, big number). Strong contrast, readable at phone thumbnail size.");
         sb.AppendLine($"- Keep the bottom-right corner (about {(int)Math.Round(w * 0.16)}x{(int)Math.Round(h * 0.12)} px) empty: YouTube draws the duration there. No subtitles, no small text, no logos, no URLs.");
         sb.AppendLine("- The picture is complete at t=0 (no animation needed; it must not depend on time), but the page still needs `<script>window.film={duration:1,frame(){}}</script>` — `openfilm look` refuses a page without it. Check it with `openfilm look cover.html 0` and fix anything cut off or unreadable.");
         sb.AppendLine();

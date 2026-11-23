@@ -1,5 +1,5 @@
 import "server-only";
-import { createDemoVideo, McpToolError, MEDIA_LIMIT, publishVideo, requestMediaUpload, videoResult, videoStatus } from "./demo-video";
+import { createDemoVideo, DEMO_EFFECTS, McpToolError, MEDIA_LIMIT, publishVideo, requestMediaUpload, videoResult, videoStatus } from "./demo-video";
 
 /**
  * YtAuto MCP server (Model Context Protocol, Streamable HTTP, holatsiz: har POST - mustaqil JSON-RPC so'rov, SSE yo'q).
@@ -9,14 +9,14 @@ import { createDemoVideo, McpToolError, MEDIA_LIMIT, publishVideo, requestMediaU
 export const SERVER_INFO = { name: "ytauto", title: "YtAuto demo video", version: "1.0.0" };
 const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
-export const INSTRUCTIONS = `YtAuto turns a software project into a narrated product demo video. You (Claude Code) only study the project and capture visuals; YtAuto writes the script (Gemini), generates the voice (VoiceStudio, the user's chosen voice), edits (OpenFilm: zoom/pan, transitions, subtitles, music, SFX), renders and optionally publishes to the user's main YouTube channel.
+export const INSTRUCTIONS = `YtAuto turns a software project into a narrated product demo / intro video. You (Claude Code) only study the project and capture visuals; YtAuto writes the script (Gemini), generates the voice (VoiceStudio, the user's chosen voice), edits (OpenFilm: camera moves, cuts, transitions, highlights, kinetic text, subtitles, music, SFX; only the product's own screenshots and recordings are shown, never decorative backgrounds), renders and optionally publishes to the user's main YouTube channel.
 
 Workflow:
 1. Study the project: README, docs, routes/screens, main user workflows. Pick the 3-8 features that matter most to a new user.
 2. Run the project locally (dev server, CLI, app). Use realistic but harmless demo data. Never capture secrets, tokens, real personal data or private URLs.
 3. Capture visuals: PNG screenshots of the key screens (1920x1080 for a 16:9 video, 1080x1920 for 9:16) and short screen recordings (MP4/WebM, 4-20 s, one action each: e.g. creating an item, filtering, a successful save). Playwright (page.screenshot / recordVideo) works well for web apps. Up to ${MEDIA_LIMIT} files; screenshots up to 25 MB, recordings up to 500 MB.
 4. request_media_upload with the list of files → upload each file with the returned curl line (HTTP PUT of the raw bytes).
-5. create_demo_video with: the project context (name, summary, features), every media_id with a precise title + description of what is visible/what happens, and a highlight (the UI area to zoom into); plus requirements (language, duration, audience, tone, format, notes from the user). Set publish.requested only if the user explicitly asked to publish.
+5. create_demo_video with: the project context (name, summary, features), every media_id with a precise title + description of what is visible/what happens, and a highlight (the UI area to zoom into); plus requirements (language, duration, audience, tone, format, effects, notes from the user). The video shows only your captures, so capture clean full-window views of the app without browser chrome, dev tools or the desktop around it. Set publish.requested only if the user explicitly asked to publish.
 6. Video production is asynchronous and runs on the user's PC (minutes to an hour). Poll get_video_status every few minutes; when status is "ready" call get_video_result and give the user the download link / local path.
 7. publish_video only when the user explicitly tells you to publish; it goes to the user's main YouTube channel only.`;
 
@@ -75,7 +75,11 @@ export const TOOLS = [
         format: { type: "string", enum: ["16:9", "9:16", "1:1"], description: "Default 16:9" },
         notes: s("Any other wishes of the user (what to stress, what to avoid)"),
         voice_profile: s("Optional voice profile name; default is the voice chosen in the YtAuto Telegram bot"),
-        template: s("Optional YtAuto template name; default is the bot's default template"),
+        effects: {
+          type: "array", maxItems: DEMO_EFFECTS.length, uniqueItems: true,
+          description: "Edit effects to use (any mix; omit or empty = YtAuto picks a varied mix from all of them). Camera: zoom_in, zoom_out, pan, ken_burns, scroll_through, parallax_3d, split_screen, picture_in_picture. Transitions: crossfade, slide_push, whip_pan, zoom_through, wipe, blur_dissolve, glitch. Highlights: spotlight, outline_box, cursor_click, magnifier, callout. Text: title_reveal, kinetic_text. Rhythm: cut_ins, speed_ramp, freeze_frame, impact_shake. All effects work on the product's own visuals only; the video never gets decorative backgrounds.",
+          items: { type: "string", enum: DEMO_EFFECTS },
+        },
       }),
       publish: obj({
         requested: { type: "boolean", description: "true ONLY if the user explicitly asked to publish to YouTube. Main account channel only." },
