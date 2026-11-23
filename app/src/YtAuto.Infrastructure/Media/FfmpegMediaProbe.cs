@@ -137,6 +137,16 @@ public sealed class FfmpegMediaProbe : IMediaProbe
             throw PipelineException.Quality("audio_convert", $"Audio faylni o'qib bo'lmadi (ffmpeg): {err.Trim()}");
     }
 
+    public async Task TempoAsync(string inWav, double factor, string outWav, CancellationToken ct)
+    {
+        if (factor is < 0.5 or > 2.0) throw new ArgumentOutOfRangeException(nameof(factor), factor, "atempo 0.5-2.0 oralig'ida");
+        Directory.CreateDirectory(Path.GetDirectoryName(outWav)!);
+        var args = new[] { "-hide_banner", "-v", "error", "-i", inWav, "-filter:a", "atempo=" + factor.ToString("0.0000", CultureInfo.InvariantCulture),
+            "-c:a", "pcm_s16le", "-y", outWav };
+        var (r, _, err) = await RunAsync(Ffmpeg, args, TimeSpan.FromMinutes(5), ct).ConfigureAwait(false);
+        if (r.ExitCode != 0 || !File.Exists(outWav)) throw PipelineException.Transient("ffmpeg_tempo", $"Ovoz tezlashtirilmadi ({factor:0.00}x): {err.Trim()}");
+    }
+
     public async Task ExtractFrameAsync(string video, double atSec, string outImage, int width, CancellationToken ct)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outImage)!);

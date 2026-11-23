@@ -52,6 +52,32 @@ internal static class EditorInstructions
             sb.AppendLine(channel);
             sb.AppendLine();
         }
+        if (!c.Job.IsDemo)
+        {
+            // Format uzunligi: 16:9 - 2-3 daqiqa, Shorts/kvadrat - 55 soniyagacha (ovoz shunga sig'dirilgan; sifat tekshiruvi ham shuni talab qiladi).
+            var len = VideoLength.For(c.Job.Format);
+            sb.AppendLine("## Length");
+            sb.AppendLine();
+            var target = len == VideoLength.Landscape ? "2-3 minutes" : $"up to {len.MaxSec} seconds";
+            var voice = audioSec.ToString("0.0", inv);
+            sb.AppendLine($"- This is a {VideoLength.FormatName(c.Job.Format)}: target length {target}. " +
+                $"The finished film must end **no later than {len.MaxSec.ToString(inv)} s**. The voice is {voice} s: keep any closing beat after it short (2-3 s at most) and never pad the ending.");
+            sb.AppendLine();
+        }
+        if (c.Job.HasHook)
+        {
+            var hook = HookRule.Normalize(c.Job.Hook);
+            var end = HookRule.EndSec(cues, hook);
+            sb.AppendLine("## Opening hook (written by the channel owner)");
+            sb.AppendLine();
+            var span = end is double e ? $" (spoken from 0 s to about {e.ToString("0.0", inv)} s)" : "";
+            sb.AppendLine($"The voice opens with this question{span}: **\"{hook}\"**");
+            sb.AppendLine();
+            sb.AppendLine("- The film starts on this question at t=0: the first scene poses it, with the question (or its key words) as big, bold on-screen text and a strong visual that makes the viewer need the answer.");
+            sb.AppendLine("- Nothing before it: no logo, intro card, title sequence, black frame or slow fade-in. Motion from the very first frame; the question must be readable in under a second.");
+            sb.AppendLine("- Build the rest of the montage as the answer to this question and make the payoff moment visually clear near the end.");
+            sb.AppendLine();
+        }
         sb.AppendLine("## Read first");
         sb.AppendLine();
         sb.AppendLine("- `openfilm-edit-skill.md`: OpenFilm's own rules for film.html and pages. Read it whole before writing anything.");

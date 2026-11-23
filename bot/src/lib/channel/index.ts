@@ -91,7 +91,8 @@ export async function channelAction(a: ChannelActionInput): Promise<ActionResult
     case "accept": {
       const s = await getSuggestion(Number(a.id));
       if (!s || s.status !== "new") return { ok: false, message: "Tavsiya topilmadi yoki allaqachon ko'rib chiqilgan." };
-      const r = await applyAction({ type: "create_topics", topics: [{ topic: s.topic, notes: s.notes }] });
+      // Hook tavsiya bilan keladi (eski tavsiyalarda yo'q bo'lsa - mavzuni qo'lda, o'z savolingiz bilan qo'shing).
+      const r = await applyAction({ type: "create_topics", topics: [{ topic: s.topic, notes: s.notes, hook: s.hook }] });
       if (r.ok) await setSuggestionStatus(s.id, "accepted", Number(/#(\d+)/.exec(r.message)?.[1]) || undefined);
       return r;
     }

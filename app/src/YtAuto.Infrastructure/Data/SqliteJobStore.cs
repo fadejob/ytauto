@@ -130,6 +130,14 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
             Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','7')", tx);
             tx.Commit();
         }
+        if (version < 8)
+        {
+            // v8: boshlang'ich savol (hook) - online bazadagi kabi.
+            using var tx = c.BeginTransaction();
+            Exec(c, "ALTER TABLE jobs ADD COLUMN hook TEXT", tx);
+            Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','8')", tx);
+            tx.Commit();
+        }
     }
 
     // ------------------------------------------------------------------ helpers
@@ -152,7 +160,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
     private static DateTimeOffset? ParseTs(object? o) => o is string s && s.Length > 0 ? DateTimeOffset.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind) : null;
     private static string? Str(SqliteDataReader r, string n) { var i = r.GetOrdinal(n); return r.IsDBNull(i) ? null : r.GetString(i); }
 
-    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url, kind, demo_spec, demo_result, channel_id";
+    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url, kind, demo_spec, demo_result, channel_id, hook";
 
     private static VideoJob ReadJob(SqliteDataReader r) => new()
     {
@@ -176,7 +184,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
         PublishNow = r.GetInt32(r.GetOrdinal("publish_now")) != 0,
         ManualScript = Str(r, "manual_script"), ManualTitle = Str(r, "manual_title"), ManualAudioUrl = Str(r, "manual_audio_url"),
         Kind = Str(r, "kind") ?? "", DemoSpecJson = Str(r, "demo_spec"), DemoResultJson = Str(r, "demo_result"),
-        ChannelId = Str(r, "channel_id") ?? "",
+        ChannelId = Str(r, "channel_id") ?? "", Hook = Str(r, "hook"),
     };
 
     private static void BindJob(SqliteCommand cmd, VideoJob j)
@@ -211,9 +219,9 @@ INSERT INTO jobs(topic, notes, language, target_duration_sec, format, template_n
  run_attempts, next_attempt_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description,
  thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status,
  youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url,
- kind, demo_spec, channel_id)
+ kind, demo_spec, channel_id, hook)
 VALUES($topic,$notes,$language,$dur,$format,$tpl,$voice,$pub,$status,$created,$updated,$attempts,$next,$cancel,$qa,$errc,$errm,$attn,$snap,$title,$desc,
- $thumb,$va,$aa,$sa,$adur,$yid,$ypriv,$yup,$yproc,$ychk,$pubd,$wd,$wdc,$pn,$ms,$mt,$ma,$kind,$dspec,$chan) RETURNING id;
+ $thumb,$va,$aa,$sa,$adur,$yid,$ypriv,$yup,$yproc,$ychk,$pubd,$wd,$wdc,$pn,$ms,$mt,$ma,$kind,$dspec,$chan,$hook) RETURNING id;
 """;
         BindJob(cmd, job);
         cmd.Parameters.AddWithValue("$pn", job.PublishNow ? 1 : 0);
@@ -222,6 +230,7 @@ VALUES($topic,$notes,$language,$dur,$format,$tpl,$voice,$pub,$status,$created,$u
         cmd.Parameters.AddWithValue("$ma", (object?)job.ManualAudioUrl ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$kind", job.Kind ?? "");
         cmd.Parameters.AddWithValue("$chan", job.ChannelId ?? "");
+        cmd.Parameters.AddWithValue("$hook", (object?)job.Hook ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$dspec", (object?)job.DemoSpecJson ?? DBNull.Value);
         job.Id = (long)cmd.ExecuteScalar()!;
         return job.Id;

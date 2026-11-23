@@ -189,9 +189,19 @@ internal sealed class FakeMedia : IMediaProbe
     {
         if (path.EndsWith(".wav")) return Task.FromResult(new MediaInfo { Duration = Wav.ReadInfo(path).Duration, HasAudio = true });
         var d = BitConverter.ToDouble(File.ReadAllBytes(path), 0);
-        return Task.FromResult(new MediaInfo { Duration = d + 0.05, HasAudio = true, HasVideo = true, Width = 1920, Height = 1080 });
+        return Task.FromResult(new MediaInfo { Duration = d + 0.05, HasAudio = true, HasVideo = true, Width = RenderSize.W, Height = RenderSize.H });
     }
+    /// <summary>Render o'lchami (Shorts sinovlarida vertikal).</summary>
+    public (int W, int H) RenderSize = (1920, 1080);
     public Task<(bool Ok, string Errors)> DecodeCheckAsync(string path, CancellationToken ct) => Task.FromResult((true, ""));
+    /// <summary>Haqiqiy atempo kabi: uzunligi factor marta qisqa ovoz.</summary>
+    public Task TempoAsync(string inWav, double factor, string outWav, CancellationToken ct)
+    {
+        Tempos.Add(factor);
+        FakeTts.WriteSpeechLikeWav(outWav, Wav.ReadInfo(inWav).Duration / factor);
+        return Task.CompletedTask;
+    }
+    public readonly List<double> Tempos = new();
     public Task<IReadOnlyList<BlackSegment>> BlackDetectAsync(string path, CancellationToken ct) => Task.FromResult<IReadOnlyList<BlackSegment>>(Array.Empty<BlackSegment>());
     public Task<(double MaxVolumeDb, double? IntegratedLufs)> AudioLevelsAsync(string path, CancellationToken ct) => Task.FromResult((-1.5, (double?)-14.2));
     public Task ExtractFrameAsync(string video, double at, string outImage, int width, CancellationToken ct) { File.WriteAllBytes(outImage, new byte[10]); FrameSources.Add(video); return Task.CompletedTask; }
@@ -283,10 +293,13 @@ internal sealed class Harness : IDisposable
     public Action<string, string, string>? OnVoiceCloneStatus;
     /// <summary>Berilsa FakeTts o'rniga ishlatiladi (masalan klon profil chaqiruvlarini yozib oluvchi TTS).</summary>
     public ITtsService? TtsOverride;
+    /// <summary>Berilsa FakeScript/FakeAligner o'rniga (boshqa matnli ssenariy sinovlari uchun).</summary>
+    public IScriptGenerator? ScriptOverride;
+    public IAligner? AlignerOverride;
 
     public JobRunner Runner(bool stopBeforeUpload = false) => new(new PipelineServices
     {
-        Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = Script, Tts = TtsOverride ?? Tts, AudioImporter = AudioImporter, Aligner = Aligner, Editor = Editor,
+        Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = ScriptOverride ?? Script, Tts = TtsOverride ?? Tts, AudioImporter = AudioImporter, Aligner = AlignerOverride ?? Aligner, Editor = Editor,
         Film = Film, Media = Media, Uploader = Uploader, Resources = new FakeResources(), Paths = Paths, Clock = Clock,
         JobLogFactory = _ => Log, RunLog = Log, PostUploadPoll = TimeSpan.Zero, StopBeforeUpload = stopBeforeUpload, OnPublished = OnPublished,
         OnVoiceCloneStatus = OnVoiceCloneStatus, Visuals = Visuals, MediaLibrary = MediaLib, Stock = Stock, Music = MusicCache,

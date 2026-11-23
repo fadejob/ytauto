@@ -40,9 +40,9 @@ const g = globalThis as unknown as { __ytautoDemoChannel?: { enabled: boolean; s
 const st = () => (g.__ytautoDemoChannel ??= {
   enabled: true, startedAt: null,
   suggestions: [
-    { id: 1, forDate: new Date().toISOString().slice(0, 10), topic: "What Happens When You Press Refresh During a Payment?", notes: "Follow one payment request through retries, timeouts and idempotency keys.", reason: "Eng ko'p ko'rilgan to'lov videosining davomi — auditoriya shu mavzuni yaxshi qabul qilgan.", status: "new" },
-    { id: 2, forDate: new Date().toISOString().slice(0, 10), topic: "Why Your Food Delivery App Knows You're Hungry", notes: "Event streams and recommendation basics with a delivery app example.", reason: "Kundalik ilova misoli bilan boshlash kanal formulasiga mos.", status: "new" },
-    { id: 3, forDate: new Date().toISOString().slice(0, 10), topic: "Rate Limiting Explained With a Nightclub Bouncer", notes: "Token bucket vs fixed window, one analogy end to end.", reason: "Tizim dizayni mavzusi, bitta o'xshatish bilan — kanal uslubi.", status: "new" },
+    { id: 1, forDate: new Date().toISOString().slice(0, 10), topic: "What Happens When You Press Refresh During a Payment?", notes: "Follow one payment request through retries, timeouts and idempotency keys.", hook: "You hit refresh while paying. Did you just pay twice?", reason: "Eng ko'p ko'rilgan to'lov videosining davomi — auditoriya shu mavzuni yaxshi qabul qilgan.", status: "new" },
+    { id: 2, forDate: new Date().toISOString().slice(0, 10), topic: "Why Your Food Delivery App Knows You're Hungry", notes: "Event streams and recommendation basics with a delivery app example.", hook: "How does your delivery app know you're hungry before you do?", reason: "Kundalik ilova misoli bilan boshlash kanal formulasiga mos.", status: "new" },
+    { id: 3, forDate: new Date().toISOString().slice(0, 10), topic: "Rate Limiting Explained With a Nightclub Bouncer", notes: "Token bucket vs fixed window, one analogy end to end.", hook: "Why does a website suddenly say: slow down, try again later?", reason: "Tizim dizayni mavzusi, bitta o'xshatish bilan — kanal uslubi.", status: "new" },
   ],
 });
 

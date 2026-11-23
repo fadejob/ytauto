@@ -160,6 +160,7 @@ export default function Channel({ toast, onTopicsChanged, openSettings }: { toas
                   <div className="title">{s.topic}</div>
                   {s.status === "accepted" ? <span className="chip ok">navbatga qo&apos;shildi</span> : s.status === "dismissed" ? <span className="chip mute">rad etildi</span> : null}
                 </div>
+                {s.hook ? <div style={{ fontSize: 13 }}>❓ {s.hook}</div> : null}
                 {s.notes ? <div className="hint" style={{ fontSize: 13 }}>{s.notes}</div> : null}
                 {s.reason ? <div className="ctx"><span>💡 {s.reason}</span></div> : null}
                 {s.status === "new" ? (

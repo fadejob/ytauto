@@ -94,19 +94,19 @@ export async function staleSince(): Promise<Date | null> {
 }
 
 // ------------------------------------------------------------------ tavsiyalar (kanal bo'yicha)
-type SugRow = { id: number; for_date: Date | string; topic: string; notes: string; reason: string; status: Suggestion["status"] };
+type SugRow = { id: number; for_date: Date | string; topic: string; notes: string; hook: string; reason: string; status: Suggestion["status"] };
 const toSug = (r: SugRow): Suggestion => ({
-  id: r.id, forDate: typeof r.for_date === "string" ? r.for_date : r.for_date.toISOString().slice(0, 10), topic: r.topic, notes: r.notes, reason: r.reason, status: r.status,
+  id: r.id, forDate: typeof r.for_date === "string" ? r.for_date : r.for_date.toISOString().slice(0, 10), topic: r.topic, notes: r.notes, hook: r.hook, reason: r.reason, status: r.status,
 });
 
 export async function listSuggestions(ch: string, date: string): Promise<Suggestion[]> {
-  const rows = await sql()<SugRow[]>`SELECT id::int AS id, for_date::text AS for_date, topic, notes, reason, status FROM ytauto.topic_suggestions
+  const rows = await sql()<SugRow[]>`SELECT id::int AS id, for_date::text AS for_date, topic, notes, hook, reason, status FROM ytauto.topic_suggestions
     WHERE channel_id = ${ch} AND for_date = ${date}::date ORDER BY id`;
   return rows.map(toSug);
 }
 
 export async function getSuggestion(id: number): Promise<Suggestion | null> {
-  const [r] = await sql()<SugRow[]>`SELECT id::int AS id, for_date::text AS for_date, topic, notes, reason, status FROM ytauto.topic_suggestions WHERE id = ${id}`;
+  const [r] = await sql()<SugRow[]>`SELECT id::int AS id, for_date::text AS for_date, topic, notes, hook, reason, status FROM ytauto.topic_suggestions WHERE id = ${id}`;
   return r ? toSug(r) : null;
 }
 
@@ -121,12 +121,12 @@ export async function recentSuggestionTopics(ch: string): Promise<{ dismissed: s
 }
 
 /** Bugungi tavsiyalar kanalga bir marta: boshqa jarayon allaqachon yozgan bo'lsa yozilmaydi. */
-export async function insertSuggestions(ch: string, date: string, items: { topic: string; notes: string; reason: string }[]): Promise<boolean> {
+export async function insertSuggestions(ch: string, date: string, items: { topic: string; notes: string; hook: string; reason: string }[]): Promise<boolean> {
   const [x] = await sql()`SELECT count(*)::int AS n FROM ytauto.topic_suggestions WHERE channel_id = ${ch} AND for_date = ${date}::date`;
   if ((x?.n as number) > 0) return false;
   if (!items.length) return false;
   await sql()`INSERT INTO ytauto.topic_suggestions ${sql()(items.map((i) => ({
-    channel_id: ch, for_date: date, topic: i.topic.slice(0, 300), notes: i.notes.slice(0, 2000), reason: i.reason.slice(0, 500),
+    channel_id: ch, for_date: date, topic: i.topic.slice(0, 300), notes: i.notes.slice(0, 2000), hook: i.hook.slice(0, 300), reason: i.reason.slice(0, 500),
   })))}`;
   return true;
 }

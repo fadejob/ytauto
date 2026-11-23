@@ -117,6 +117,10 @@ CREATE INDEX IF NOT EXISTS ix_jobs_demo ON ytauto.jobs(created_at_utc, id) WHERE
 -- Kanal tahlili va tavsiyalar ham kanal bo'yicha (channel_profile kaliti: account_id + channel_id).
 ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS channel_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE ytauto.topic_suggestions ADD COLUMN IF NOT EXISTS channel_id TEXT NOT NULL DEFAULT '';
+-- Video boshlanishi (hook): foydalanuvchi kiritgan boshlang'ich savol - ssenariy aynan shu so'zlar bilan boshlanadi, montaj shunga
+-- qarab quriladi. Video uzunligi formatdan: 16:9 - 2-3 daqiqa, Shorts/kvadrat - 55 soniyadan oshmaydi (desktop worker nazorat qiladi).
+ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS hook TEXT;
+ALTER TABLE ytauto.topic_suggestions ADD COLUMN IF NOT EXISTS hook TEXT NOT NULL DEFAULT '';
 
 -- ------------------------------------------------------------------ v2: hisoblar va izolyatsiya
 CREATE TABLE IF NOT EXISTS ytauto.accounts (

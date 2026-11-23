@@ -46,6 +46,8 @@ export type Topic = {
   /** Qo'lda kiritilgan subtitr matni va title (Gemini ishlatilmaydi); null - Gemini yozadi. */
   manualScript: string | null;
   manualTitle: string | null;
+  /** Boshlang'ich savol (hook): video aynan shu so'zlar bilan boshlanadi. null - kiritilmagan (eski mavzular yoki o'z matni). */
+  hook: string | null;
   /** Tayyor ovoz yuklangan (VoiceStudio ishlatilmaydi). */
   hasAudio: boolean;
 };
@@ -151,7 +153,7 @@ export type ChannelContext = {
   recentTitles: string[];
 };
 
-export type Suggestion = { id: number; forDate: string; topic: string; notes: string; reason: string; status: "new" | "accepted" | "dismissed" };
+export type Suggestion = { id: number; forDate: string; topic: string; notes: string; hook: string; reason: string; status: "new" | "accepted" | "dismissed" };
 
 /** Botdagi «Kanal» sahifasi. status "none" - hali tahlil qilinmagan. */
 export type ChannelState = {
@@ -185,6 +187,8 @@ export type Prompts = Record<PromptKey, string>;
 
 export type NewTopic = {
   topic: string; notes?: string; publishAt?: string /* "YYYY-MM-DD HH:mm" kanal zonasi bo'yicha */; template?: string; format?: number; voice?: string;
+  /** Boshlang'ich savol (hook, inglizcha): Gemini yozadigan mavzuda majburiy - ssenariy aynan shu so'zlar bilan boshlanadi. */
+  hook?: string;
   /** Subtitr (ovozda aytiladigan aniq matn) va title birga beriladi: Gemini chaqirilmaydi. */
   script?: string; title?: string;
   /** /api/audio orqali Storage'ga yuklangan tayyor ovoz yo'li: VoiceStudio chaqirilmaydi (script va title majburiy). */
@@ -196,7 +200,7 @@ export type NewTopic = {
 /** UI va AI bir xil amallardan foydalanadi; AI taklifi foydalanuvchi ruxsat bermaguncha bajarilmaydi. */
 export type Action =
   | { type: "create_topics"; topics: NewTopic[] }
-  | { type: "update_topic"; id: number; topic?: string; notes?: string; publishAt?: string; template?: string; format?: number; voice?: string; script?: string; title?: string; music?: string }
+  | { type: "update_topic"; id: number; topic?: string; notes?: string; hook?: string; publishAt?: string; template?: string; format?: number; voice?: string; script?: string; title?: string; music?: string }
   | { type: "delete_topic"; id: number }
   | { type: "publish_now"; id: number }
   | { type: "cancel_publish_now"; id: number }

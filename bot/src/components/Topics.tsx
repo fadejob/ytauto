@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, confirmBox, haptic, putFile } from "@/lib/client";
 import { FormatText, StatusText, type Action, type Catalog, type PreparedAudio, type ScriptSource, type State, type Topic } from "@/lib/types";
 import type { Run } from "./App";
+import { checkHook, countWords, FormatLength, HOOK_MAX_WORDS, manualLengthProblem } from "@/lib/video-rules";
 import { IconBolt, IconEdit, IconPlay, IconPlus, IconRefresh, IconTrash, IconUpload } from "./icons";
 
 type Group = "queue" | "work" | "done";
@@ -101,6 +102,7 @@ export default function Topics({ state, loading, refresh, run, locked }: { state
               <div className="title" onClick={() => setOpen(open === t.id ? null : t.id)}>{t.title || t.topic}</div>
               <span className="id">#{t.id}</span>
             </div>
+            {t.hook ? <div className="notes" style={{ color: "var(--text)" }}>❓ {t.hook}</div> : null}
             {t.notes ? <div className={`notes${open === t.id ? " open" : ""}`} onClick={() => setOpen(open === t.id ? null : t.id)}>{t.notes}</div> : null}
             <div className="meta">
               <span className={chipClass(t.status)}>{t.claimed && t.status < 9 ? "⏳ " : ""}{StatusText[t.status]}</span>
@@ -170,23 +172,32 @@ function RescheduleSheet({ topic, close, run }: { topic: Topic; close: () => voi
   );
 }
 
-type Row = { topic: string; notes: string; date: string; time: string; source: ScriptSource; title: string; script: string; file: File | null };
+type Row = { topic: string; notes: string; hook: string; date: string; time: string; source: ScriptSource; title: string; script: string; file: File | null };
 
-const emptyRow = (): Row => ({ topic: "", notes: "", date: "", time: "", source: "gemini", title: "", script: "", file: null });
+const emptyRow = (): Row => ({ topic: "", notes: "", hook: "", date: "", time: "", source: "gemini", title: "", script: "", file: null });
 const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.webm,audio/*";
 const AUDIO_MAX_MB = 200;
 const MB = 1048576;
 
 const SOURCES: [ScriptSource, string][] = [["gemini", "Gemini yozadi"], ["manual", "O'z matnim"], ["audio", "Tayyor audio"]];
 
-/** Qatorni saqlashdan oldin tekshiradi: qo'lda rejimda subtitr va title, audio rejimda fayl ham kerak. */
-function rowProblem(r: Row, hasAudio: boolean): string | null {
-  if (r.source === "gemini") return r.topic.trim() ? null : "";
+/**
+ * Qatorni saqlashdan oldin tekshiradi: Gemini rejimida mavzu va boshlang'ich savol (hook), qo'lda rejimda subtitr va title (matn
+ * formatga sig'ishi kerak), audio rejimda fayl ham kerak. legacyHook - hook'siz qo'shilgan eski mavzu: hook bo'sh qolishi mumkin.
+ */
+function rowProblem(r: Row, hasAudio: boolean, format: number, legacyHook: boolean): string | null {
+  if (r.source === "gemini") {
+    if (!r.topic.trim()) return "";
+    if (legacyHook && !r.hook.trim()) return null;
+    const h = checkHook(r.hook);
+    return "error" in h ? h.error : null;
+  }
   if (!r.title.trim() || !r.script.trim()) return "Subtitr matni va title majburiy.";
   if (r.title.trim().length > 100) return "Title 100 belgidan oshmasin.";
   if (/[<>]/.test(r.title)) return "Title ichida < yoki > bo'lmasin.";
   if (r.source === "audio" && !hasAudio && !r.file) return "Audio faylni tanlang.";
   if (r.file && r.file.size > AUDIO_MAX_MB * MB) return `Audio ${AUDIO_MAX_MB} MB dan katta.`;
+  if (r.source === "manual") return manualLengthProblem(r.script, format);
   return null;
 }
 
@@ -202,7 +213,7 @@ function TopicSheet({ sheet, catalog, channelTitle, close, run }: { sheet: { mod
   const [rows, setRows] = useState<Row[]>(
     edit
       ? [{
-          topic: edit.topic, notes: edit.notes, date: edit.publishLocal.date, time: edit.publishLocal.time,
+          topic: edit.topic, notes: edit.notes, hook: edit.hook ?? "", date: edit.publishLocal.date, time: edit.publishLocal.time,
           source: edit.hasAudio ? "audio" : edit.manualScript ? "manual" : "gemini", title: edit.manualTitle ?? "", script: edit.manualScript ?? "", file: null,
         }]
       : [emptyRow()],
@@ -214,7 +225,8 @@ function TopicSheet({ sheet, catalog, channelTitle, close, run }: { sheet: { mod
   // Qo'lda/audio rejimda alohida mavzu yo'q: mavzu nomi title bo'ladi.
   const filled = rows.filter((r) => (r.source === "gemini" ? r.topic.trim() : r.title.trim() || r.script.trim() || r.file));
   const topicOf = (r: Row) => (r.source === "gemini" ? r.topic : r.title);
-  const problems = filled.map((r) => rowProblem(r, hasAudio));
+  const legacyHook = !!edit && edit.hook === null;
+  const problems = filled.map((r) => rowProblem(r, hasAudio, format, legacyHook));
   // Hali kompyuterga tushmagan shablon tanlanmaydi (tahrirdagi eski mavzuda tanlangan bo'lsa, saqlash ham to'xtaydi).
   const pending = catalog.pendingTemplates ?? [];
   const templatePending = !!template && pending.some((p) => p.name === template);
@@ -238,11 +250,14 @@ function TopicSheet({ sheet, catalog, channelTitle, close, run }: { sheet: { mod
       setSaving("Saqlanmoqda…");
       const manual = (r: Row) => (r.source === "gemini" ? { script: "", title: "" } : { script: r.script, title: r.title });
       const results = await run(edit
-        ? [{ type: "update_topic", id: edit.id, topic: topicOf(filled[0]), notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice, music, ...manual(filled[0]) }]
+        ? [{
+            type: "update_topic", id: edit.id, topic: topicOf(filled[0]), notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice, music, ...manual(filled[0]),
+            hook: filled[0].source === "gemini" && (filled[0].hook.trim() || !legacyHook) ? filled[0].hook : undefined,
+          }]
         : [{
             type: "create_topics",
             topics: filled.map((r, i) => ({
-              topic: topicOf(r), notes: r.source === "gemini" ? r.notes : "", publishAt: at(r), template, format, voice, music,
+              topic: topicOf(r), notes: r.source === "gemini" ? r.notes : "", hook: r.source === "gemini" ? r.hook : undefined, publishAt: at(r), template, format, voice, music,
               ...(r.source === "gemini" ? {} : { script: r.script, title: r.title }), audioPath: audioPaths[i],
             })),
           }]);
@@ -278,6 +293,14 @@ function TopicSheet({ sheet, catalog, channelTitle, close, run }: { sheet: { mod
                     <label>{rows.length > 1 ? `Mavzu ${i + 1}` : "Mavzu"}</label>
                     <input className="input" value={r.topic} maxLength={500} placeholder="Masalan: How black holes form"
                       onChange={(e) => set(i, { topic: e.target.value })} autoFocus={i === rows.length - 1} />
+                  </div>
+                )}
+                {manual ? null : (
+                  <div className="field">
+                    <label>Boshlang&apos;ich savol (hook) · {countWords(r.hook)}/{HOOK_MAX_WORDS} so&apos;z</label>
+                    <input className="input" value={r.hook} maxLength={200} placeholder="Masalan: What really happens inside a black hole?"
+                      onChange={(e) => set(i, { hook: e.target.value })} />
+                    <div className="hint">Video aynan shu savol bilan boshlanadi (inglizcha, «?» bilan) — montaj ham shu savoldan quriladi, qolgan qismi unga javob beradi.</div>
                   </div>
                 )}
                 {manual ? (
@@ -338,7 +361,7 @@ function TopicSheet({ sheet, catalog, channelTitle, close, run }: { sheet: { mod
             <div className="field">
               <label>Format</label>
               <select className="input" value={format} onChange={(e) => setFormat(Number(e.target.value))}>
-                {[0, 1, 2].map((f) => <option key={f} value={f}>{FormatText[f]}</option>)}
+                {[0, 1, 2].map((f) => <option key={f} value={f}>{FormatText[f]} · {FormatLength[f].label}</option>)}
               </select>
             </div>
           </div>
@@ -362,6 +385,10 @@ function TopicSheet({ sheet, catalog, channelTitle, close, run }: { sheet: { mod
             </select>
             {lib.tracks.length === 0 ? <div className="hint">Kutubxona bo&apos;sh: Sozlamalar → Fon musiqasi&apos;dan trek qo&apos;shing.</div>
               : music && music !== "none" && !lib.enabled ? <div className="hint">Umumiy fon musiqasi o&apos;chiq, lekin shu mavzuga tanlangan trek baribir qo&apos;yiladi.</div> : null}
+          </div>
+          <div className="hint">
+            Video uzunligi formatdan: <b>{FormatText[format]}</b> — {FormatLength[format]?.label ?? ""}.
+            {format === 0 ? " Ssenariy shu oraliqqa yoziladi." : " 55 soniyadan oshsa ovoz biroz tezlashtiriladi yoki video to'xtatiladi."}
           </div>
           {templatePending ? (
             <div className="hint" style={{ color: "var(--danger)" }}>«{template}» shabloni hali serverga yuklanmoqda: kompyuterga tushib o&apos;rnatilgach tanlash mumkin bo&apos;ladi.</div>

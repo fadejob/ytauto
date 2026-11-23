@@ -9,6 +9,7 @@ import { attachAudio } from "./audio";
 import { removeObjects } from "./storage";
 import { readBlocks } from "./channel/store";
 import { activeChannelId } from "./youtube";
+import { checkHook, manualLengthProblem } from "./video-rules";
 import { demoApply, demoCatalog, demoPrompts, demoTopics, isDemo } from "./demo";
 import { addDays, parseLocal, utcToZoned, zonedToUtc } from "./time";
 import { Status, type Action, type ActionResult, type Catalog, type NewTopic, type PromptKey, type Prompts, type Topic } from "./types";
@@ -59,11 +60,11 @@ type Row = {
   id: number; topic: string; notes: string; title: string | null; status: number; publish_at_utc: Date;
   youtube_video_id: string | null; video_archive_path: string | null; publish_now: boolean; upload_requested: boolean; claimed_by: string | null;
   cancel_requested: boolean; last_error_message: string | null; attention_reason: string | null;
-  template_name: string; format: number; voice_profile: string;
+  template_name: string; format: number; voice_profile: string; hook: string | null;
   manual_script: string | null; manual_title: string | null; manual_audio_path: string | null; manual_audio_url: string | null;
 };
 
-const cols = () => sql()`id::int AS id, topic, notes, title, status, publish_at_utc, youtube_video_id, video_archive_path, publish_now, upload_requested, claimed_by, cancel_requested, last_error_message, attention_reason, template_name, format, voice_profile, manual_script, manual_title, manual_audio_path, manual_audio_url`;
+const cols = () => sql()`id::int AS id, topic, notes, title, status, publish_at_utc, youtube_video_id, video_archive_path, publish_now, upload_requested, claimed_by, cancel_requested, last_error_message, attention_reason, template_name, format, voice_profile, manual_script, manual_title, manual_audio_path, manual_audio_url, hook`;
 
 const TITLE_MAX = 100;
 const SCRIPT_MAX = 30000;
@@ -110,7 +111,7 @@ function toTopic(r: Row, tz: string): Topic {
     canUploadReady: !r.upload_requested && !r.publish_now && readyNotUploaded(r),
     uploadRequested: r.upload_requested && !r.youtube_video_id,
     template: r.template_name, format: r.format, voice: r.voice_profile,
-    manualScript: r.manual_script, manualTitle: r.manual_title, hasAudio: !!r.manual_audio_url,
+    manualScript: r.manual_script, manualTitle: r.manual_title, hasAudio: !!r.manual_audio_url, hook: r.hook,
     canRetry: !r.claimed_by && (r.status === Status.Failed || r.status === Status.NeedsAttention),
     canCancel: !(FINAL as readonly number[]).includes(r.status),
     canReschedule: made && !r.claimed_by && !r.cancel_requested && !(FINAL as readonly number[]).includes(r.status),
@@ -232,6 +233,16 @@ export async function applyAction(a: Action): Promise<ActionResult> {
         if ("error" in tf) return { ok: false, message: tf.error };
         const manualErr = checkManual(items[i].script, items[i].title, !!items[i].audioPath);
         if (manualErr) return { ok: false, message: `"${t.topic}": ${manualErr}` };
+        // Gemini yozadigan mavzu: boshlang'ich savol (hook) majburiy. O'z matni bo'lsa - matn formatga sig'ishi kerak.
+        let hook: string | null = null;
+        if (!items[i].script) {
+          const h = checkHook(t.hook);
+          if ("error" in h) return { ok: false, message: `"${t.topic}": ${h.error}` };
+          hook = h.hook;
+        } else if (!items[i].audioPath) {
+          const lp = manualLengthProblem(items[i].script, tf.format);
+          if (lp) return { ok: false, message: `"${t.topic}": ${lp}` };
+        }
         const now = new Date();
         rows.push({
           topic: t.topic.slice(0, 500), notes: (t.notes ?? "").slice(0, 4000),
@@ -239,7 +250,7 @@ export async function applyAction(a: Action): Promise<ActionResult> {
           target_duration_sec: 0, format: tf.format, template_name: tf.template, voice_profile: tf.voice,
           publish_at_utc: at, status: Status.Queued, created_at_utc: now, updated_at_utc: now, channel_id: channelId,
           manual_script: items[i].script || null, manual_title: items[i].title || null,
-          manual_audio_path: items[i].audioPath ?? null, manual_audio_url: null as string | null,
+          manual_audio_path: items[i].audioPath ?? null, manual_audio_url: null as string | null, hook,
         });
       }
       // Hamma tekshiruv o'tgach: yuklangan audio joyida ekani tekshiriladi va kompyuter uchun havola yoziladi.
@@ -269,16 +280,29 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       if (given && at.getTime() <= Date.now() + MIN_LEAD_MS) return { ok: false, message: "Chiqish vaqti kamida 30 daqiqa kelajakda bo'lsin." };
       const tf = await pickTemplateFormat(cat, a.template ?? r.template_name, a.format ?? r.format, a.voice ?? r.voice_profile);
       if ("error" in tf) return { ok: false, message: tf.error };
+      // Hook: Gemini yozadigan mavzuda majburiy (hook'siz qo'shilgan eski mavzu hook berilmaguncha o'zgarishsiz qoladi).
+      let hook: string | null = null;
+      if (!script) {
+        const given = a.hook !== undefined ? a.hook : r.hook;
+        if (given !== null) {
+          const h = checkHook(given);
+          if ("error" in h) return { ok: false, message: `#${a.id}: ${h.error}` };
+          hook = h.hook;
+        }
+      } else if (!r.manual_audio_url) {
+        const lp = manualLengthProblem(script, tf.format);
+        if (lp) return { ok: false, message: `#${a.id}: ${lp}` };
+      }
       // Fon musiqasi vazifa snapshot'iga tushadi: o'zgarsa snapshot tozalanadi (shablon o'zgargandek).
       const oldMusic = (await topicMusicMap())[String(a.id)] ?? "";
       const newMusic = a.music !== undefined ? a.music.trim().toLowerCase() : oldMusic;
       if (newMusic !== oldMusic) { const bad = await checkTopicMusic([newMusic]); if (bad) return { ok: false, message: bad }; }
       const contentChanged = newMusic !== oldMusic || topic !== r.topic || notes !== r.notes || tf.template !== r.template_name || tf.format !== r.format || tf.voice !== r.voice_profile
-        || script !== (r.manual_script ?? "") || title !== (r.manual_title ?? "");
+        || script !== (r.manual_script ?? "") || title !== (r.manual_title ?? "") || hook !== r.hook;
       // Mazmun o'zgarsa: desktop ilovadagi kabi snapshot va title tozalanadi, vazifa navbatga qaytadi.
       const n = await sql()`
         UPDATE ytauto.jobs SET topic = ${topic}, notes = ${notes}, language = 'en', template_name = ${tf.template}, format = ${tf.format}, voice_profile = ${tf.voice}, publish_at_utc = ${at}, updated_at_utc = now(),
-          manual_script = ${script || null}, manual_title = ${title || null},
+          manual_script = ${script || null}, manual_title = ${title || null}, hook = ${hook},
           settings_snapshot = CASE WHEN ${contentChanged} THEN NULL ELSE settings_snapshot END,
           title = CASE WHEN ${contentChanged} THEN NULL ELSE title END,
           status = CASE WHEN ${contentChanged} OR status = ${Status.NeedsAttention} THEN ${Status.Queued} ELSE status END,

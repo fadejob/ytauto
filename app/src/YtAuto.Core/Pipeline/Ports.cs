@@ -237,6 +237,11 @@ public sealed class MediaInfo
 public interface IMediaProbe
 {
     Task<MediaInfo> ProbeAsync(string path, CancellationToken ct);
+    /// <summary>
+    /// Ovozni <paramref name="factor"/> marta tezlashtiradi (ovoz balandligi o'zgarmaydi, ffmpeg atempo): natija - 16-bit PCM WAV.
+    /// Video format chegarasiga (Shorts - 55 soniya) sig'dirish uchun.
+    /// </summary>
+    Task TempoAsync(string inWav, double factor, string outWav, CancellationToken ct);
     Task<(bool Ok, string Errors)> DecodeCheckAsync(string path, CancellationToken ct);
     Task<IReadOnlyList<BlackSegment>> BlackDetectAsync(string path, CancellationToken ct);
     Task<(double MaxVolumeDb, double? IntegratedLufs)> AudioLevelsAsync(string path, CancellationToken ct);
