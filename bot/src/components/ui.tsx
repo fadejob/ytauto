@@ -217,7 +217,7 @@ export function Sheet({ title, sub, onClose, children, footer, label }: { title:
         <div className="grab" />
         <div className="sheet-head">
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}><h2>{title}</h2>{sub ? <span className="sub">{sub}</span> : null}</div>
-          <button type="button" className="round" style={{ background: "var(--sunken)", width: 36, height: 36 }} aria-label="Yopish" onClick={onClose}><X size={18} /></button>
+          <button type="button" className="round" style={{ background: "var(--sunken)", width: 44, height: 44 }} aria-label="Yopish" onClick={onClose}><X size={18} /></button>
         </div>
         {children}
         {footer ? <div className="sheet-foot">{footer}</div> : null}

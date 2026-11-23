@@ -45,11 +45,21 @@ export default function YouTubeChannels({ yt, setYt, toast, blocked, onSwitched,
   }
   async function makeActive(c: YtChannelInfo) {
     if (c.active || mutating) return;
+    const prev = channels.find((x) => x.active);
     const r = await busy.run(`switch:${c.id}`, () => api<YtStatus>("/api/youtube", { action: "switch", id: c.id }));
     if (r === false) return;
     setYt(r);
-    toast(`Faol kanal: ${c.title || c.id}. Mavzular va kanal tahlili shu kanal bo'yicha.`);
     onSwitched?.();
+    // «Bekor qilish»: oldingi faol kanalga qaytariladi (dizayn: Holatlar → Xabarlar va tugmalar → ma'lumot + amal toast).
+    toast(`Faol kanal: ${c.title || c.id}`, false, prev ? { label: "Bekor qilish", run: () => revert(prev) } : undefined);
+  }
+  async function revert(prev: YtChannelInfo) {
+    try {
+      const r = await api<YtStatus>("/api/youtube", { action: "switch", id: prev.id });
+      setYt(r);
+      onSwitched?.();
+      toast(`Faol kanal: ${prev.title || prev.id}`);
+    } catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
   }
   async function verify(c: YtChannelInfo) {
     setChecks((m) => without(m, c.id));

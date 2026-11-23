@@ -19,6 +19,8 @@ import st from "./TopicSheet.module.css";
 export const MONTHS = ["yan", "fev", "mar", "apr", "may", "iyn", "iyl", "avg", "sen", "okt", "noy", "dek"];
 /** Desktop ilovadagi qoida: vaqt o'tib ketgan yoki 30 daqiqadan yaqin bo'lsa, video yuklangandan 1 soat keyin chiqadi. */
 export const isLate = (iso: string) => new Date(iso).getTime() <= Date.now() + 30 * 60000;
+/** «2026-11-26» → «26 noy 2026» (maydonda ko'rinadigan matn). */
+export const fmtDate = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(0, 4)}`;
 export const fmtWhen = (d: { date: string; time: string }) => `${Number(d.date.slice(8, 10))} ${MONTHS[Number(d.date.slice(5, 7)) - 1]}, ${d.time}`;
 export const formatShort = (f: number) => (f === 1 ? "Shorts" : f === 2 ? "1:1" : "16:9");
 /** Kanal vaqt zonasidagi bugungi sana (YYYY-MM-DD). */
@@ -44,6 +46,29 @@ const formatParts = (f: number) => {
 const mb = (bytes: number) => (bytes / MB).toFixed(1).replace(".", ",");
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 
+// ------------------------------------------------------------------ sana / soat maydoni
+/**
+ * Dizayndagidek matnli maydon («26 noy 2026» / «09:30») va yonida kalendar yoki soat belgisi. Pastida haqiqiy native input
+ * ko'rinmas holda butun maydonni qoplaydi: klaviatura, ekran o'quvchi va telefondagi tanlash oynasi o'zgarishsiz ishlaydi.
+ */
+function PickerField({ type, value, onChange, label, placeholder, iconSide = "right", bold, emptyInk }: {
+  type: "date" | "time"; value: string; onChange: (v: string) => void; label: string; placeholder?: string;
+  iconSide?: "left" | "right"; bold?: boolean; emptyInk?: boolean;
+}) {
+  const Icon = type === "date" ? Calendar : Clock;
+  const text = value ? (type === "date" ? fmtDate(value) : value) : placeholder ?? "";
+  const ic = <Icon size={18} aria-hidden className={st.pickIc} />;
+  return (
+    <div className={st.pick}>
+      {iconSide === "left" ? ic : null}
+      <span className={`${st.pickVal}${bold ? " " + st.pickBold : ""}${!value && !emptyInk ? " " + st.pickEmpty : ""}`} aria-hidden>{text}</span>
+      {iconSide === "right" ? ic : null}
+      <input className={st.pickInput} type={type} aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}
+        onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch { /* brauzer qo'llamaydi - tizim belgisi ishlaydi */ } }} />
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ chiqish vaqti
 /** Tayyor (yoki tayyorlanayotgan) vazifaning chiqish vaqtini o'zgartirish. */
 export function RescheduleSheet({ topic, close, run }: { topic: Topic; close: () => void; run: Run }) {
@@ -64,9 +89,9 @@ export function RescheduleSheet({ topic, close, run }: { topic: Topic; close: ()
         <span>{fmtWhen(topic.publishLocal)}</span>
         {changed && date ? <><ArrowRight size={16} aria-hidden /><b>{fmtWhen({ date, time: time || "18:00" })}</b></> : null}
       </div>
-      <div className="grid2">
-        <Field label="Sana"><input className="inp" type="date" aria-label="Sana" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
-        <Field label="Soat"><input className="inp" type="time" aria-label="Soat" value={time} onChange={(e) => setTime(e.target.value)} /></Field>
+      <div className={`grid2 ${st.inkL}`}>
+        <Field label="Sana"><PickerField type="date" label="Sana" value={date} onChange={setDate} bold /></Field>
+        <Field label="Soat"><PickerField type="time" label="Soat" value={time} onChange={setTime} placeholder="18:00" bold /></Field>
       </div>
       <Alert tone="note" icon={Info}>Kamida 30 daqiqa kelajakda bo&apos;lsin. Video qayta yaratilmaydi.</Alert>
     </Sheet>
@@ -217,7 +242,6 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
       footer={
         <>
           {error ? <Alert>{error}</Alert> : null}
-          {templatePending ? <Alert>«{template}» shabloni hali serverga yuklanmoqda: kompyuterga tushib o&apos;rnatilgach tanlash mumkin bo&apos;ladi.</Alert> : null}
           <div className={st.footRow}>
             {!edit && rows.length < MAX_ROWS && !isSaving ? (
               <Btn tone="secondary" icon={Plus} onClick={addRow}>Yana mavzu ({rows.length}/{MAX_ROWS})</Btn>
@@ -226,6 +250,7 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
           </div>
         </>
       }>
+      <div className={st.ink}>
       {/* format - hamma videolarga */}
       <div className={st.section}>
         <span className="label" id="fmt-label">Format · hamma videolarga</span>
@@ -330,16 +355,8 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
             )}
 
             <div className="grid2">
-              <label className={st.iconInp}>
-                <Calendar size={18} aria-hidden />
-                <input className="inp" type="date" aria-label="Sana" data-empty={!r.date || undefined} value={r.date} onChange={(e) => set(i, { date: e.target.value })} />
-                {!r.date ? <span className={st.ph} aria-hidden>Avtomatik</span> : null}
-              </label>
-              <label className={st.iconInp}>
-                <Clock size={18} aria-hidden />
-                <input className="inp" type="time" aria-label="Soat" data-empty={!r.time || undefined} value={r.time} placeholder="18:00" onChange={(e) => set(i, { time: e.target.value })} />
-                {!r.time ? <span className={st.ph} aria-hidden>18:00</span> : null}
-              </label>
+              <PickerField type="date" label="Sana" value={r.date} placeholder="Avtomatik" iconSide="left" onChange={(v) => set(i, { date: v })} />
+              <PickerField type="time" label="Soat" value={r.time} placeholder="18:00" iconSide="left" emptyInk onChange={(v) => set(i, { time: v })} />
             </div>
             {!edit && !r.date ? <div className="hint">Sana bo&apos;sh: oxirgi rejadan +2 kun keyin chiqadi.</div> : null}
           </div>
@@ -389,6 +406,7 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
             </Field>
           </div>
         ) : null}
+      </div>
       </div>
     </Sheet>
   );

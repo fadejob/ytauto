@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Check, ChevronDown, ChevronUp, ChevronsUpDown, ExternalLink, Eye, FileText, Play, Plus, RotateCcw, RotateCw, Sparkles, Unplug, X,
+  Check, ChevronDown, ChevronUp, ChevronsUpDown, ExternalLink, Eye, FileText, Link as LinkIcon, Play, Plus, RotateCcw, RotateCw, Sparkles, X,
 } from "lucide-react";
 import { api, cache, confirmBox, haptic, openExternal } from "@/lib/client";
 import type { ActionResult, ChannelContext, ChannelState, Suggestion, VideoInsight } from "@/lib/types";
@@ -90,20 +90,14 @@ export default function Channel({ toast, onTopicsChanged, openSettings }: { toas
   if (!st.connected)
     return (
       <div className="page">
-        <div className={s.top}>
-          <button type="button" className={s.chip} onClick={openSettings} aria-label="Kanal ulash">
-            <span className={s.avatar}><Unplug size={15} /></span><span className={s.name}>Kanal ulanmagan</span><ChevronsUpDown size={16} />
-          </button>
-          {refreshBtn}
-        </div>
-        <div className={s.summary}>
-          <h1 className={s.title}>YouTube kanali ulanmagan</h1>
-          <p className={s.explain}>Kanal ulangach bot uni o&apos;zi o&apos;rganadi: nomi, tavsifi, sarlavhalari va oxirgi 3 videoning montaji, ovozi, subtitri va ssenariysi.
-            Shundan ssenariy va montaj promptlari, ovoz tanlovi va kunlik g&apos;oyalar kanalingizga moslashadi.</p>
-        </div>
-        <section className="card">
-          <Btn block icon={Plus} onClick={() => { haptic.tap(); openSettings(); }}>YouTube&apos;ni ulash</Btn>
-          <span className={s.actionHint}>Sozlamalar → Kanallar</span>
+        {/* Dizayn: Holatlar → Bo'sh · Kanal ulanmagan - uzuq chiziqli karta, ichida ghost-chip, matn va bitta tugma. */}
+        <section className={s.emptyCard} aria-label="YouTube kanali ulanmagan">
+          <div className={s.ghostChip} aria-hidden><span className={s.ghostAvatar} /><span className={s.ghostName} /></div>
+          <div className={s.emptyText}>
+            <b>YouTube kanali ulanmagan</b>
+            <span>Ulangach bot kanalni o&apos;zi o&apos;rganadi: oxirgi 3 videoning montaji, ovozi, subtitri va ssenariysi. Promptlar va kunlik g&apos;oyalar shunga moslashadi.</span>
+          </div>
+          <Btn block icon={LinkIcon} onClick={() => { haptic.tap(); openSettings(); }}>Sozlamalar → YouTube&apos;ni ulash</Btn>
         </section>
       </div>
     );
@@ -158,7 +152,7 @@ export default function Channel({ toast, onTopicsChanged, openSettings }: { toas
                     {fresh.map((x) => <i key={x.id} />)}
                   </div>
                 ) : null}
-                <div className="sub" style={{ fontSize: 14 }}>{ideasSub}</div>
+                <div className="sub" style={{ fontSize: 15 }}>{ideasSub}</div>
               </div>
 
               {st.suggestions.length === 0 && (st.suggestionsPending || running) ? <SkelCard lines={2} /> : null}
