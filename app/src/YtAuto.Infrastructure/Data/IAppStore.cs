@@ -3,6 +3,10 @@ using YtAuto.Core.Pipeline;
 
 namespace YtAuto.Infrastructure.Data;
 
+/// <summary>Vazifaning jonli holati: bajarilayotgan va oxirgi tugagan bosqich, oxirgi hodisa.</summary>
+public sealed record AgentJobInfo(long Id, int Status, string Topic, string Kind, bool Claimed, int? RunningStage, int? DoneStage,
+    string? LastLevel, string? LastMessage, DateTimeOffset? LastAt, bool HasVideo, string? YouTubeId);
+
 /// <summary>
 /// UI va worker ishlatadigan to'liq ombor: online PostgreSQL (Supabase) yoki lokal SQLite.
 /// Mavzular (CRUD), bosqichlar, hodisalar, worker ishga tushishlari va umumiy (global) sozlamalar - masalan promptlar.
@@ -47,6 +51,17 @@ public interface IAppStore : IJobStore
     void UpdateTemplateUpload(long id, string status, int progress, string? message);
     /// <summary>Shu worker ishga tushishi (runId) hozir band qilib turgan vazifa.</summary>
     (long JobId, string Topic, int Status)? CurrentWork(string runId);
+    /// <summary>
+    /// Doimiy agent (lokal server + Cloudflare tunnel) yurak urishi: kompyuter online, tunnel manzili (null - tunnel hozir yo'q) va
+    /// imzo siri bazaga yoziladi - bot so'rovni shu manzilga yuboradi. Faqat online bazada; eski sxemada (ustunlar yo'q) - false.
+    /// </summary>
+    bool AgentBeat(string machine, string? url, string? secret, string? version) => false;
+    /// <summary>Agent to'xtadi: bot unga so'rov yubormasin (tunnel manzili olib tashlanadi).</summary>
+    void AgentStopped(string machine) { }
+    /// <summary>Shu kompyuter uchun kutayotgan bot so'rovi bormi (bitta yengil so'rov: buyruqlar, tekshiruv, hozir chiqarish, demo, yuklash).</summary>
+    bool HasPendingRemoteWork(string machine) => false;
+    /// <summary>Jonli holat uchun vazifa qisqachasi (agent WebSocket orqali botga yuboradi).</summary>
+    AgentJobInfo? JobLive(long jobId) => null;
     /// <summary>Global kalit-qiymat (online bazada - barcha kompyuterlar uchun umumiy).</summary>
     string? GetSetting(string key);
     void SetSetting(string key, string value);

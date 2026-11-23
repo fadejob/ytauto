@@ -17,6 +17,7 @@ public static class MachineBeat
         if (!svc.IsOnline) return;
         try { svc.Store.Heartbeat(Environment.MachineName, appOpen, workerState, jobId, detail, Version); }
         catch (Exception e) { svc.Log.Debug("Heartbeat yozilmadi: " + e.Message); }
+        if (workerState is not null) Agent.AgentSignal.MachineChanged(); // agent botga darhol "band/bo'sh" yuboradi
     }
 
     private static string StatusText(int s) => s switch

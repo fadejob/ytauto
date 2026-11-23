@@ -274,6 +274,7 @@ WHERE id=@id
         BindJob(cmd, job);
         cmd.Parameters.AddWithValue("id", job.Id);
         cmd.ExecuteNonQuery();
+        Agent.AgentSignal.JobChanged(job.Id, _scope.Value);
     }
 
     public VideoJob? ClaimNext(string runId, DateTimeOffset nowUtc)
@@ -444,6 +445,7 @@ RETURNING {JobColumns}
     {
         using var c = Open();
         Exec(c, null, $"UPDATE {T("jobs")} SET demo_result=@v, updated_at_utc=@now WHERE id=@id", ("v", json), ("now", DateTimeOffset.UtcNow), ("id", jobId));
+        Agent.AgentSignal.JobChanged(jobId, _scope.Value);
     }
 
     public bool TryClaim(long jobId, string runId, DateTimeOffset nowUtc)
@@ -584,6 +586,7 @@ ON CONFLICT(job_id, stage) DO UPDATE SET state=excluded.state, started_at_utc=ex
         p.AddWithValue("ec", NpgsqlDbType.Text, N(s.ErrorCode)); p.AddWithValue("em", NpgsqlDbType.Text, N(s.ErrorMessage));
         p.AddWithValue("d", NpgsqlDbType.Bigint, (object?)s.DurationMs ?? DBNull.Value); p.AddWithValue("m", NpgsqlDbType.Text, N(s.MetricsJson));
         cmd.ExecuteNonQuery();
+        Agent.AgentSignal.JobChanged(s.JobId, _scope.Value);
     }
 
     public void AddEvent(long jobId, string level, string? stage, string message)
@@ -591,6 +594,7 @@ ON CONFLICT(job_id, stage) DO UPDATE SET state=excluded.state, started_at_utc=ex
         using var c = Open();
         Exec(c, null, $"INSERT INTO {T("job_events")}(job_id, at_utc, level, stage, message) VALUES(@j,@t,@l,@s,@m)",
             ("j", jobId), ("t", DateTimeOffset.UtcNow), ("l", level), ("s", stage), ("m", message));
+        Agent.AgentSignal.JobChanged(jobId, _scope.Value);
         // Har vazifa uchun eng ko'pi 2000 hodisa (to'liq log - lokal faylda).
         if (Random.Shared.Next(50) == 0)
             Exec(c, null, $"DELETE FROM {T("job_events")} WHERE job_id=@j AND id < (SELECT id FROM {T("job_events")} WHERE job_id=@j ORDER BY id DESC OFFSET 2000 LIMIT 1)", ("j", jobId));
@@ -675,6 +679,75 @@ ON CONFLICT (account_id, machine) DO UPDATE SET
   worker_seen_utc = CASE WHEN @ws::text IS NOT NULL THEN now() ELSE {T("machines")}.worker_seen_utc END,
   version = COALESCE(@ver::text, {T("machines")}.version)
 """, ("m", machine), ("app", appOpen), ("ws", workerState), ("job", jobId), ("det", detail), ("ver", version));
+    }
+
+    public bool AgentBeat(string machine, string? url, string? secret, string? version)
+    {
+        try
+        {
+            using var c = Open();
+            Exec(c, null, $"""
+INSERT INTO {T("machines")}(machine, last_seen_utc, version, agent_url, agent_secret, agent_seen_utc)
+VALUES (@m, now(), @ver::text, @u::text, @s::text, now())
+ON CONFLICT (account_id, machine) DO UPDATE SET
+  last_seen_utc = now(), agent_seen_utc = now(), agent_url = @u::text,
+  agent_secret = COALESCE(@s::text, {T("machines")}.agent_secret), version = COALESCE(@ver::text, {T("machines")}.version)
+""", ("m", machine), ("u", url), ("s", secret), ("ver", version));
+            return true;
+        }
+        catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UndefinedColumn)
+        {
+            // Baza sxemasi hali v7 emas (bot migratsiya qilinmagan): oddiy yurak urishi - kompyuter baribir online ko'rinadi.
+            Heartbeat(machine, null, null, null, null, version);
+            return false;
+        }
+    }
+
+    public void AgentStopped(string machine)
+    {
+        try
+        {
+            using var c = Open();
+            Exec(c, null, $"UPDATE {T("machines")} SET agent_url = NULL, agent_seen_utc = NULL WHERE machine = @m", ("m", machine));
+        }
+        catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.UndefinedColumn) { }
+    }
+
+    public bool HasPendingRemoteWork(string machine)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+SELECT EXISTS(SELECT 1 FROM {T("machines")} WHERE machine = @m AND (run_requested OR check_requested))
+ OR EXISTS(SELECT 1 FROM {T("machine_commands")} WHERE machine = @m AND NOT done)
+ OR EXISTS(SELECT 1 FROM {T("template_uploads")} WHERE machine = @m AND status = 'pending')
+ OR EXISTS(SELECT 1 FROM {T("jobs")} WHERE publish_now AND NOT (status = ANY(@fin)) AND claimed_by IS NULL AND cancel_requested = FALSE
+           AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= now()))
+ OR EXISTS(SELECT 1 FROM {T("jobs")} WHERE upload_requested AND youtube_video_id IS NULL AND video_archive_path IS NOT NULL AND claimed_by IS NULL
+           AND cancel_requested = FALSE AND NOT (status = ANY(@fin)))
+ OR EXISTS(SELECT 1 FROM {T("jobs")} WHERE kind = 'demo' AND status = ANY(@st) AND claimed_by IS NULL AND cancel_requested = FALSE
+           AND (next_attempt_at_utc IS NULL OR next_attempt_at_utc <= now()))
+""", ("m", machine), ("fin", FinalStatuses), ("st", Claimable));
+        return cmd.ExecuteScalar() is true;
+    }
+
+    public AgentJobInfo? JobLive(long jobId)
+    {
+        using var c = Open();
+        using var cmd = Cmd(c, $"""
+SELECT j.id, j.status, j.topic, j.kind, j.claimed_by IS NOT NULL, j.video_archive_path IS NOT NULL, j.youtube_video_id,
+  (SELECT max(stage) FROM {T("job_stages")} s WHERE s.job_id = j.id AND s.state = 1),
+  (SELECT max(stage) FROM {T("job_stages")} s WHERE s.job_id = j.id AND s.state = 2),
+  e.level, e.message, e.at_utc
+FROM {T("jobs")} j
+LEFT JOIN LATERAL (SELECT level, message, at_utc FROM {T("job_events")} WHERE job_id = j.id ORDER BY id DESC LIMIT 1) e ON TRUE
+WHERE j.id = @id
+""", ("id", jobId));
+        using var r = cmd.ExecuteReader();
+        if (!r.Read()) return null;
+        return new AgentJobInfo(r.GetInt64(0), r.GetInt32(1), r.GetString(2), r.GetString(3), r.GetBoolean(4),
+            r.IsDBNull(7) ? null : r.GetInt32(7), r.IsDBNull(8) ? null : r.GetInt32(8),
+            r.IsDBNull(9) ? null : r.GetString(9), r.IsDBNull(10) ? null : r.GetString(10), r.IsDBNull(11) ? null : r.GetFieldValue<DateTimeOffset>(11),
+            r.GetBoolean(5), r.IsDBNull(6) ? null : r.GetString(6));
     }
 
     public bool TakeCheckRequest(string machine)
