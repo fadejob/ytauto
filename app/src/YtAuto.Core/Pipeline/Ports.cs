@@ -146,6 +146,12 @@ public interface ITtsSession : IAsyncDisposable
 }
 
 /// <summary>Botdan yuklangan tayyor ovozni (URL) yuklab olib, pipeline ishlatadigan WAV formatiga o'tkazadi.</summary>
+/// <summary>Botda mavzuga yuklangan muqova rasmini yuklab oladi (rasm keyin JPEG thumbnail'ga aylantiriladi).</summary>
+public interface ICoverImporter
+{
+    Task DownloadAsync(string url, string outFile, CancellationToken ct);
+}
+
 public interface IAudioImporter
 {
     Task ImportAsync(string url, string outWav, IJobLog log, CancellationToken ct);

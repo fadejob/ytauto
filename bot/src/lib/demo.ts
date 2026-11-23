@@ -51,7 +51,7 @@ export function demoTopics(): Topic[] {
     canUploadReady: !!r.archived && !r.yt && !r.claimed && !r.uploadRequested && !r.publishNow && ![11, 14].includes(r.status),
     uploadRequested: !!r.uploadRequested && !r.yt,
     template: r.template ?? "", format: r.format ?? 0, voice: r.voice ?? "MOSS ayol",
-    manualScript: r.script || null, manualTitle: r.mtitle || null, hasAudio: !!r.audio, hook: r.hook || null, hasVideo: r.status >= 7 && r.status !== 12,
+    manualScript: r.script || null, manualTitle: r.mtitle || null, hasAudio: !!r.audio, hook: r.hook || null, hasVideo: r.status >= 7 && r.status !== 12, coverUrl: null,
     canRetry: !r.claimed && [12, 13].includes(r.status), canCancel: ![11, 14].includes(r.status),
     canReschedule: (r.made || r.claimed) && !r.claimed && ![11, 14].includes(r.status), canForceUpload: r.status === 13 && !r.yt && !!r.archived && !r.claimed,
   }));

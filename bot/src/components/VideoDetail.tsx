@@ -359,7 +359,7 @@ export default function VideoDetail({ state, id, back, run, toast, refresh }: { 
 
       {/* TopicSheet - Videolar ekranidagi yangi/tahrir oynasi (components/TopicSheet.tsx). */}
       {sheet === "edit" ? (
-        <TopicSheet sheet={{ mode: "edit", topic: t }} catalog={state.catalog} channelTitle={multiChannel ? state.channel?.title ?? "" : ""} close={() => { setSheet(null); void loadLogs(); }} run={run} />
+        <TopicSheet sheet={{ mode: "edit", topic: t }} catalog={state.catalog} channelTitle={multiChannel ? state.channel?.title ?? "" : ""} close={() => { setSheet(null); void loadLogs(); }} run={run} customCover={!!state.channel?.customCover} />
       ) : null}
       {sheet === "resched" ? <RescheduleSheet topic={t} close={() => setSheet(null)} run={run} /> : null}
     </div>

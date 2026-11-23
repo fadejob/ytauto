@@ -5,7 +5,7 @@ import { isDemo } from "./demo";
 import { geminiReady } from "./config";
 import { maybeRefreshChannel } from "./channel";
 import type { State } from "./types";
-import { channelList } from "./youtube";
+import { channelList, customThumbnails } from "./youtube";
 
 /**
  * Ilovaning to'liq holati (mavzular, katalog, kanal). /api/state va /api/actions (amaldan keyin - shu so'rovning o'zida, alohida
@@ -19,6 +19,6 @@ export async function buildState(viewer: AccountViewer, opts?: { refreshChannel?
   return {
     topics, catalog, viewer: { name: viewer.name, dev: viewer.dev }, now: new Date().toISOString(), demo: isDemo(), gemini: { ready: await geminiReady() },
     account: { guest: viewer.guest, hostLabel: viewer.hostLabel },
-    channel: { id: ch.active, title: ch.channels.find((c) => c.id === ch.active)?.title ?? "", total: ch.channels.length },
+    channel: { id: ch.active, title: ch.channels.find((c) => c.id === ch.active)?.title ?? "", total: ch.channels.length, customCover: ch.active ? await customThumbnails() : false },
   };
 }

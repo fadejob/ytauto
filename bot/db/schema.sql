@@ -1,4 +1,4 @@
--- ytauto-schema-version: 7
+-- ytauto-schema-version: 8
 -- YtAuto online bazasi (Supabase PostgreSQL, "ytauto" sxemasi) - YAGONA manba. Bot (bot/src/lib/schema.ts) ham, desktop ilova
 -- (PostgresJobStore, egasi huquqi bilan ulanganda) ham shu faylni ishga tushiradi. Fayl idempotent: qayta ishga tushirish xavfsiz.
 -- Yuqoridagi versiya o'zgarmasa, fayl qayta bajarilmaydi (ytauto.schema_meta). O'zgartirganda versiyani oshiring.
@@ -73,6 +73,10 @@ ALTER TABLE ytauto.machines ADD COLUMN IF NOT EXISTS run_requested_at_utc TIMEST
 ALTER TABLE ytauto.machines ADD COLUMN IF NOT EXISTS agent_url TEXT;
 ALTER TABLE ytauto.machines ADD COLUMN IF NOT EXISTS agent_secret TEXT;
 ALTER TABLE ytauto.machines ADD COLUMN IF NOT EXISTS agent_seen_utc TIMESTAMPTZ;
+-- v8: mavzuga foydalanuvchi yuklagan muqova (YouTube thumbnail; faqat telefon bilan tasdiqlangan kanalda). path - Storage yo'li
+-- (video chiqqach o'chiriladi), url - kompyuter yuklab oladigan imzolangan havola.
+ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS manual_cover_path TEXT;
+ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS manual_cover_url TEXT;
 CREATE TABLE IF NOT EXISTS ytauto.machine_commands (
   id BIGSERIAL PRIMARY KEY, machine TEXT NOT NULL, kind TEXT NOT NULL, arg TEXT NOT NULL DEFAULT '', done BOOLEAN NOT NULL DEFAULT FALSE,
   created_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -357,4 +361,4 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ytauto.jobs, ytauto.job_stages, ytauto.j
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ytauto TO ytauto_device, ytauto_bot;
 REVOKE ALL ON ytauto.accounts, ytauto.account_roles, ytauto.telegram_links, ytauto.login_attempts, ytauto.schema_meta, ytauto.mcp_tokens FROM ytauto_device, ytauto_bot;
 
-INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '7') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '8') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;

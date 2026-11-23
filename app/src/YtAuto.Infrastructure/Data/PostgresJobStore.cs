@@ -172,7 +172,7 @@ public sealed class PostgresJobStore : IAppStore
     private static DateTimeOffset? D(NpgsqlDataReader r, string col) { var i = r.GetOrdinal(col); return r.IsDBNull(i) ? null : r.GetFieldValue<DateTimeOffset>(i); }
     private static string? S(NpgsqlDataReader r, string col) { var i = r.GetOrdinal(col); return r.IsDBNull(i) ? null : r.GetString(i); }
 
-    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url, kind, demo_spec, demo_result, channel_id, hook";
+    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url, kind, demo_spec, demo_result, channel_id, hook, manual_cover_url";
 
     private static VideoJob ReadJob(NpgsqlDataReader r) => new()
     {
@@ -192,7 +192,7 @@ public sealed class PostgresJobStore : IAppStore
         YouTubeProcessingStatus = S(r, "youtube_processing_status"), YouTubeCheckedAtUtc = D(r, "youtube_checked_at_utc"),
         PublishedAtUtc = D(r, "published_at_utc"), WorkDir = S(r, "work_dir"), WorkDirCleaned = r.GetBoolean(r.GetOrdinal("work_dir_cleaned")),
         PublishNow = r.GetBoolean(r.GetOrdinal("publish_now")),
-        ManualScript = S(r, "manual_script"), ManualTitle = S(r, "manual_title"), ManualAudioUrl = S(r, "manual_audio_url"),
+        ManualScript = S(r, "manual_script"), ManualTitle = S(r, "manual_title"), ManualAudioUrl = S(r, "manual_audio_url"), ManualCoverUrl = S(r, "manual_cover_url"),
         Kind = S(r, "kind") ?? "", DemoSpecJson = S(r, "demo_spec"), DemoResultJson = S(r, "demo_result"),
         ChannelId = S(r, "channel_id") ?? "", Hook = S(r, "hook"),
     };

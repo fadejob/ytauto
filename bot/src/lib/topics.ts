@@ -6,9 +6,10 @@ import { templateCatalog } from "./library";
 import { pendingTemplates } from "./templates";
 import { checkTopicMusic, musicCatalog, setTopicMusic, topicMusicMap } from "./music";
 import { attachAudio } from "./audio";
+import { attachCover } from "./cover";
 import { removeObjects } from "./storage";
 import { readBlocks } from "./channel/store";
-import { activeChannelId } from "./youtube";
+import { activeChannelId, customThumbnails } from "./youtube";
 import { checkHook, manualLengthProblem } from "./video-rules";
 import { demoApply, demoCatalog, demoPrompts, demoTopics, isDemo } from "./demo";
 import { addDays, parseLocal, utcToZoned, zonedToUtc } from "./time";
@@ -62,9 +63,10 @@ type Row = {
   cancel_requested: boolean; last_error_message: string | null; attention_reason: string | null;
   template_name: string; format: number; voice_profile: string; hook: string | null;
   manual_script: string | null; manual_title: string | null; manual_audio_path: string | null; manual_audio_url: string | null;
+  manual_cover_path: string | null; manual_cover_url: string | null;
 };
 
-const cols = () => sql()`id::int AS id, topic, notes, title, status, publish_at_utc, youtube_video_id, video_archive_path, publish_now, upload_requested, claimed_by, cancel_requested, last_error_message, attention_reason, template_name, format, voice_profile, manual_script, manual_title, manual_audio_path, manual_audio_url, hook`;
+const cols = () => sql()`id::int AS id, topic, notes, title, status, publish_at_utc, youtube_video_id, video_archive_path, publish_now, upload_requested, claimed_by, cancel_requested, last_error_message, attention_reason, template_name, format, voice_profile, manual_script, manual_title, manual_audio_path, manual_audio_url, hook, manual_cover_path, manual_cover_url`;
 
 const TITLE_MAX = 100;
 const SCRIPT_MAX = 30000;
@@ -86,6 +88,15 @@ async function cleanupAudio() {
   if (!rows.length) return;
   if (await removeObjects(rows.map((r) => r.path as string)))
     await sql()`UPDATE ytauto.jobs SET manual_audio_path = NULL WHERE id IN ${sql()(rows.map((r) => r.id as number))}`;
+}
+
+/** YouTube'ga yuklangan yoki bekor qilingan vazifalarning muqova rasmi Storage'dan o'chiriladi (kompyuter allaqachon olgan). */
+async function cleanupCovers() {
+  const rows = await sql()`SELECT id::int AS id, manual_cover_path AS path FROM ytauto.jobs WHERE manual_cover_path IS NOT NULL
+                           AND (youtube_video_id IS NOT NULL OR status IN ${sql()([Status.Published, Status.Cancelled])}) LIMIT 50`;
+  if (!rows.length) return;
+  if (await removeObjects(rows.map((r) => r.path as string)))
+    await sql()`UPDATE ytauto.jobs SET manual_cover_path = NULL WHERE id IN ${sql()(rows.map((r) => r.id as number))}`;
 }
 
 /** Tayyor (arxivlangan), YouTube'ga hali yuklanmagan video: kompyuter uni qayta tayyorlamasdan yuklaydi. */
@@ -111,7 +122,7 @@ function toTopic(r: Row, tz: string): Topic {
     canUploadReady: !r.upload_requested && !r.publish_now && readyNotUploaded(r),
     uploadRequested: r.upload_requested && !r.youtube_video_id,
     template: r.template_name, format: r.format, voice: r.voice_profile,
-    manualScript: r.manual_script, manualTitle: r.manual_title, hasAudio: !!r.manual_audio_url, hook: r.hook, hasVideo: !!r.video_archive_path,
+    manualScript: r.manual_script, manualTitle: r.manual_title, hasAudio: !!r.manual_audio_url, hook: r.hook, hasVideo: !!r.video_archive_path, coverUrl: r.manual_cover_url,
     canRetry: !r.claimed_by && (r.status === Status.Failed || r.status === Status.NeedsAttention),
     canCancel: !(FINAL as readonly number[]).includes(r.status),
     canReschedule: made && !r.claimed_by && !r.cancel_requested && !(FINAL as readonly number[]).includes(r.status),
@@ -151,6 +162,7 @@ export async function listTopics(tz: string): Promise<Topic[]> {
   const withMusic = (t: Topic): Topic => ({ ...t, music: music[String(t.id)] ?? "" });
   if (isDemo()) return demoTopics().map(withMusic);
   try { await cleanupAudio(); } catch (e) { console.warn("[audio] tozalash:", e instanceof Error ? e.message : e); }
+  try { await cleanupCovers(); } catch (e) { console.warn("[cover] tozalash:", e instanceof Error ? e.message : e); }
   // Faol kanal (va kanal tanlanmagan) vazifalari: chiqmaganlar hammasi + oxirgi 30 ta chiqqan.
   const ch = await activeChannelId();
   const rows = await sql()<Row[]>`
@@ -213,7 +225,7 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       // Qo'lda matn berilib mavzu bo'sh qolsa, title mavzu nomi bo'ladi.
       const items = (a.topics ?? []).map((t) => {
         const script = clean(t.script), title = clean(t.title).replace(/\s+/g, " ");
-        return { ...t, script, title, topic: clean(t.topic) || title, notes: clean(t.notes), audioPath: t.audioPath?.trim() || undefined };
+        return { ...t, script, title, topic: clean(t.topic) || title, notes: clean(t.notes), audioPath: t.audioPath?.trim() || undefined, coverPath: t.coverPath?.trim() || undefined };
       }).filter((t) => t.topic);
       if (items.length === 0) return { ok: false, message: "Mavzu kiritilmagan." };
       if (items.length > MAX_TOPICS_PER_REQUEST) return { ok: false, message: `Bir vaqtda eng ko'pi ${MAX_TOPICS_PER_REQUEST} ta mavzu qo'shiladi.` };
@@ -254,10 +266,15 @@ export async function applyAction(a: Action): Promise<ActionResult> {
           publish_at_utc: at, status: Status.Queued, created_at_utc: now, updated_at_utc: now, channel_id: channelId,
           manual_script: items[i].script || null, manual_title: items[i].title || null,
           manual_audio_path: items[i].audioPath ?? null, manual_audio_url: null as string | null, hook,
+          manual_cover_path: items[i].coverPath ?? null, manual_cover_url: null as string | null,
         });
       }
       // Hamma tekshiruv o'tgach: yuklangan audio joyida ekani tekshiriladi va kompyuter uchun havola yoziladi.
       for (const r of rows) if (r.manual_audio_path) r.manual_audio_url = await attachAudio(r.manual_audio_path);
+      // Muqova: faqat telefon bilan tasdiqlangan kanalda (aks holda YouTube qabul qilmaydi).
+      if (rows.some((r) => r.manual_cover_path) && !(await customThumbnails()))
+        return { ok: false, message: "Kanal telefon raqami bilan tasdiqlanmagan — muqova qo'shib bo'lmaydi (youtube.com/verify)." };
+      for (const r of rows) if (r.manual_cover_path) r.manual_cover_url = await attachCover(r.manual_cover_path);
       const ids = await sql()`INSERT INTO ytauto.jobs ${sql()(rows)} RETURNING id::int AS id`;
       // Fon musiqasi tanlovi (INSERT tartibi saqlanadi) - shu tranzaksiyada.
       await setTopicMusic(ids.map((r, i) => ({ id: r.id as number, music: (items[i] as NewTopic).music || undefined })));
@@ -296,6 +313,15 @@ export async function applyAction(a: Action): Promise<ActionResult> {
         const lp = manualLengthProblem(script, tf.format);
         if (lp) return { ok: false, message: `#${a.id}: ${lp}` };
       }
+      // Muqova: "" - olib tashlash, yo'l - yangisi (faqat tasdiqlangan kanalda). Muqova videoning mazmuni emas - navbat qayta boshlanmaydi.
+      let coverPath = r.manual_cover_path, coverUrl = r.manual_cover_url;
+      if (a.coverPath !== undefined) {
+        if (!a.coverPath) { coverPath = null; coverUrl = null; }
+        else if (a.coverPath !== r.manual_cover_path) {
+          if (!(await customThumbnails())) return { ok: false, message: "Kanal telefon raqami bilan tasdiqlanmagan — muqova qo'shib bo'lmaydi (youtube.com/verify)." };
+          coverPath = a.coverPath.trim(); coverUrl = await attachCover(coverPath);
+        }
+      }
       // Fon musiqasi vazifa snapshot'iga tushadi: o'zgarsa snapshot tozalanadi (shablon o'zgargandek).
       const oldMusic = (await topicMusicMap())[String(a.id)] ?? "";
       const newMusic = a.music !== undefined ? a.music.trim().toLowerCase() : oldMusic;
@@ -306,6 +332,7 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       const n = await sql()`
         UPDATE ytauto.jobs SET topic = ${topic}, notes = ${notes}, language = 'en', template_name = ${tf.template}, format = ${tf.format}, voice_profile = ${tf.voice}, publish_at_utc = ${at}, updated_at_utc = now(),
           manual_script = ${script || null}, manual_title = ${title || null}, hook = ${hook},
+          manual_cover_path = ${coverPath}, manual_cover_url = ${coverUrl},
           settings_snapshot = CASE WHEN ${contentChanged} THEN NULL ELSE settings_snapshot END,
           title = CASE WHEN ${contentChanged} THEN NULL ELSE title END,
           status = CASE WHEN ${contentChanged} OR status = ${Status.NeedsAttention} THEN ${Status.Queued} ELSE status END,

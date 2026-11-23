@@ -19,6 +19,7 @@ public sealed partial class JobRunner
     private async Task RenderCoverAsync(JobContext c, IFilmSession film)
     {
         if (File.Exists(c.CoverJpg)) File.Delete(c.CoverJpg);
+        if (await TryManualCoverAsync(c).ConfigureAwait(false)) return;
         if (File.Exists(c.CoverHtml))
         {
             // `openfilm look` sahifada window.film.frame() ni kutadi (10 s, keyin rad etadi). Muqova harakatsiz bo'lgani uchun
@@ -105,6 +106,32 @@ public sealed partial class JobRunner
     }
 
     private static bool CoverLooksReal(string jpg) => File.Exists(jpg) && new FileInfo(jpg).Length > 0;
+
+    /// <summary>
+    /// Foydalanuvchi botda mavzuga muqova yuklagan bo'lsa (faqat telefon bilan tasdiqlangan kanalda ruxsat etiladi): rasm yuklab olinadi
+    /// va YouTube thumbnail o'lchamidagi JPEG'ga aylantiriladi. O'xshamasa - muqova odatdagidek yaratiladi (video baribir chiqadi).
+    /// </summary>
+    private async Task<bool> TryManualCoverAsync(JobContext c)
+    {
+        if (!c.Job.HasManualCover) return false;
+        if (_x.CoverImporter is null) { c.Log.Warn("Yuklangan muqovani olish servisi ulanmagan — muqova odatdagidek yaratiladi.", "Render"); return false; }
+        var tmp = Path.Combine(Path.GetDirectoryName(c.CoverJpg)!, "user-cover.img");
+        try
+        {
+            await _x.CoverImporter.DownloadAsync(c.Job.ManualCoverUrl!, tmp, c.Ct).ConfigureAwait(false);
+            await _x.Media.ExtractFrameAsync(tmp, 0, c.CoverJpg, CoverWidth(c), c.Ct).ConfigureAwait(false);
+            if (!CoverLooksReal(c.CoverJpg)) throw new InvalidOperationException("rasm o'qilmadi");
+            c.Log.Info("Muqova: siz botda yuklagan rasm.", "Render");
+            return true;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            c.Log.Warn($"Yuklangan muqova ishlatilmadi ({e.Message}) — muqova odatdagidek yaratiladi.", "Render");
+            try { if (File.Exists(c.CoverJpg)) File.Delete(c.CoverJpg); } catch { }
+            return false;
+        }
+        finally { try { File.Delete(tmp); } catch { } }
+    }
 
     /// <summary>
     /// Muqovani YouTube thumbnail qiladi: yangi yuklangan video hali qayta ishlanayotganda rad etilishi mumkin - bir marta qayta urinadi.

@@ -367,7 +367,7 @@ export default function Topics({ state, loading, refresh, run, locked, openVideo
         </Sheet>
       ) : null}
 
-      {sheet && state ? <TopicSheet sheet={sheet} catalog={state.catalog} channelTitle={(state.channel?.total ?? 0) > 1 ? state.channel.title : ""} close={() => setSheet(null)} run={run} /> : null}
+      {sheet && state ? <TopicSheet sheet={sheet} catalog={state.catalog} channelTitle={(state.channel?.total ?? 0) > 1 ? state.channel.title : ""} close={() => setSheet(null)} run={run} customCover={!!state.channel?.customCover} /> : null}
       {resched ? <RescheduleSheet topic={resched} close={() => setResched(null)} run={run} /> : null}
     </div>
   );

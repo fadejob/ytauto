@@ -47,6 +47,8 @@ public sealed class VideoJob
     public string? ManualTitle { get; set; }
     /// <summary>Botdan yuklangan tayyor ovoz (Supabase Storage imzolangan havolasi). Berilgan bo'lsa VoiceStudio TTS o'tkazib yuboriladi.</summary>
     public string? ManualAudioUrl { get; set; }
+    /// <summary>Botda yuklangan muqova rasmi (imzolangan havola). Berilgan bo'lsa muqova yaratilmaydi - shu rasm YouTube thumbnail bo'ladi.</summary>
+    public string? ManualCoverUrl { get; set; }
 
     /// <summary>Vazifa turi: "" - oddiy mavzu, <see cref="DemoKind"/> - Claude Code MCP orqali yuborgan loyiha demo videosi.</summary>
     public string Kind { get; set; } = "";
@@ -72,6 +74,7 @@ public sealed class VideoJob
 
     public bool HasManualScript => !string.IsNullOrWhiteSpace(ManualScript) && !string.IsNullOrWhiteSpace(ManualTitle);
     public bool HasManualAudio => !string.IsNullOrWhiteSpace(ManualAudioUrl);
+    public bool HasManualCover => !string.IsNullOrWhiteSpace(ManualCoverUrl);
 
     public string? Title { get; set; }
     public string? Description { get; set; }

@@ -7,8 +7,8 @@
  * Shablon, ovoz va musiqa - «ko'proq» bo'limida. Audio yuklanish foizi saqlash tugmasi ichida.
  */
 import { useEffect, useState } from "react";
-import { ArrowRight, Calendar, ChevronRight, CircleAlert, Clock, FileAudio, Info, Plus, RectangleHorizontal, RectangleVertical, SlidersHorizontal, Square, Trash2 } from "lucide-react";
-import { api, confirmBox, haptic, putFile } from "@/lib/client";
+import { ArrowRight, Calendar, ChevronRight, CircleAlert, Clock, FileAudio, Image as ImageIcon, Info, Plus, RectangleHorizontal, RectangleVertical, SlidersHorizontal, Square, Trash2, X } from "lucide-react";
+import { api, confirmBox, haptic, openExternal, putFile } from "@/lib/client";
 import { FormatText, type Catalog, type PreparedAudio, type ScriptSource, type Topic } from "@/lib/types";
 import type { Run } from "./App";
 import { countWords, FormatLength, manualLengthProblem, TTS_WORDS_PER_SEC } from "@/lib/video-rules";
@@ -99,9 +99,11 @@ export function RescheduleSheet({ topic, close, run }: { topic: Topic; close: ()
 }
 
 // ------------------------------------------------------------------ yangi video / tahrirlash
-type Row = { topic: string; notes: string; hook: string; date: string; time: string; source: ScriptSource; title: string; script: string; file: File | null };
+type Row = { topic: string; notes: string; hook: string; date: string; time: string; source: ScriptSource; title: string; script: string; file: File | null;
+  /** Yangi muqova rasmi (tanlangan, hali yuklanmagan); coverRemoved - tahrirda mavjud muqovani olib tashlash. */
+  cover: File | null; coverRemoved: boolean };
 
-const emptyRow = (): Row => ({ topic: "", notes: "", hook: "", date: "", time: "", source: "gemini", title: "", script: "", file: null });
+const emptyRow = (): Row => ({ topic: "", notes: "", hook: "", date: "", time: "", source: "gemini", title: "", script: "", file: null, cover: null, coverRemoved: false });
 const AUDIO_ACCEPT = ".mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.webm,audio/*";
 const AUDIO_MAX_MB = 200;
 const MB = 1048576;
@@ -133,7 +135,7 @@ const topicOf = (r: Row) => (r.source === "gemini" ? r.topic : r.title);
 
 type SheetMode = { mode: "new" } | { mode: "edit"; topic: Topic };
 
-export default function TopicSheet({ sheet, catalog, channelTitle, close, run }: { sheet: SheetMode; catalog: Catalog; channelTitle: string; close: () => void; run: Run }) {
+export default function TopicSheet({ sheet, catalog, channelTitle, close, run, customCover = false }: { sheet: SheetMode; catalog: Catalog; channelTitle: string; close: () => void; run: Run; customCover?: boolean }) {
   const edit = sheet.mode === "edit" ? sheet.topic : null;
   // Shablon va format: yangi mavzuda standartdan boshlanadi, tahrirda mavzuning hozirgi qiymatidan.
   const [template, setTemplate] = useState(edit ? edit.template : catalog.defaults.template);
@@ -147,6 +149,7 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
       ? [{
           topic: edit.topic, notes: edit.notes, hook: edit.hook ?? "", date: edit.publishLocal.date, time: edit.publishLocal.time,
           source: edit.hasAudio ? "audio" : edit.manualScript ? "manual" : "gemini", title: edit.manualTitle ?? "", script: edit.manualScript ?? "", file: null,
+          cover: null, coverRemoved: false,
         }]
       : [emptyRow()],
   );
@@ -186,18 +189,30 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
         setUploaded((u) => [...u, filledIdx[k]]);
         audioPaths.push(prep.path);
       }
+      // Muqova rasmlari (faqat telefon bilan tasdiqlangan kanalda) ham avval Storage'ga.
+      const coverPaths: (string | undefined)[] = [];
+      for (let k = 0; k < filled.length; k++) {
+        const c = filled[k].cover;
+        if (!c || !customCover) { coverPaths.push(undefined); continue; }
+        const label = filled.length > 1 ? `Muqova ${k + 1}/${filled.length}` : "Muqova";
+        setSaving(`${label} yuklanmoqda… 0%`);
+        const prep = await api<PreparedAudio>("/api/cover", { filename: c.name, size: c.size });
+        if (prep.uploadUrl) await putFile(prep.uploadUrl, c, (p) => setSaving(`${label} yuklanmoqda… ${p}%`));
+        coverPaths.push(prep.path);
+      }
       setProgress(null);
       setSaving("Saqlanmoqda…");
       const manual = (r: Row) => (r.source === "gemini" ? { script: "", title: "" } : { script: r.script, title: r.title });
       const results = await run(edit
         ? [{
             type: "update_topic", id: edit.id, topic: topicOf(filled[0]), notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice, music, ...manual(filled[0]),
+            coverPath: coverPaths[0] ?? (filled[0].coverRemoved ? "" : undefined),
           }]
         : [{
             type: "create_topics",
             topics: filled.map((r, i) => ({
               topic: topicOf(r), notes: r.source === "gemini" ? r.notes : "", publishAt: at(r), template, format, voice, music,
-              ...(r.source === "gemini" ? {} : { script: r.script, title: r.title }), audioPath: audioPaths[i],
+              ...(r.source === "gemini" ? {} : { script: r.script, title: r.title }), audioPath: audioPaths[i], coverPath: coverPaths[i],
             })),
           }]);
       if (results.every((r) => r.ok)) { close(); return; }
@@ -343,6 +358,10 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
               </>
             )}
 
+            <CoverPick allowed={customCover} format={format} disabled={isSaving} file={r.cover}
+              existing={i === 0 && edit && !r.coverRemoved ? edit.coverUrl : null}
+              onPick={(cover) => set(i, { cover, coverRemoved: false })} onRemove={() => set(i, { cover: null, coverRemoved: true })} />
+
             <div className="grid2">
               <PickerField type="date" label="Sana" value={r.date} placeholder="Avtomatik" iconSide="left" onChange={(v) => set(i, { date: v })} />
               <PickerField type="time" label="Soat" value={r.time} placeholder="18:00" iconSide="left" emptyInk onChange={(v) => set(i, { time: v })} />
@@ -455,3 +474,60 @@ function AudioPick({ file, pct, disabled, onPick }: { file: File | null; pct: nu
     </label>
   );
 }
+
+const COVER_ACCEPT = "image/jpeg,image/png,image/webp";
+const COVER_MAX_MB = 10;
+
+/**
+ * Mavzu muqovasi (YouTube thumbnail). YouTube maxsus muqovani faqat telefon raqami bilan tasdiqlangan kanalda qabul qiladi:
+ * tasdiqlanmagan bo'lsa maydon o'rnida izoh va tasdiqlash havolasi. Berilmasa muqovani kompyuter o'zi yaratadi.
+ */
+function CoverPick({ allowed, format, disabled, file, existing, onPick, onRemove }: {
+  allowed: boolean; format: number; disabled?: boolean; file: File | null; existing: string | null;
+  onPick: (f: File) => void; onRemove: () => void;
+}) {
+  const [preview, setPreview] = useState<{ file: File; url: string } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- tanlangan fayl uchun vaqtinchalik ko'rinish havolasi
+    setPreview({ file, url });
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+  if (!allowed) {
+    return (
+      <div className={st.coverLocked}>
+        <ImageIcon size={16} aria-hidden />
+        <span>O&apos;z muqovangizni qo&apos;shish uchun kanalni telefon raqami bilan tasdiqlang.{" "}
+          <button type="button" className="linkbtn" onClick={() => openExternal("https://www.youtube.com/verify")}>Tasdiqlash</button>
+        </span>
+      </div>
+    );
+  }
+  const src = file && preview?.file === file ? preview.url : existing;
+  const pick = (f: File | undefined) => {
+    if (!f) return;
+    if (!COVER_ACCEPT.split(",").includes(f.type)) { setErr("Rasm JPG, PNG yoki WEBP bo'lsin."); return; }
+    if (f.size > COVER_MAX_MB * MB) { setErr(`Rasm ${COVER_MAX_MB} MB dan kichik bo'lsin.`); return; }
+    setErr(null); haptic.tap(); onPick(f);
+  };
+  return (
+    <Field label="Muqova (ixtiyoriy)" right={`${COVER_MAX_MB} MB gacha`} error={err ?? undefined}
+      hint={src ? "YouTube'da shu rasm muqova bo'ladi." : "Berilmasa muqovani kompyuter o'zi yaratadi. Tavsiya: 1280×720, JPG yoki PNG."}>
+      <div className={`${st.cover}${format === 1 ? " " + st.coverTall : ""}`}>
+        {src ? (
+          // eslint-disable-next-line @next/next/no-img-element -- foydalanuvchi tanlagan rasm (blob/imzolangan havola)
+          <img src={src} alt="Muqova" className={st.coverImg} />
+        ) : <span className={st.coverEmpty}><ImageIcon size={22} aria-hidden />Rasm tanlang</span>}
+        <label className={`${st.coverPick}${disabled ? " " + st.fileOff : ""}`}>
+          <input className={st.fileInput} type="file" accept={COVER_ACCEPT} disabled={disabled} aria-label="Muqova rasmi"
+            onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+          {src ? "Almashtirish" : "Tanlash"}
+        </label>
+        {src ? <button type="button" className={st.coverRemove} disabled={disabled} aria-label="Muqovani olib tashlash" onClick={() => { haptic.tap(); onRemove(); }}><X size={16} /></button> : null}
+      </div>
+    </Field>
+  );
+}
+

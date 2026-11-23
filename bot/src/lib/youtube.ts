@@ -287,6 +287,32 @@ export async function youtubeCredentials(): Promise<{ refreshToken: string; clie
   return { refreshToken: a.refreshToken, clientId: c.clientId, clientSecret: c.clientSecret, channelTitle: a.title, channelId: a.id };
 }
 
+/**
+ * Faol kanal telefon raqami bilan tasdiqlanganmi: YouTube maxsus thumbnail'ni (muqova) faqat shunday kanalda qabul qiladi.
+ * channels.status.longUploadsStatus = "allowed" - tasdiqlangan kanal belgisi. Natija kanal bo'yicha 6 soat keshlanadi
+ * (shared_settings); YouTube javob bermasa oxirgi ma'lum qiymat (yo'q bo'lsa - false).
+ */
+export async function customThumbnails(): Promise<boolean> {
+  if (isDemo()) return true;
+  const a = await activeChannel();
+  if (!a) return false;
+  const key = `youtube.verified.${a.id}`;
+  let cached: { v: boolean; at: number } | null = null;
+  try { cached = JSON.parse((await getSetting(key)) ?? "null"); } catch { cached = null; }
+  if (cached && Date.now() - cached.at < 6 * 3600_000) return cached.v;
+  try {
+    const c = await youtubeCredentials();
+    if (!c) return cached?.v ?? false;
+    const token = await youtubeAccessToken(c);
+    const r = await fetch("https://www.googleapis.com/youtube/v3/channels?part=status&mine=true", { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) });
+    const j = (await r.json().catch(() => ({}))) as { items?: { status?: { longUploadsStatus?: string } }[] };
+    if (!r.ok) return cached?.v ?? false;
+    const v = j.items?.[0]?.status?.longUploadsStatus === "allowed";
+    await putSetting(key, JSON.stringify({ v, at: Date.now() }));
+    return v;
+  } catch { return cached?.v ?? false; }
+}
+
 /** Refresh token → access token (tarmoq; bazaga tegmaydi). */
 export async function youtubeAccessToken(c: { refreshToken: string; clientId: string; clientSecret: string }): Promise<string> {
   const res = await fetch("https://oauth2.googleapis.com/token", {

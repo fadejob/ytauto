@@ -163,6 +163,7 @@ public sealed class AppServices
             ScriptGenerator = scriptOverride ?? Gemini,
             Tts = new VoiceStudioTtsService(Store, RunId),
             AudioImporter = new RemoteAudioImporter(Http, media),
+            CoverImporter = new Media.RemoteCoverImporter(Http),
             Aligner = Aligner(), Editor = Claude(), Film = film, Media = media,
             // Video sifati: Gemini vision (shablon uslubi, rasm rejasi, moslik) va ochiq manbalardan real rasmlar.
             Visuals = new Gemini.GeminiVisualDirector(Gemini, () => Settings.Load().Gemini.ModelChain(GeminiModelRouter.DefaultChain)),

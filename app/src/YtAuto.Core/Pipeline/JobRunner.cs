@@ -13,6 +13,8 @@ public sealed class PipelineServices
     public required ITtsService Tts { get; init; }
     /// <summary>Botdan yuklangan tayyor ovoz uchun (berilmasa bunday vazifalar "E'tibor kerak" bo'ladi).</summary>
     public IAudioImporter? AudioImporter { get; init; }
+    /// <summary>Botda yuklangan muqova rasmi uchun (berilmasa muqova odatdagidek yaratiladi).</summary>
+    public ICoverImporter? CoverImporter { get; init; }
     public required IAligner Aligner { get; init; }
     public required IEditorAgent Editor { get; init; }
     public required IFilmTool Film { get; init; }
