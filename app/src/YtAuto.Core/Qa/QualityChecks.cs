@@ -141,10 +141,13 @@ public static class QualityRules
     }
 
     public static void CheckRenderedStreams(double videoDuration, double audioDuration, bool hasVideo, bool hasAudio,
-        int width, int height, VideoFormat format, QaReport r)
+        int width, int height, VideoFormat format, QaReport r, int? maxVideoSec = null)
     {
         r.Checked.Add("streams");
         r.Metrics["video_duration"] = videoDuration;
+        // Format chegarasi (16:9 - 3 daqiqa, Shorts/kvadrat - 55 soniya): ovoz unga sig'dirilgan, oshib ketsa - oxiridagi yakun uzun.
+        if (maxVideoSec is int max && videoDuration > max + 0.25)
+            r.Add("video_too_long", QaSeverity.Error, $"Video {videoDuration:0.00}s - bu format uchun eng ko'pi {max}s (ovoz {audioDuration:0.00}s). Ovozdan keyingi yakuniy qismni qisqartiring: film {max}s gacha tugasin.");
         if (!hasVideo) r.Add("no_video_stream", QaSeverity.Error, "MP4 ichida video oqimi yo'q.", fixable: false);
         if (!hasAudio) r.Add("no_audio_stream", QaSeverity.Error, "MP4 ichida audio oqimi yo'q.", fixable: false);
         if (videoDuration < audioDuration - 0.15)

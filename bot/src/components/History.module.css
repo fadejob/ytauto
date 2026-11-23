@@ -1,0 +1,96 @@
+/* «Faoliyat» ekrani (dizayn: ytauto.dsai → Faoliyat, Faoliyat · to'liq sahifa). */
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.context { display: grid; gap: 2px; min-width: 0; }
+.context h1 { margin: 0; }
+.window { font-size: 13px; color: var(--ink); }
+.refresh { width: 44px; height: 44px; }
+
+/* fokus: «Ishlayapti / Kutish rejimida / Oflayn» */
+.summary { display: grid; gap: 6px; padding: 8px 4px 4px; }
+.focalRow { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.focalRow :global(.focal) { overflow-wrap: anywhere; }
+.focalSub { margin: 0; font-size: 15px; line-height: 1.4; color: var(--muted); }
+.who { color: var(--ink); }
+.focalSkel { display: grid; gap: 10px; }
+
+/* holat nuqtasi: yumshoq doira + o'rtada to'q nuqta (fokus va vaqt chizig'i) */
+.dot { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; flex: none; background: var(--sunken); }
+.dot i { width: 12px; height: 12px; border-radius: 999px; background: var(--muted); }
+.dot.accent { background: var(--accent-soft); }
+.dot.accent i { background: var(--accent); }
+.dot.ok { background: var(--ok-soft); }
+.dot.ok i { background: var(--ok); }
+.dot.bad { background: var(--bad-soft); }
+.dot.bad i { background: var(--bad); }
+
+/* ishga tushishlar: vaqt chizig'i */
+.runs { display: grid; gap: 16px; padding: 8px 4px 0; align-content: start; min-width: 0; }
+.sectionHead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; }
+.run { display: flex; gap: 12px; min-width: 0; }
+.rail { width: 20px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 1px; }
+.rail .dot { width: 20px; height: 20px; }
+.rail .dot i { width: 8px; height: 8px; }
+.line { flex: 1; width: 2px; min-height: 16px; border-radius: 999px; background: var(--line); margin-bottom: 4px; }
+.body { flex: 1; min-width: 0; display: grid; gap: 8px; padding-bottom: 20px; align-content: start; }
+.bodyLast { padding-bottom: 0; }
+.line1 { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.when { font-size: 15px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.when :global(.muted) { font-weight: 500; }
+.jobId { font-size: 13px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+.line2 { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.statsToggle { display: flex; align-items: center; gap: 8px; min-height: 36px; width: 100%; text-align: left; color: var(--muted); font-size: 13px; }
+.statsToggle span { flex: 1; min-width: 0; }
+.statsToggle svg { flex: none; transition: transform 0.15s; }
+.flip { transform: rotate(180deg); }
+.detailBox { display: grid; gap: 6px; padding: 10px 12px; border-radius: var(--r-sm); background: var(--sunken); }
+.kv { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.kv span { min-width: 0; overflow-wrap: anywhere; }
+.kv span i { font-style: normal; }
+.kv b { font-weight: 650; flex: none; }
+
+/* hajm va resurslar */
+.total { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; }
+.total b { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+.diskBar { display: flex; gap: 2px; height: 10px; border-radius: 999px; overflow: hidden; background: var(--line); }
+.diskBar i { display: block; height: 100%; min-width: 2px; }
+.diskList { list-style: none; margin: 0; padding: 0; display: grid; }
+.diskList li { display: flex; align-items: center; gap: 12px; min-height: 32px; }
+.diskList li i { width: 10px; height: 10px; border-radius: 999px; flex: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 12%, transparent); }
+.diskList li span { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diskList li b { font-size: 15px; font-weight: 650; flex: none; }
+.divider { height: 1px; background: var(--line); }
+.avgs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.avgs > div { display: grid; gap: 4px; padding: 12px; border-radius: var(--r-md); background: var(--sunken); min-width: 0; }
+.avgs b { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; white-space: nowrap; }
+.avgs span { font-size: 13px; color: var(--muted); }
+.usage { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.usage li { display: grid; gap: 8px; }
+.usageText { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.usageText b { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usageText strong { font-size: 15px; font-weight: 650; flex: none; }
+.usageText :global(.sub) { flex: none; }
+.track { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.track i { display: block; height: 100%; border-radius: 999px; background: var(--ink); }
+.note { font-size: 12px; color: var(--muted); line-height: 1.4; }
+
+/* videolar loglari */
+.videos { list-style: none; margin: 0; padding: 0; display: grid; }
+.videos li { display: flex; align-items: center; gap: 12px; padding: 10px 0; min-width: 0; }
+.videos li + li { border-top: 1px solid var(--line); }
+.videoText { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.videoText > b { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.videoMeta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; font-size: 13px; color: var(--muted); }
+.videoErr { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; color: var(--bad); overflow-wrap: anywhere; }
+.videoErr svg { flex: none; margin-top: 2px; }
+.videoSkel { display: grid; gap: 10px; }
+
+.footnote { margin: 0; padding: 0 4px; font-size: 12px; color: var(--muted); line-height: 1.45; text-align: center; }
+
+/* log oynasi */
+.stage { display: grid; gap: 6px; padding: 12px 16px; }
+.stageRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.stageRow b { font-size: 15px; font-weight: 650; }
+.events { display: grid; gap: 8px; }
+.logbox { padding: 10px 12px; border-radius: var(--r-sm); background: var(--sunken); }

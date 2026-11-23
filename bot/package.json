@@ -12,6 +12,7 @@
     "db:import": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/import-db-from-app.ps1"
   },
   "dependencies": {
+    "lucide-react": "1.68.0",
     "next": "16.4.6",
     "postgres": "^3.4.9",
     "react": "19.3.0",

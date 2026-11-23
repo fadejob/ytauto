@@ -92,7 +92,11 @@ public sealed class YouTubeAuth
         try
         {
             var remoteOnly = RemoteOnly();
-            var t = Load() ?? throw PipelineException.Config("youtube_not_connected", remoteOnly
+            bool missing = false;
+            try { missing = _settings().MissingChannel; } catch { }
+            var t = Load() ?? throw PipelineException.Config("youtube_not_connected", missing
+                ? "Bu video bog'langan YouTube kanali botda uzilgan: shu kanalni botda Sozlamalar → YouTube kanallari'da qayta ulang (video arxivda saqlandi, boshqa kanalga yuklanmaydi)."
+                : remoteOnly
                 ? "YouTube kanali ulanmagan: botda Sozlamalar → YouTube'ni ulang (video arxivda saqlandi)."
                 : "YouTube kanali ulanmagan.");
             var memKey = remoteOnly ? t.RefreshToken : null;

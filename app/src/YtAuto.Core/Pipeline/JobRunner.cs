@@ -102,6 +102,8 @@ public sealed partial class JobRunner
         var publishNow = job.PublishNow;
         summary.JobId = job.Id; summary.PublishNow = publishNow;
         var log = _x.JobLogFactory(job.Id);
+        // Butun ish davomida (snapshot, kanal konteksti, YouTube'ga yuklash) - vazifa bog'langan kanal.
+        using var channelScope = _x.Settings.UseChannel(job.ChannelId);
         _x.RunLog.Info($"Vazifa #{job.Id} band qilindi{(publishNow ? " (HOZIR CHIQARISH)" : "")}: \"{job.Topic}\" (holat {job.Status}, urinishlar {job.RunAttempts}).");
 
         using var cancelCts = CancellationTokenSource.CreateLinkedTokenSource(ct);

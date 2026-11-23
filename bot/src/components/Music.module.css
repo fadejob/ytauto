@@ -1,0 +1,49 @@
+/* Fon musiqasi (dizayn: Shablonlar va musiqa · Musiqa Trfuhk, · Musiqa qo'shish baf7Co). */
+
+.wrap { display: grid; gap: 16px; min-width: 0; }
+
+.head { display: flex; align-items: flex-start; gap: 12px; }
+.headT { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.spin { color: var(--muted); align-self: center; flex: none; }
+
+/* Ovoz balandligi: foizlar qatori (radio). Tanlangani - urg'u (faol holat). */
+.volume { display: grid; gap: 8px; }
+.volHead { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.vols { display: flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--sunken); }
+.vols button { flex: 1; min-width: 0; min-height: 40px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.vols button[aria-checked="true"] { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+.vols button:disabled { opacity: 0.5; }
+.vols button[aria-checked="true"]:disabled { opacity: 0.65; }
+.foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* Trek qatorlari. Kutubxonada bo'luvchi chiziqsiz, qidiruv natijalarida chiziqli. */
+.lib { display: grid; gap: 4px; }
+.row { display: flex; align-items: center; gap: 12px; padding: 8px 0; min-width: 0; }
+.results { display: grid; }
+.results > .row + .row { border-top: 1px solid var(--line); }
+.results > .row { padding: 10px 0; }
+
+.play { width: 44px; height: 44px; flex: none; border-radius: 999px; background: var(--sunken); color: var(--ink); display: grid; place-items: center; }
+.play.on { background: var(--ink); color: var(--bg); }
+
+.info { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.info b { font-size: 16px; font-weight: 700; letter-spacing: -0.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info > span { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.info > span.extra { font-size: 12px; }
+.src { font-size: 12px; font-weight: 650; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; padding: 2px 0; }
+
+.rm { width: 44px; height: 44px; flex: none; border-radius: 999px; display: grid; place-items: center; color: var(--muted); }
+.rm:hover:not(:disabled) { color: var(--bad); }
+
+/* Kayfiyat chiplari: bitta qatorda, yonga suriladi. */
+.moods { flex-wrap: nowrap !important; overflow-x: auto; margin: 0 -16px; padding: 0 16px; scrollbar-width: none; }
+.moods::-webkit-scrollbar { display: none; }
+.moods button { flex: none; }
+
+.search { display: flex; gap: 8px; }
+.box { position: relative; flex: 1; min-width: 0; display: block; }
+.box svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 18px; height: 18px; color: var(--muted); pointer-events: none; }
+.box input { padding-left: 40px; }
+
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pager > span { font-size: 13px; color: var(--muted); text-align: center; min-width: 0; }

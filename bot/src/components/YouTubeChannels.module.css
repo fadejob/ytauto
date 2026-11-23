@@ -1,0 +1,50 @@
+/* Ulangan YouTube kanallari (dizayn: Kanallar va YouTube 0hBKBn, Birinchi ulash jvx45U). */
+.list { display: grid; gap: 12px; }
+
+/* Kanal kartasi: faol kanal ko'tarilgan (urg'u foni va chegarasi), qolganlari oddiy karta. */
+.tile { background: var(--card); border-radius: var(--r-lg); padding: 14px 16px 16px; display: grid; gap: 12px; border: 1.5px solid transparent; min-width: 0; }
+.tile.active { background: var(--accent-soft); border-color: var(--accent); padding-top: 16px; gap: 14px; }
+
+/* Bosiladigan bosh qism: avatar, nom, tanlov belgisi. */
+.pick { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; text-align: left; background: none; color: inherit; padding: 0; }
+.pick:disabled { cursor: default; }
+.tile:not(.active) .pick:not(:disabled) { cursor: pointer; }
+.pick:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-sm); }
+
+.avatar { width: 40px; height: 40px; border-radius: 999px; background: var(--sunken); color: var(--muted); display: grid; place-items: center; font-weight: 750; font-size: 16px; flex: none; }
+.active .avatar { width: 44px; height: 44px; background: var(--inverse); color: var(--on-inverse); font-size: 17px; }
+
+.names { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.kicker { font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: var(--accent-ink); }
+.title { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; line-height: 1.25; overflow-wrap: anywhere; }
+.active .title { font-size: 18px; }
+.meta { font-size: 13px; color: var(--muted); line-height: 1.35; }
+
+/* Tanlov belgisi: faol - urg'u doirasi va belgi, boshqalari - bo'sh doira. */
+.radio { width: 28px; height: 28px; border-radius: 999px; border: 1.5px solid var(--line); display: grid; place-items: center; flex: none; color: var(--muted); }
+.radio svg { width: 16px; height: 16px; }
+.active .radio { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+/* Faol kanal: navbatdagi videolar soni - ekranning asosiy raqami. */
+.queue { display: flex; align-items: baseline; gap: 10px; }
+.queue .count { font-size: 44px; }
+.queue b { font-size: 16px; font-weight: 700; }
+.desc { font-size: 13px; color: var(--muted); line-height: 1.45; margin: -6px 0 0; }
+
+/* Tekshiruv natijasi. */
+.check { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.check svg { width: 15px; height: 15px; flex: none; margin-top: 2px; }
+.check.ok { color: var(--ok); }
+.check.bad { color: var(--bad); }
+
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.active .actions :global(.btn.secondary) { background: var(--card); }
+
+/* Bo'sh holat (birinchi ulash). */
+.emptyHead { display: flex; gap: 12px; align-items: flex-start; }
+.emptyIc { width: 44px; height: 44px; border-radius: var(--r-sm); background: var(--sunken); color: var(--muted); display: grid; place-items: center; flex: none; }
+.emptyHead b { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+
+.lock { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--accent-ink); line-height: 1.4; }
+.lock svg { width: 15px; height: 15px; flex: none; }
+.foot { padding: 0 4px; display: grid; gap: 6px; }

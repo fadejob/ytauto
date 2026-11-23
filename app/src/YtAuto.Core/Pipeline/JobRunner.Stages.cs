@@ -20,6 +20,7 @@ public sealed partial class JobRunner
         : Hashing.Sha256Text("script-v2", c.Job.Topic, c.Job.Notes, c.Job.Language,
             c.Job.TargetDurationSec.ToString(), c.S.Gemini.ScriptPrompt, c.S.Gemini.Model, c.S.Gemini.UseSearchGrounding.ToString())
           + ChannelHashSuffix(c.S.ChannelContext.ScriptBlock)
+          + LengthHashSuffix(c) + HookHashSuffix(c)
           // Avval Gemini har doim ikkalasini yozardi: standart bor bo'lgandagina hash o'zgaradi.
           + (WriteDescription(c) && WriteTags(c) ? "" : $":meta-d{WriteDescription(c)}-t{WriteTags(c)}");
 
@@ -28,17 +29,32 @@ public sealed partial class JobRunner
     /// <summary>Kanalda standart taglar yo'q - Gemini videoga 5 ta tag yozadi (bor bo'lsa standartlar ishlatiladi).</summary>
     internal static bool WriteTags(JobContext c) => ScriptValidator.CleanTags((c.S.YouTube.DefaultTags ?? "").Split(','), 100).Count == 0;
 
+    /// <summary>Format uzunlik oralig'i (16:9 - 2-3 daqiqa, Shorts/kvadrat - 55 soniyagacha): format o'zgarsa ssenariy qayta yoziladi.</summary>
+    private static string LengthHashSuffix(JobContext c) => ScriptWindow(c) is { } w ? $":len-v1-{w.MinSec}-{w.MaxAudioSec}" : "";
+
+    /// <summary>
+    /// Ssenariy uzunligi oralig'i: botdagi oddiy mavzular (davomiylik berilmagan, 0) - format bo'yicha. Davomiylik aniq so'ralgan
+    /// bo'lsa (masalan MCP so'rovi) - o'sha ishlaydi (null). Ovozning format chegarasi (FitVoiceLength) baribir qo'llanadi.
+    /// </summary>
+    internal static VideoLength? ScriptWindow(JobContext c) => c.Job.TargetDurationSec > 0 ? null : VideoLength.For(c.Job.Format);
+
+    /// <summary>Hook kiritilmagan (eski) vazifalarning hash'i o'zgarmaydi; hook o'zgarsa ssenariy va montaj qayta qilinadi.</summary>
+    private static string HookHashSuffix(JobContext c) => c.Job.HasHook ? ":" + Hashing.Sha256Text("hook-v1", HookRule.Normalize(c.Job.Hook)) : "";
+
+    /// <summary>Ovoz format chegarasiga sig'diriladi (demo videolardan tashqari): chegara o'zgarsa ovoz qayta tayyorlanadi.</summary>
+    private static string FitHashSuffix(JobContext c) => c.Job.IsDemo ? "" : $":fit-v1-{VideoLength.For(c.Job.Format).MaxAudioSec}";
+
     /// <summary>Kanal konteksti bo'lmasa hash o'zgarmaydi (oldingi joblar qayta bajarilmaydi); bo'lsa uning o'zgarishi bosqichni qayta ishlatadi.</summary>
     private static string ChannelHashSuffix(string block) => block.Length == 0 ? "" : ":" + Hashing.Sha256Text("channel-v1", block);
 
     private string VoiceInputHash(JobContext c, VideoScript s)
     {
         // Imzolangan havolaning token qismi (query) hash'ga kirmaydi: havola yangilansa ham ovoz qayta yuklanmaydi.
-        if (c.Job.HasManualAudio) return Hashing.Sha256Text("voice-manual-v1", c.Job.ManualAudioUrl!.Split('?')[0]);
+        if (c.Job.HasManualAudio) return Hashing.Sha256Text("voice-manual-v1", c.Job.ManualAudioUrl!.Split('?')[0]) + FitHashSuffix(c);
         var v = c.S.FindVoice(c.Job.VoiceProfileName);
         var h = Hashing.Sha256Text("voice-v2", s.SubtitleText, v?.Model, v?.Voice, v?.Speed.ToString(), c.S.VoiceStudio.ChunkChars.ToString(), c.S.VoiceStudio.PauseBetweenChunksSec.ToString());
         // Klon ovoz namunasi almashsa ovoz qayta yaratiladi (boshqa ovozlar uchun hash o'zgarmaydi).
-        return c.S.VoiceClone.Matches(v) ? h + ":clone-" + c.S.VoiceClone.Version : h;
+        return (c.S.VoiceClone.Matches(v) ? h + ":clone-" + c.S.VoiceClone.Version : h) + FitHashSuffix(c);
     }
 
     private string AlignInputHash(JobContext c, VideoScript s) =>
@@ -48,6 +64,7 @@ public sealed partial class JobRunner
         OutputSha(c, StageKind.Voice, "voice"), OutputSha(c, StageKind.Align, "vtt"),
         s.SubtitleText, c.S.Claude.MontagePrompt, c.Snapshot.TemplateVersion, c.Job.Format.ToString(), c.Job.QaFixCycles.ToString())
         + ChannelHashSuffix(c.S.ChannelContext.MontageBlock)
+        + (c.Job.IsDemo ? "" : $":len-v1-{VideoLength.For(c.Job.Format).MaxSec}") + HookHashSuffix(c)
         + (c.Job.IsDemo ? ":demo-" + OutputSha(c, StageKind.Script, "demo_media") + "-" + OutputSha(c, StageKind.Script, "demo_scenes") : "");
 
     private string RenderInputHash(JobContext c) => Hashing.Sha256Text("render-v1",
@@ -71,8 +88,12 @@ public sealed partial class JobRunner
         if (c.Job.IsDemo) return await DemoScriptStageAsync(c).ConfigureAwait(false);
         if (c.Job.HasManualScript) return await ManualScriptStageAsync(c).ConfigureAwait(false);
         bool writeDesc = WriteDescription(c), writeTags = WriteTags(c);
+        // Format uzunligi (16:9 - 2-3 daqiqa, Shorts/kvadrat - 55 soniyagacha) va foydalanuvchining boshlang'ich savoli.
+        var window = ScriptWindow(c);
+        var hook = c.Job.HasHook ? HookRule.Normalize(c.Job.Hook) : "";
         var req = new ScriptRequest
         {
+            Hook = hook, Length = window,
             Topic = c.Job.Topic, Notes = c.Job.Notes, Language = c.Job.Language, TargetDurationSec = c.Job.TargetDurationSec,
             Format = c.Job.Format switch { VideoFormat.Shorts9x16 => "vertical 9:16 short", VideoFormat.Square1x1 => "square 1:1", _ => "horizontal 16:9" },
             PromptTemplate = ChannelPrompt.ApplyToScript(string.IsNullOrWhiteSpace(c.S.Gemini.ScriptPrompt) ? DefaultPrompts.Script : c.S.Gemini.ScriptPrompt, c.S.ChannelContext),
@@ -91,7 +112,8 @@ public sealed partial class JobRunner
             script = last.Script;
             if (script.GroundedSources.Count == 0 && prevGrounded is { Count: > 0 }) { script.GroundedSources = prevGrounded; script.FactSheet = prevFacts ?? ""; }
             foreach (var n in ScriptValidator.SanitizeSources(script)) c.Log.Warn(n, "Script");
-            problems = ScriptValidator.Validate(script, c.Job.Language, c.Job.TargetDurationSec);
+            if (attempt == 3 && HookRule.Prepend(last.Script, hook)) c.Log.Warn($"Gemini ssenariyni hook bilan boshlamadi - hook matn boshiga qo'yildi: \"{hook}\".", "Script");
+            problems = ScriptValidator.Validate(script, c.Job.Language, c.Job.TargetDurationSec, window, hook);
             if (problems.Count == 0) break;
             c.Log.Warn($"Ssenariy talablarga mos emas (urinish {attempt}/3): {string.Join(" | ", problems)}", "Script");
             req = new ScriptRequest
@@ -99,7 +121,7 @@ public sealed partial class JobRunner
                 Topic = req.Topic, Notes = req.Notes, Language = req.Language, TargetDurationSec = req.TargetDurationSec, Format = req.Format,
                 PromptTemplate = req.PromptTemplate, FactSheetPromptTemplate = req.FactSheetPromptTemplate, UseSearchGrounding = false,
                 Model = req.Model, Temperature = req.Temperature, PreviousProblems = problems,
-                WriteDescription = writeDesc, WriteTags = writeTags,
+                WriteDescription = writeDesc, WriteTags = writeTags, Hook = hook, Length = window,
             };
             // Fakt varag'ini qayta ishlatamiz (qayta qidiruv qilmaymiz)
             if (!string.IsNullOrEmpty(script.FactSheet)) req = WithFactSheet(req, script);
@@ -179,7 +201,7 @@ public sealed partial class JobRunner
         Topic = r.Topic, Notes = r.Notes + "\n\n[FACT SHEET FROM PREVIOUS STEP]\n" + s.FactSheet + "\n[SOURCES]\n" + string.Join("\n", s.GroundedSources.Select(g => $"{g.Title}: {g.Url}")),
         Language = r.Language, TargetDurationSec = r.TargetDurationSec, Format = r.Format, PromptTemplate = r.PromptTemplate,
         FactSheetPromptTemplate = r.FactSheetPromptTemplate, UseSearchGrounding = false, Model = r.Model, Temperature = r.Temperature,
-        PreviousProblems = r.PreviousProblems,
+        PreviousProblems = r.PreviousProblems, WriteDescription = r.WriteDescription, WriteTags = r.WriteTags, Hook = r.Hook, Length = r.Length,
     };
 
     /// <summary>
@@ -263,6 +285,7 @@ public sealed partial class JobRunner
         var probe = await _x.Media.ProbeAsync(c.VoiceWav, c.Ct).ConfigureAwait(false);
         if (!probe.HasAudio || Math.Abs(probe.Duration - a.Duration) > 0.25)
             throw PipelineException.Transient("tts_probe", $"ffprobe ovoz faylini boshqacha o'qidi (davomiylik {probe.Duration:0.00}s vs {a.Duration:0.00}s).");
+        a = await FitVoiceLengthAsync(c, a, manual: false).ConfigureAwait(false);
         c.Job.AudioDurationSec = Math.Round(a.Duration, 3);
         _x.Store.Update(c.Job);
         c.StageMetrics["audio_sec"] = a.Duration; c.StageMetrics["peak_db"] = a.PeakDb; c.StageMetrics["rms_db"] = a.RmsDb; c.StageMetrics["speech_ratio"] = a.SpeechRatio;
@@ -287,6 +310,7 @@ public sealed partial class JobRunner
 
         var a = Wav.Analyze(c.VoiceWav, 1.0);
         if (a.Problems.Count > 0) throw PipelineException.Quality("manual_audio_bad", "Yuklangan ovoz yaroqsiz: " + string.Join(" ", a.Problems) + " Botda boshqa audio fayl yuklang.");
+        a = await FitVoiceLengthAsync(c, a, manual: true).ConfigureAwait(false);
         c.Job.AudioDurationSec = Math.Round(a.Duration, 3);
         _x.Store.Update(c.Job);
         c.StageMetrics["audio_sec"] = a.Duration; c.StageMetrics["peak_db"] = a.PeakDb; c.StageMetrics["rms_db"] = a.RmsDb; c.StageMetrics["speech_ratio"] = a.SpeechRatio;
@@ -294,6 +318,44 @@ public sealed partial class JobRunner
         if (a.Duration < expected * 0.45) c.Log.Warn($"Yuklangan ovoz subtitr matniga nisbatan ancha qisqa ({a.Duration:0.0}s, ~{expected:0}s kutilgan) - alignment tekshiradi.", "Voice");
         c.Log.Info($"Tayyor ovoz qabul qilindi: {a.Duration:0.00}s, peak {a.PeakDb:0.0} dB, RMS {a.RmsDb:0.0} dB.", "Voice");
         return new StageOutputs { Files = { FileOps.Describe(c.VoiceWav, "voice") }, Values = { ["duration"] = a.Duration.ToString("R", System.Globalization.CultureInfo.InvariantCulture), ["source"] = "manual" } };
+    }
+
+    /// <summary>
+    /// Ovozni format chegarasiga sig'diradi: 16:9 - 3 daqiqagacha, Shorts/kvadrat - 55 soniyagacha (video oxiridagi yakun uchun bir-ikki
+    /// soniya qoladi). Biroz oshsa (<see cref="VideoLength.MaxTempo"/> gacha) ovoz balandligi o'zgarmasdan tezlashtiriladi; ko'p oshsa -
+    /// tushunarli xato (video chegaradan uzun chiqmaydi). Qisqa bo'lsa faqat ogohlantirish. Demo videolarga tegmaydi.
+    /// </summary>
+    private async Task<WavAnalysis> FitVoiceLengthAsync(JobContext c, WavAnalysis a, bool manual)
+    {
+        if (c.Job.IsDemo) return a;
+        var w = VideoLength.For(c.Job.Format);
+        var name = VideoLength.FormatName(c.Job.Format);
+        if (a.Duration <= w.MaxAudioSec)
+        {
+            if (a.Duration < w.MinSec * 0.9)
+                c.Log.Warn($"Ovoz {a.Duration:0.0}s - {name} uchun tavsiya {w.Label} (kamida ~{w.MinSec}s). Video qisqa chiqadi.", "Voice");
+            return a;
+        }
+        var factor = a.Duration / (w.MaxAudioSec - 0.25);
+        if (factor > VideoLength.MaxTempo)
+        {
+            var msg = $"Ovoz {a.Duration:0.0}s - {name} uchun eng ko'pi {w.MaxSec}s (ovozga {w.MaxAudioSec}s). ";
+            throw manual
+                ? PipelineException.Config("voice_too_long", msg + "Botda qisqaroq audio yuklang yoki formatni o'zgartiring.")
+                : PipelineException.Quality("voice_too_long", msg + "Ssenariy kerakligidan uzun chiqdi: mavzuni botda qisqaroq tushuntirish bilan tahrirlang yoki formatni 16:9 ga o'zgartiring.");
+        }
+        var tmp = c.VoiceWav + ".tempo.wav";
+        await _x.Media.TempoAsync(c.VoiceWav, factor, tmp, c.Ct).ConfigureAwait(false);
+        var fitted = Wav.Analyze(tmp, 1.0);
+        if (fitted.Problems.Count > 0 || fitted.Duration > w.MaxAudioSec + 0.5)
+        {
+            File.Delete(tmp);
+            throw PipelineException.Transient("voice_tempo", $"Ovozni {w.MaxAudioSec}s ga sig'dirib bo'lmadi ({fitted.Duration:0.0}s). {string.Join(" ", fitted.Problems)}");
+        }
+        File.Move(tmp, c.VoiceWav, true);
+        c.StageMetrics["tempo"] = Math.Round(factor, 3);
+        c.Log.Warn($"Ovoz {a.Duration:0.0}s edi - {name} chegarasi {w.MaxSec}s: {factor:0.00}x tezlashtirildi ({fitted.Duration:0.0}s, ovoz balandligi o'zgarmaydi).", "Voice");
+        return fitted;
     }
 
     /// <summary>
@@ -625,7 +687,8 @@ public sealed partial class JobRunner
         var info = await _x.Media.ProbeAsync(c.FinalMp4, c.Ct).ConfigureAwait(false);
         var (decodeOk, decodeErr) = await _x.Media.DecodeCheckAsync(c.FinalMp4, c.Ct).ConfigureAwait(false);
         if (!decodeOk) r.Add("decode", QaSeverity.Error, $"MP4 to'liq dekodlanmadi: {Shorten(decodeErr, 400)}", fixable: false);
-        QualityRules.CheckRenderedStreams(info.Duration, duration, info.HasVideo, info.HasAudio, info.Width, info.Height, c.Job.Format, r);
+        QualityRules.CheckRenderedStreams(info.Duration, duration, info.HasVideo, info.HasAudio, info.Width, info.Height, c.Job.Format, r,
+            c.Job.IsDemo ? null : VideoLength.For(c.Job.Format).MaxSec);
 
         var html = File.ReadAllText(c.FilmHtml);
         var mediaDur = new Dictionary<string, double?>(StringComparer.OrdinalIgnoreCase);

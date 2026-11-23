@@ -5,7 +5,7 @@ import { geminiReady, GEMINI_REQUIRED } from "./config";
 import { getCatalog, pickTemplateFormat } from "./topics";
 import { getMachines } from "./machines";
 import { objectInfo, signDownload, signUpload } from "./storage";
-import { youtubeCredentials } from "./youtube";
+import { activeChannelId, youtubeCredentials } from "./youtube";
 import { Status, StatusText } from "./types";
 
 /**
@@ -164,6 +164,7 @@ export async function createDemoVideo(args: Record<string, unknown>) {
   const [row] = await sql()`INSERT INTO ytauto.jobs ${sql()({
     topic: name, notes: summary.slice(0, 4000), language, target_duration_sec: duration, format: t.format, template_name: "",
     voice_profile: t.voice, publish_at_utc: publish.at ?? now, status: Status.Queued, created_at_utc: now, updated_at_utc: now,
+    channel_id: await activeChannelId(), // chiqarilsa - so'rov paytidagi faol kanalga
     kind: "demo", demo_spec: JSON.stringify({ ...spec, publish: { requested: publish.requested, when: publish.when } }),
   })} RETURNING id::int AS id`;
   const machines = await machineSummary();

@@ -1,0 +1,39 @@
+/* Hisob sahifasi kartalari: qo'shimcha tokenlar (Guests) va Claude Code ulash (McpConnect). Dizayn: Hisob HK8SGh. */
+
+/* Bir marta ko'rsatiladigan sir (yangi token / buyruq): to'q panel, urg'u faqat «Faqat hozir» belgisi va Nusxalash tugmasida. */
+.secret { background: var(--inverse); color: var(--on-inverse); border-radius: var(--r-md); padding: 14px 16px 16px; display: grid; gap: 12px; }
+.secretHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-right: -8px; }
+.secretKey { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; }
+.secretKey svg { width: 15px; height: 15px; }
+.close { width: 36px; height: 36px; border-radius: 999px; display: grid; place-items: center; color: var(--on-inverse-muted); }
+.close:focus-visible { outline: 2px solid var(--accent); }
+.secretTitle { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.secretValue { display: block; border: 1px solid var(--on-inverse-muted); border-radius: var(--r-sm); padding: 11px 12px; font: 600 15px/1.35 var(--mono);
+  overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; color: var(--on-inverse); }
+.secretLine { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; font-weight: 500; overflow-wrap: normal; }
+.secretActions { display: flex; align-items: center; gap: 12px; }
+.secretActions > button { flex: none; }
+.secretNote { font-size: 13px; line-height: 1.35; color: var(--on-inverse-muted); }
+
+/* Tokenlar ro'yxati. */
+.list { display: grid; }
+.item { display: flex; align-items: center; gap: 12px; padding: 10px 0; min-height: 64px; }
+.item + .item { border-top: 1px solid var(--line); }
+.tile { width: 40px; height: 40px; border-radius: var(--r-sm); display: grid; place-items: center; flex: none; background: var(--sunken); color: var(--faint); }
+.tile.used { background: var(--ok-soft); color: var(--ok); }
+.itemText { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.itemText b { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.itemText span { font-size: 13px; color: var(--muted); }
+.remove { width: 44px; height: 44px; border-radius: 999px; background: var(--sunken); color: var(--muted); display: grid; place-items: center; flex: none; }
+.remove:disabled { opacity: 0.6; }
+.remove svg { width: 18px; height: 18px; }
+
+/* Yangi token yaratish bloki: ro'yxatdan chiziq bilan ajratilgan. */
+.create { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 14px; }
+
+/* MCP ma'lumot qutisi: kalit - qiymat qatorlari. */
+.info { background: var(--sunken); border-radius: var(--r-sm); padding: 4px 12px; display: grid; }
+.infoRow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 7px 0; font-size: 13px; min-width: 0; }
+.infoRow > span:first-child { color: var(--muted); flex: none; }
+.infoRow > span:last-child { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.select { user-select: all; -webkit-user-select: all; }

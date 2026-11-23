@@ -122,6 +122,22 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
             Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','6')", tx);
             tx.Commit();
         }
+        if (version < 7)
+        {
+            // v7: video qaysi YouTube kanaliga yuklanishi (online bazadagi kabi; lokal rejimda bo'sh - faol kanal).
+            using var tx = c.BeginTransaction();
+            Exec(c, "ALTER TABLE jobs ADD COLUMN channel_id TEXT NOT NULL DEFAULT ''", tx);
+            Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','7')", tx);
+            tx.Commit();
+        }
+        if (version < 8)
+        {
+            // v8: boshlang'ich savol (hook) - online bazadagi kabi.
+            using var tx = c.BeginTransaction();
+            Exec(c, "ALTER TABLE jobs ADD COLUMN hook TEXT", tx);
+            Exec(c, "INSERT OR REPLACE INTO app_meta(key,value) VALUES('schema_version','8')", tx);
+            tx.Commit();
+        }
     }
 
     // ------------------------------------------------------------------ helpers
@@ -144,7 +160,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
     private static DateTimeOffset? ParseTs(object? o) => o is string s && s.Length > 0 ? DateTimeOffset.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind) : null;
     private static string? Str(SqliteDataReader r, string n) { var i = r.GetOrdinal(n); return r.IsDBNull(i) ? null : r.GetString(i); }
 
-    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url, kind, demo_spec, demo_result";
+    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url, kind, demo_spec, demo_result, channel_id, hook";
 
     private static VideoJob ReadJob(SqliteDataReader r) => new()
     {
@@ -168,6 +184,7 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, 
         PublishNow = r.GetInt32(r.GetOrdinal("publish_now")) != 0,
         ManualScript = Str(r, "manual_script"), ManualTitle = Str(r, "manual_title"), ManualAudioUrl = Str(r, "manual_audio_url"),
         Kind = Str(r, "kind") ?? "", DemoSpecJson = Str(r, "demo_spec"), DemoResultJson = Str(r, "demo_result"),
+        ChannelId = Str(r, "channel_id") ?? "", Hook = Str(r, "hook"),
     };
 
     private static void BindJob(SqliteCommand cmd, VideoJob j)
@@ -202,9 +219,9 @@ INSERT INTO jobs(topic, notes, language, target_duration_sec, format, template_n
  run_attempts, next_attempt_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description,
  thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status,
  youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url,
- kind, demo_spec)
+ kind, demo_spec, channel_id, hook)
 VALUES($topic,$notes,$language,$dur,$format,$tpl,$voice,$pub,$status,$created,$updated,$attempts,$next,$cancel,$qa,$errc,$errm,$attn,$snap,$title,$desc,
- $thumb,$va,$aa,$sa,$adur,$yid,$ypriv,$yup,$yproc,$ychk,$pubd,$wd,$wdc,$pn,$ms,$mt,$ma,$kind,$dspec) RETURNING id;
+ $thumb,$va,$aa,$sa,$adur,$yid,$ypriv,$yup,$yproc,$ychk,$pubd,$wd,$wdc,$pn,$ms,$mt,$ma,$kind,$dspec,$chan,$hook) RETURNING id;
 """;
         BindJob(cmd, job);
         cmd.Parameters.AddWithValue("$pn", job.PublishNow ? 1 : 0);
@@ -212,6 +229,8 @@ VALUES($topic,$notes,$language,$dur,$format,$tpl,$voice,$pub,$status,$created,$u
         cmd.Parameters.AddWithValue("$mt", (object?)job.ManualTitle ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$ma", (object?)job.ManualAudioUrl ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$kind", job.Kind ?? "");
+        cmd.Parameters.AddWithValue("$chan", job.ChannelId ?? "");
+        cmd.Parameters.AddWithValue("$hook", (object?)job.Hook ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$dspec", (object?)job.DemoSpecJson ?? DBNull.Value);
         job.Id = (long)cmd.ExecuteScalar()!;
         return job.Id;
@@ -659,6 +678,22 @@ public sealed class SqliteSettingsStore : ISettingsStore
 
     public bool PromptsAreGlobal => _shared is not null;
 
+    /// <summary>Joriy oqimda bajarilayotgan vazifaning YouTube kanali (null - vazifa doirasi yo'q: faol kanal).</summary>
+    private readonly AsyncLocal<string?> _channel = new();
+
+    public IDisposable UseChannel(string? channelId)
+    {
+        var prev = _channel.Value;
+        _channel.Value = channelId ?? "";
+        return new ChannelScope(() => _channel.Value = prev);
+    }
+
+    private sealed class ChannelScope(Action restore) : IDisposable
+    {
+        private Action? _restore = restore;
+        public void Dispose() => Interlocked.Exchange(ref _restore, null)?.Invoke();
+    }
+
     public AppSettings Load()
     {
         var s = LoadLocal();
@@ -694,23 +729,14 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 s.Claude = host.Claude; s.Claude.MontagePrompt = montage;
                 s.VoiceStudio = host.VoiceStudio; s.OpenFilm = host.OpenFilm; s.Limits = host.Limits;
             }
-            try
-            {
-                var oauth = _shared.GetSetting("youtube.oauth");
-                if (!string.IsNullOrWhiteSpace(oauth) && System.Text.Json.Nodes.JsonNode.Parse(oauth)?["refreshToken"]?.GetValue<string>() is { Length: > 0 } rt)
-                {
-                    s.YouTube.RemoteRefreshToken = rt.Trim();
-                    if (System.Text.Json.Nodes.JsonNode.Parse(oauth)?["channelTitle"]?.GetValue<string>() is { Length: > 0 } ct) s.YouTube.ChannelTitle = ct; // bot ulagan kanal nomi
-                }
-            }
-            catch { }
+            // YouTube kanali va uning konteksti (hisob doirasida: mehmon vazifasiga mehmonning o'z kanali). Vazifa bajarilayotganda
+            // (UseChannel) - aynan shu vazifa bog'langan kanal; aks holda hisobning faol kanali.
+            ApplyChannel(s, _shared.GetSetting, _channel.Value);
             var sch = _shared.GetSetting(ScheduleKey);
             if (!string.IsNullOrWhiteSpace(sch))
             {
                 try { s.Schedule = System.Text.Json.JsonSerializer.Deserialize<ScheduleSettings>(sch, AppSettings.Json) ?? s.Schedule; } catch { }
             }
-            // Kanal konteksti (bot kanal tahlilidan yozadi) - hisob doirasida: mehmon vazifasiga mehmonning o'z kanali konteksti.
-            s.ChannelContext = ReadChannelContext(_shared.GetSetting(ChannelContextKey));
             // «Mening ovozim» namunasi - hisob doirasida (mehmon vazifasiga mehmonning o'z ovozi).
             s.VoiceClone = ReadVoiceClone(_shared.GetSetting(VoiceCloneKey));
             // Fon musiqasi kutubxonasi - hisob doirasida (mehmon vazifasiga mehmonning o'z musiqasi).
@@ -729,8 +755,79 @@ public sealed class SqliteSettingsStore : ISettingsStore
 
     /// <summary>Bot boshqaradigan umumiy sozlamalar (JSON): gemini, limits, defaults. Bo'lmagan maydonlar o'zgarmaydi.</summary>
     public const string ConfigKey = "config";
-    /// <summary>Bot kanal tahlilidan yozadigan kontekst: {enabled, script, montage, voiceProfile, updatedAt}.</summary>
+    /// <summary>Bot kanal tahlilidan yozadigan kontekst: {enabled, script, montage, voiceProfile, updatedAt}. Faol kanal nusxasi;
+    /// har kanalniki - channel.context:KANAL_ID.</summary>
     public const string ChannelContextKey = "channel.context";
+    /// <summary>Bot ulagan kanallar: {active, channels:[{id,title,refreshToken,...}]}. Bo'lmasa - eski bitta ulanish (youtube.oauth).</summary>
+    public const string ChannelsKey = "youtube.channels";
+    /// <summary>Faol kanal tokeni nusxasi (v6 dan oldingi botlar faqat shuni yozardi).</summary>
+    public const string LegacyOAuthKey = "youtube.oauth";
+
+    internal sealed record YtChannel(string Id, string Title, string RefreshToken);
+    internal sealed record YtChannels(string Active, IReadOnlyList<YtChannel> Channels);
+
+    internal static YtChannels? ReadChannels(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            var n = System.Text.Json.Nodes.JsonNode.Parse(json);
+            static string Str(System.Text.Json.Nodes.JsonNode? o, string k) => o?[k] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var x) ? x.Trim() : "";
+            var list = new List<YtChannel>();
+            if (n?["channels"] is System.Text.Json.Nodes.JsonArray arr)
+                foreach (var c in arr)
+                {
+                    var id = Str(c, "id"); var rt = Str(c, "refreshToken");
+                    if (id.Length > 0 && rt.Length > 0 && list.All(x => x.Id != id)) list.Add(new YtChannel(id, Str(c, "title"), rt));
+                }
+            var active = Str(n, "active");
+            if (list.All(x => x.Id != active)) active = list.FirstOrDefault()?.Id ?? "";
+            return new YtChannels(active, list);
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Kanal tokeni, nomi va konteksti. <paramref name="scoped"/> - bajarilayotgan vazifaning kanali (null yoki bo'sh - faol kanal).
+    /// Vazifa kanali ro'yxatda yo'q (botda uzilgan) bo'lsa token bo'sh va RemoteOnly: video boshqa kanalga (faol yoki kompyuterning
+    /// lokal tokeni) yuklanib ketmaydi - "kanal ulanmagan" xatosi bo'ladi.
+    /// </summary>
+    internal static void ApplyChannel(AppSettings s, Func<string, string?> get, string? scoped)
+    {
+        var list = ReadChannels(get(ChannelsKey));
+        var id = string.IsNullOrEmpty(scoped) ? list?.Active ?? "" : scoped;
+        if (list is not null && id.Length > 0)
+        {
+            var ch = list.Channels.FirstOrDefault(x => x.Id == id);
+            if (ch is not null)
+            {
+                s.YouTube.RemoteRefreshToken = ch.RefreshToken;
+                if (ch.Title.Length > 0) s.YouTube.ChannelTitle = ch.Title;
+                s.YouTube.ChannelId = ch.Id;
+            }
+            else
+            {
+                s.YouTube.RemoteRefreshToken = "";
+                s.YouTube.RemoteOnly = true;
+                s.YouTube.ChannelTitle = "";
+                s.YouTube.ChannelId = id;
+                s.YouTube.MissingChannel = true;
+            }
+            s.ChannelContext = ReadChannelContext(get(ChannelContextKey + ":" + id) ?? (id == list.Active ? get(ChannelContextKey) : null));
+            return;
+        }
+        try
+        {
+            var oauth = get(LegacyOAuthKey);
+            if (!string.IsNullOrWhiteSpace(oauth) && System.Text.Json.Nodes.JsonNode.Parse(oauth)?["refreshToken"]?.GetValue<string>() is { Length: > 0 } rt)
+            {
+                s.YouTube.RemoteRefreshToken = rt.Trim();
+                if (System.Text.Json.Nodes.JsonNode.Parse(oauth)?["channelTitle"]?.GetValue<string>() is { Length: > 0 } ct) s.YouTube.ChannelTitle = ct; // bot ulagan kanal nomi
+            }
+        }
+        catch { }
+        s.ChannelContext = ReadChannelContext(get(ChannelContextKey));
+    }
     /// <summary>Worker video chiqqanini belgilaydi: bot kanal kontekstini qayta o'rganadi.</summary>
     public const string ChannelStaleKey = "channel.context.stale";
 

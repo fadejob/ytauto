@@ -5,6 +5,7 @@ import { geminiGenerate, responseJson } from "../gemini";
 import { utcToZoned } from "../time";
 import { getCatalog } from "../topics";
 import { Status } from "../types";
+import { activeChannelId } from "../youtube";
 import { insertSuggestions, listSuggestions, parseContext, readProfile, recentSuggestionTopics } from "./store";
 
 /** Kunlik mavzu tavsiyalari: kanal konteksti asosida 5 ta yangi inglizcha mavzu (kuniga bir marta). */
@@ -19,10 +20,11 @@ const SCHEMA = {
         type: "OBJECT",
         properties: {
           topic: { type: "STRING", description: "video topic in English, max 90 characters" },
-          notes: { type: "STRING", description: "what the video should cover, angle and hook, in English, 1-3 sentences" },
+          notes: { type: "STRING", description: "what the video should cover and its angle, in English, 1-3 sentences" },
+          hook: { type: "STRING", description: "the opening question the video starts with, spoken word for word in the first seconds: in English, one short question (max 20 words) ending with ?" },
           reason: { type: "STRING", description: "why this fits the channel and its audience, in Uzbek (Latin script), one sentence" },
         },
-        required: ["topic", "notes", "reason"],
+        required: ["topic", "notes", "hook", "reason"],
       },
     },
   },
@@ -37,14 +39,17 @@ export async function todayLocal(): Promise<string> {
 /** Bugun tavsiyalar hali yo'q va kontekst bor bo'lsa yaratadi. Natija: yaratildimi. */
 export async function generateSuggestions(accountId: string, opts: { guest?: boolean } = {}): Promise<boolean> {
   const prep = await withAccount(accountId, async () => {
+    // Faol kanal uchun (tavsiyalar kanal bo'yicha).
+    const ch = await activeChannelId();
+    if (!ch) return null;
     const date = await todayLocal();
-    if ((await listSuggestions(date)).length) return null;
-    const ctx = parseContext(await readProfile());
+    if ((await listSuggestions(ch, date)).length) return null;
+    const ctx = parseContext(await readProfile(ch));
     if (!ctx) return null;
     const keys = await getGeminiKeys();
     if (!keys.keys.length) return null;
-    const queued = await sql()`SELECT topic FROM ytauto.jobs WHERE status <> ${Status.Cancelled} ORDER BY id DESC LIMIT 40`;
-    return { date, ctx, keys, queued: queued.map((r) => r.topic as string), recent: await recentSuggestionTopics() };
+    const queued = await sql()`SELECT topic FROM ytauto.jobs WHERE channel_id = ${ch} AND status <> ${Status.Cancelled} ORDER BY id DESC LIMIT 40`;
+    return { ch, date, ctx, keys, queued: queued.map((r) => r.topic as string), recent: await recentSuggestionTopics(ch) };
   }, { guest: opts.guest });
   if (!prep) return false;
 
@@ -56,14 +61,15 @@ export async function generateSuggestions(accountId: string, opts: { guest?: boo
     `Best performing recent videos: ${[...ctx.videos].sort((a, b) => b.views - a.views).map((v) => `${v.title} (${v.views} views)`).join("; ")}\n\n` +
     `Do NOT repeat or closely paraphrase any of these (already published, queued or rejected):\n` +
     [...ctx.recentTitles, ...prep.queued, ...prep.recent.dismissed, ...prep.recent.accepted].slice(0, 90).map((t) => `- ${t}`).join("\n") +
-    `\n\nIdeas must be specific, evergreen or timely, and realistic to explain with narration and 2D motion graphics. Topic and notes in English; reason in Uzbek.`;
+    `\n\nIdeas must be specific, evergreen or timely, and realistic to explain with narration and 2D motion graphics. Topic, notes and hook in English; reason in Uzbek.\n` +
+    `Each video opens with its hook: a short, curiosity-sparking question the viewer wants answered, spoken word for word in the first seconds.`;
   const { data } = await geminiGenerate(
     { contents: [{ role: "user", parts: [{ text: prompt }] }], generationConfig: { temperature: 0.9, responseMimeType: "application/json", responseSchema: SCHEMA, thinkingConfig: { thinkingBudget: 1024 } } },
     { keys: prep.keys, timeoutMs: 90_000 },
   );
-  const ideas = (responseJson<{ ideas?: { topic?: string; notes?: string; reason?: string }[] }>(data).ideas ?? [])
-    .map((i) => ({ topic: (i.topic ?? "").trim(), notes: (i.notes ?? "").trim(), reason: (i.reason ?? "").trim() }))
+  const ideas = (responseJson<{ ideas?: { topic?: string; notes?: string; hook?: string; reason?: string }[] }>(data).ideas ?? [])
+    .map((i) => ({ topic: (i.topic ?? "").trim(), notes: (i.notes ?? "").trim(), hook: (i.hook ?? "").replace(/\s+/g, " ").trim(), reason: (i.reason ?? "").trim() }))
     .filter((i) => i.topic)
     .slice(0, COUNT);
-  return withAccount(accountId, () => insertSuggestions(prep.date, ideas), { guest: opts.guest });
+  return withAccount(accountId, () => insertSuggestions(prep.ch, prep.date, ideas), { guest: opts.guest });
 }

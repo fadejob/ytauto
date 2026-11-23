@@ -82,7 +82,7 @@ public sealed class GeminiScriptGenerator : IScriptGenerator
         }
         else if (req.Notes.Contains("[FACT SHEET FROM PREVIOUS STEP]")) factSheet = "(see notes)";
 
-        var prompt = Fill(req.PromptTemplate, req, factSheet.Length == 0 ? "(empty - no search-grounded facts available; avoid recent numbers and specific statistics)" : factSheet);
+        var prompt = FillScript(req.PromptTemplate, req, factSheet.Length == 0 ? "(empty - no search-grounded facts available; avoid recent numbers and specific statistics)" : factSheet);
         prompt += MetadataInstruction(req.WriteDescription, req.WriteTags);
         if (req.PreviousProblems.Count > 0)
             prompt += "\n\nYour previous answer was rejected by an automatic check. Fix ALL of these problems:\n- " + string.Join("\n- ", req.PreviousProblems);
@@ -217,10 +217,40 @@ SPOKEN TEXT:
         return uri;
     }
 
+    /// <summary>Format oralig'i bo'yicha uzunlik qoidasi (so'zlar soni TTS tezligidan).</summary>
+    internal static string WindowLengthRule(ScriptRequest r, VideoLength w) =>
+        $"Length (hard limit for this {r.Format} video): the narration, including the opening hook, must be {w.MinWords(r.Language)}-{w.MaxWords(r.Language)} spoken words " +
+        $"(about {w.MinSec}-{w.MaxSec} seconds read aloud); aim for about {w.TargetWords(r.Language)} words. Never exceed {w.MaxWords(r.Language)} words. " +
+        "Count your words before answering. No filler, no repetition.";
+
+    /// <summary>Kanal egasining boshlang'ich savoli: ssenariy aynan shu bilan boshlanadi va butun video shu savolga javob bo'ladi.</summary>
+    internal static string HookBlock(string hook) =>
+        "OPENING HOOK (mandatory, written by the channel owner):\n" +
+        $"\"{HookRule.Normalize(hook)}\"\n" +
+        "- subtitle_text (and narration_text) MUST begin with exactly this question, word for word, as the very first sentence. Do not rephrase it and do not put anything before it.\n" +
+        "- Right after it, raise the stakes in one or two short sentences so the viewer wants the answer, then build the whole script as the answer to this question.\n" +
+        "- Do not repeat the hook immediately. Pay it off clearly before the end, then the short recap or takeaway.";
+
+    /// <summary>Ssenariy prompti: shablon + (shablonda {length_rule} bo'lmasa) uzunlik qoidasi + hook bo'limi.</summary>
+    internal static string FillScript(string template, ScriptRequest r, string factSheet)
+    {
+        var p = Fill(template, r, factSheet);
+        if (r.Length is { } w && !template.Contains("{length_rule}") && !template.Contains(DefaultPrompts.LegacyLengthLine))
+            p += "\n\n" + WindowLengthRule(r, w);
+        if (!string.IsNullOrWhiteSpace(r.Hook)) p += "\n\n" + HookBlock(r.Hook);
+        return p;
+    }
+
     internal static string Fill(string template, ScriptRequest r, string factSheet)
     {
         string lengthRule;
-        if (r.TargetDurationSec > 0)
+        if (r.Length is { } window)
+        {
+            // Format oralig'i (16:9 - 2-3 daqiqa, Shorts - 55 soniyagacha): eski qat'iy uzunlik qatori ham shu qoidaga almashtiriladi.
+            lengthRule = WindowLengthRule(r, window);
+            template = template.Replace(DefaultPrompts.LegacyLengthLine, "{length_rule}");
+        }
+        else if (r.TargetDurationSec > 0)
         {
             var words = (int)Math.Round(r.TargetDurationSec * LanguageNames.WordsPerSecond(r.Language));
             lengthRule = $"Target length: about {r.TargetDurationSec} seconds of narration, which is about {words} spoken words.";
@@ -234,7 +264,7 @@ SPOKEN TEXT:
         return template.Replace("{topic}", r.Topic).Replace("{notes}", string.IsNullOrWhiteSpace(r.Notes) ? "(none)" : r.Notes)
             .Replace("{language}", r.Language).Replace("{language_name}", LanguageNames.Of(r.Language))
             .Replace("{length_rule}", lengthRule)
-            .Replace("{duration_sec}", r.TargetDurationSec > 0 ? r.TargetDurationSec.ToString() : "as many as the topic needs")
+            .Replace("{duration_sec}", r.Length is { } lw ? lw.TargetSec.ToString() : r.TargetDurationSec > 0 ? r.TargetDurationSec.ToString() : "as many as the topic needs")
             .Replace("{target_words}", "as many as needed")
             .Replace("{format}", r.Format).Replace("{fact_sheet}", factSheet)
             .Replace(Core.Pipeline.ChannelPrompt.Placeholder, ""); // kontekst JobRunner'da qo'yiladi; qolib ketgan placeholder modelga bormaydi

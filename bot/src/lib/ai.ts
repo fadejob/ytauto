@@ -5,10 +5,16 @@ import { geminiGenerate, type GeminiContent } from "./gemini";
 import { readBlocks } from "./channel/store";
 import { musicCatalog } from "./music";
 import { StatusText, type Action, type ChatMessage, type Proposal } from "./types";
+import { checkHook } from "./video-rules";
 
 const topicProps = {
   topic: { type: "string", description: "Video mavzusi — DOIM INGLIZ TILIDA (foydalanuvchi boshqa tilda yozsa ham tarjima qiling). Qisqa va aniq." },
   notes: { type: "string", description: "Mavzu tushuntirishi / ssenariy uchun ko'rsatmalar — DOIM INGLIZ TILIDA: nimalarni yoritish, ohang, auditoriya, muhim faktlar." },
+  hook: {
+    type: "string",
+    description: "Boshlang'ich savol (hook) — DOIM INGLIZ TILIDA: video aynan shu so'zlar bilan boshlanadi. Qisqa (eng ko'pi 20 so'z), qiziqish uyg'otadigan bitta savol, «?» bilan tugaydi. " +
+      "Foydalanuvchi o'z savolini aytgan bo'lsa — aynan o'shani (inglizchaga tarjima qilib) bering.",
+  },
   publish_at: { type: "string", description: "Ixtiyoriy chiqish vaqti 'YYYY-MM-DD HH:mm' (kanal zonasi). Foydalanuvchi aytmasa bermang — avtomatik tanlanadi." },
   music: {
     type: "string",
@@ -25,7 +31,7 @@ const TOOLS = [
       description: "Yangi video mavzularini qo'shishni TAKLIF qiladi (bir vaqtda 1-5 ta, har biri turli mavzu).",
       parameters: {
         type: "object",
-        properties: { topics: { type: "array", minItems: 1, maxItems: 5, items: { type: "object", properties: topicProps, required: ["topic", "notes"] } } },
+        properties: { topics: { type: "array", minItems: 1, maxItems: 5, items: { type: "object", properties: topicProps, required: ["topic", "notes", "hook"] } } },
         required: ["topics"],
       },
     },
@@ -129,6 +135,8 @@ Muhim qoidalar:
 - Siz hech narsani o'zingiz bajarmaysiz: har bir tool chaqiruvi foydalanuvchiga "Ruxsat berish" tugmasi bilan ko'rsatiladi. Javobda "bajarildi" demang — "ruxsat bersangiz qo'shiladi" deng.
 - Video, subtitr va YouTube title DOIM ingliz tilida. Shuning uchun topic va notes ni har doim INGLIZ tilida yozing, foydalanuvchi qaysi tilda so'rasa ham.
 - Bir so'rovda eng ko'pi 5 ta mavzu. Har mavzu uchun notes'da yaxshi tushuntirish yozing (nimani yoritish, struktura, auditoriya).
+- Har yangi mavzuga hook (boshlang'ich savol) majburiy: video shu savol bilan boshlanadi, montaj ham shundan quriladi. Foydalanuvchi savol bergan bo'lsa — o'shani oling, bermagan bo'lsa — mavzuga mos qisqa savol taklif qiling (ruxsat oynasida ko'radi).
+- Video uzunligi formatdan: gorizontal 16:9 — 2–3 daqiqa, Shorts 9:16 va kvadrat — 55 soniyadan oshmaydi. Shunga sig'adigan mavzu va notes yozing.
 - Faqat editable=true mavzuni o'zgartirish, deletable=true mavzuni o'chirish mumkin. Boshqasini so'rasa, nega mumkin emasligini tushuntiring.
 - Mavzu raqami aniq bo'lmasa, ro'yxatdan eng mosini tanlang yoki so'rang.
 - Prompt o'zgarishida promptdagi matndan aynan nusxa olib 'find' ga qo'ying.
@@ -150,7 +158,7 @@ ${prompts.script || "(bo'sh)"}
 ${prompts.montage || "(bo'sh)"}${channel}`;
 }
 
-type ToolTopic = { topic?: string; notes?: string; publish_at?: string; music?: string };
+type ToolTopic = { topic?: string; notes?: string; hook?: string; publish_at?: string; music?: string };
 type ToolArgs = ToolTopic & { topics?: ToolTopic[]; id?: number; key?: string; text?: string; edits?: { find: string; replace: string }[] };
 
 function toAction(name: string, args: ToolArgs, lib: MusicLib): Action | null {
@@ -159,12 +167,12 @@ function toAction(name: string, args: ToolArgs, lib: MusicLib): Action | null {
       return {
         type: "create_topics",
         topics: (args.topics ?? []).slice(0, 5).map((t) => ({
-          topic: String(t.topic ?? ""), notes: String(t.notes ?? ""), publishAt: t.publish_at || undefined, music: resolveMusic(t.music, lib),
+          topic: String(t.topic ?? ""), notes: String(t.notes ?? ""), hook: String(t.hook ?? ""), publishAt: t.publish_at || undefined, music: resolveMusic(t.music, lib),
         })),
       };
     case "update_topic":
       return {
-        type: "update_topic", id: Number(args.id), topic: args.topic ?? undefined, notes: args.notes ?? undefined, publishAt: args.publish_at || undefined,
+        type: "update_topic", id: Number(args.id), topic: args.topic ?? undefined, notes: args.notes ?? undefined, hook: args.hook ?? undefined, publishAt: args.publish_at || undefined,
         music: resolveMusic(args.music, lib),
       };
     case "delete_topic":
@@ -182,6 +190,12 @@ function toAction(name: string, args: ToolArgs, lib: MusicLib): Action | null {
 
 const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…" : s);
 
+/** AI taklif qilgan hook qoidaga mos kelmasa - taklifdagi xato matni (ruxsat berishdan oldin ko'rinadi). */
+const hookError = (hooks: (string | undefined)[]) => {
+  for (const h of hooks) { const r = checkHook(h); if ("error" in r) return r.error; }
+  return undefined;
+};
+
 /** Kutubxonada yo'q trek tanlangan bo'lsa - taklifdagi xato matni. */
 const badMusic = (vals: (string | undefined)[], lib: MusicLib) =>
   vals.some((v) => v && v !== "none" && !lib.tracks.some((t) => t.id === v))
@@ -193,13 +207,13 @@ async function describe(a: Action, lib: MusicLib): Promise<Pick<Proposal, "summa
     case "create_topics":
       return {
         summary: `${a.topics.length} ta yangi mavzu qo'shish`,
-        preview: a.topics.map((t, i) => `${i + 1}. ${t.topic}${t.publishAt ? `  (${t.publishAt})` : ""}${t.music !== undefined ? `\n   🎵 ${musicLabel(t.music, lib)}` : ""}\n   ${clip(t.notes ?? "", 400)}`).join("\n\n"),
-        error: badMusic(a.topics.map((t) => t.music), lib),
+        preview: a.topics.map((t, i) => `${i + 1}. ${t.topic}${t.publishAt ? `  (${t.publishAt})` : ""}${t.hook ? `\n   ❓ ${t.hook}` : ""}${t.music !== undefined ? `\n   🎵 ${musicLabel(t.music, lib)}` : ""}\n   ${clip(t.notes ?? "", 400)}`).join("\n\n"),
+        error: badMusic(a.topics.map((t) => t.music), lib) ?? hookError(a.topics.map((t) => t.hook)),
       };
     case "update_topic":
       return {
         summary: `#${a.id} mavzusini o'zgartirish`,
-        preview: [a.topic && `Mavzu: ${a.topic}`, a.notes && `Tushuntirish: ${clip(a.notes, 400)}`, a.publishAt && `Chiqish: ${a.publishAt}`,
+        preview: [a.topic && `Mavzu: ${a.topic}`, a.hook && `Hook: ${a.hook}`, a.notes && `Tushuntirish: ${clip(a.notes, 400)}`, a.publishAt && `Chiqish: ${a.publishAt}`,
           a.music !== undefined && `Fon musiqasi: ${musicLabel(a.music, lib)}`].filter(Boolean).join("\n"),
         error: badMusic([a.music], lib),
       };

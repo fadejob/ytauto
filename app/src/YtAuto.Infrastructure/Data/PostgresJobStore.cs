@@ -172,7 +172,7 @@ public sealed class PostgresJobStore : IAppStore
     private static DateTimeOffset? D(NpgsqlDataReader r, string col) { var i = r.GetOrdinal(col); return r.IsDBNull(i) ? null : r.GetFieldValue<DateTimeOffset>(i); }
     private static string? S(NpgsqlDataReader r, string col) { var i = r.GetOrdinal(col); return r.IsDBNull(i) ? null : r.GetString(i); }
 
-    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url, kind, demo_spec, demo_result";
+    private const string JobColumns = "id, topic, notes, language, target_duration_sec, format, template_name, voice_profile, publish_at_utc, status, created_at_utc, updated_at_utc, run_attempts, next_attempt_at_utc, claimed_by, claimed_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description, thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status, youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url, kind, demo_spec, demo_result, channel_id, hook";
 
     private static VideoJob ReadJob(NpgsqlDataReader r) => new()
     {
@@ -194,6 +194,7 @@ public sealed class PostgresJobStore : IAppStore
         PublishNow = r.GetBoolean(r.GetOrdinal("publish_now")),
         ManualScript = S(r, "manual_script"), ManualTitle = S(r, "manual_title"), ManualAudioUrl = S(r, "manual_audio_url"),
         Kind = S(r, "kind") ?? "", DemoSpecJson = S(r, "demo_spec"), DemoResultJson = S(r, "demo_result"),
+        ChannelId = S(r, "channel_id") ?? "", Hook = S(r, "hook"),
     };
 
     private static void BindJob(NpgsqlCommand cmd, VideoJob j)
@@ -234,9 +235,9 @@ INSERT INTO {T("jobs")}(topic, notes, language, target_duration_sec, format, tem
  run_attempts, next_attempt_at_utc, cancel_requested, qa_fix_cycles, last_error_code, last_error_message, attention_reason, settings_snapshot, title, description,
  thumbnail_path, video_archive_path, audio_archive_path, subtitle_archive_path, audio_duration_sec, youtube_video_id, youtube_privacy, youtube_upload_status,
  youtube_processing_status, youtube_checked_at_utc, published_at_utc, work_dir, work_dir_cleaned, publish_now, manual_script, manual_title, manual_audio_url,
- kind, demo_spec)
+ kind, demo_spec, channel_id, hook)
 VALUES(@topic,@notes,@language,@dur,@format,@tpl,@voice,@pub,@status,@created,@updated,@attempts,@next,@cancel,@qa,@errc,@errm,@attn,@snap,@title,@desc,
- @thumb,@va,@aa,@sa,@adur,@yid,@ypriv,@yup,@yproc,@ychk,@pubd,@wd,@wdc,@pn,@ms,@mt,@ma,@kind,@dspec) RETURNING id
+ @thumb,@va,@aa,@sa,@adur,@yid,@ypriv,@yup,@yproc,@ychk,@pubd,@wd,@wdc,@pn,@ms,@mt,@ma,@kind,@dspec,@chan,@hook) RETURNING id
 """, c);
         if (job.CreatedAtUtc == default) job.CreatedAtUtc = DateTimeOffset.UtcNow;
         BindJob(cmd, job);
@@ -246,6 +247,8 @@ VALUES(@topic,@notes,@language,@dur,@format,@tpl,@voice,@pub,@status,@created,@u
         cmd.Parameters.AddWithValue("ma", NpgsqlDbType.Text, N(job.ManualAudioUrl));
         cmd.Parameters.AddWithValue("kind", job.Kind ?? "");
         cmd.Parameters.AddWithValue("dspec", NpgsqlDbType.Text, N(job.DemoSpecJson));
+        cmd.Parameters.AddWithValue("chan", job.ChannelId ?? "");
+        cmd.Parameters.AddWithValue("hook", NpgsqlDbType.Text, N(job.Hook));
         job.Id = (long)cmd.ExecuteScalar()!;
         return job.Id;
     }
