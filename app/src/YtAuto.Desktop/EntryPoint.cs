@@ -8,7 +8,7 @@ public static class EntryPoint
 {
     private static readonly string[] WorkerFlags =
     {
-        "--poll", "--scheduled", "--batch-now", "--manual", "--check", "--refresh", "--selftest-local",
+        "--agent", "--poll", "--scheduled", "--batch-now", "--manual", "--check", "--refresh", "--selftest-local",
         "--publish-catalog", "--import-config", "--schedule-install", "--schedule-remove",
     };
 

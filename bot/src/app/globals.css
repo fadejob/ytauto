@@ -19,10 +19,10 @@
   --bad-soft: #F7DEDA;
   --inverse: #1F1B16;
   --on-inverse: #F5F1EA;
-  --on-inverse-muted: #B7AEA2;
-  --on-inverse-ok: #9CCB7C;
+  --on-inverse-muted: #A39A8E;
+  --on-inverse-ok: #9CCB78;
   --tabbar: #1F1B16;
-  --scrim: rgba(31, 27, 22, 0.45);
+  --scrim: rgba(31, 27, 22, 0.4);
   --shadow: 0 8px 24px rgba(31, 27, 22, 0.18);
 
   --r-sm: 10px;
@@ -58,11 +58,11 @@
   --bad: #F2786F;
   --bad-soft: #3B1D1A;
   --inverse: #3A3026;
-  --on-inverse: #F3EEE6;
-  --on-inverse-muted: #B7AEA2;
-  --on-inverse-ok: #9CCB7C;
+  --on-inverse: #F5F1EA;
+  --on-inverse-muted: #BDB3A5;
+  --on-inverse-ok: #9CCB78;
   --tabbar: #2B2723;
-  --scrim: rgba(0, 0, 0, 0.55);
+  --scrim: rgba(0, 0, 0, 0.6);
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   color-scheme: dark;
 }
@@ -158,7 +158,7 @@ svg.i { width: 18px; height: 18px; flex: none; }
 .inp.err { border-color: var(--bad); }
 textarea.inp { resize: vertical; min-height: 84px; line-height: 1.4; }
 select.inp { appearance: auto; min-width: 0; text-overflow: ellipsis; }
-.inp::placeholder { color: var(--faint); }
+.inp::placeholder { color: var(--muted); }
 .hint { font-size: 13px; color: var(--muted); line-height: 1.4; }
 .field-err { font-size: 13px; color: var(--bad); display: flex; gap: 6px; align-items: flex-start; }
 /* minmax(0, 1fr): select'ning eng uzun varianti (masalan vaqt zonasi) ustunni kengaytirib, kartadan chiqib ketmasin. */
@@ -203,8 +203,10 @@ select.inp { appearance: auto; min-width: 0; text-overflow: ellipsis; }
 /* ---------- boshlang'ich savol (hook) */
 .hook-slab { background: var(--inverse); color: var(--on-inverse); border-radius: var(--r-md); padding: 16px; display: grid; gap: 8px; }
 .hook-slab .k { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.4px; color: var(--accent); text-transform: uppercase; }
-.hook-slab .q { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; line-height: 1.3; }
+.hook-slab .q { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; line-height: 1.3; }
 .hook-slab .h { font-size: 13px; color: var(--on-inverse-muted); line-height: 1.4; }
+/* Hisoblagich (so'z soni): dizaynda 12/600. */
+.hook-slab > div:first-child .h { font-size: 12px; font-weight: 600; }
 .hook-line { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; line-height: 1.35; }
 .hook-line svg { color: var(--accent-ink); width: 16px; height: 16px; flex: none; }
 
@@ -213,14 +215,32 @@ select.inp { appearance: auto; min-width: 0; text-overflow: ellipsis; }
 .alert > * { min-width: 0; }
 .alert svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
 .alert.note { background: var(--sunken); color: var(--muted); }
+.alert .btn.secondary { background: var(--card); }
 .alert.accent { background: var(--accent-soft); color: var(--accent-ink); }
 .banner { display: flex; gap: 10px; align-items: flex-start; margin: 0 16px; padding: 12px 14px; border-radius: var(--r-md); font-size: 13px; line-height: 1.4; background: var(--accent-soft); color: var(--accent-ink); }
 .banner.bad { background: var(--bad-soft); color: var(--bad); }
+/* Karta ko'rinishli banner (dizayn: Holatlar → Bo'sh va ogohlantirish): bad - ish to'xtaydi, info - bilib qo'ying. */
+.notice { display: flex; gap: 12px; align-items: flex-start; margin: 0 16px 12px; padding: 16px; border-radius: var(--r-lg); background: var(--card); }
+.notice.bad { background: var(--bad-soft); }
+.notice .ic { width: 40px; height: 40px; border-radius: var(--r-sm); background: var(--sunken); color: var(--ink); display: grid; place-items: center; flex: none; }
+.notice.bad .ic { background: var(--card); color: var(--bad); }
+.notice .body { display: grid; gap: 4px; min-width: 0; flex: 1; }
+.notice .trow { display: flex; align-items: center; gap: 8px; }
+.notice .trow b { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; line-height: 1.3; color: var(--ink); }
+.notice.bad .trow b { color: var(--bad); }
+.notice p { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+.notice.bad p { color: var(--ink); }
+.notice .foot { padding-top: 8px; display: flex; }
+.notice .pill { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 999px; background: var(--card); color: var(--bad); font-size: 13px; font-weight: 700; }
+.notice .pill.ink { color: var(--ink); }
+.notice .pill svg { width: 16px; height: 16px; flex: none; }
+.notice .pill:disabled { opacity: 0.7; cursor: progress; }
+.notice .pill::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
 .banner svg { width: 18px; height: 18px; flex: none; }
 .banner .linkbtn { color: inherit; text-decoration: underline; min-height: 0; }
 
 /* ---------- bo'sh holat */
-.empty { display: grid; justify-items: center; gap: 8px; text-align: center; color: var(--muted); padding: 32px 20px; font-size: 14px; }
+.empty { display: grid; justify-items: center; gap: 8px; text-align: center; color: var(--muted); padding: 32px 20px; font-size: 14px; border: 1.5px dashed var(--line); border-radius: var(--r-lg); }
 .empty .ic { width: 52px; height: 52px; border-radius: 999px; background: var(--sunken); display: grid; place-items: center; color: var(--muted); }
 .empty b { color: var(--ink); font-size: 17px; }
 
@@ -250,7 +270,10 @@ select.inp { appearance: auto; min-width: 0; text-overflow: ellipsis; }
 .toast svg { width: 18px; height: 18px; flex: none; color: var(--on-inverse-ok); }
 .toast.bad { background: var(--bad-soft); color: var(--bad); border-radius: var(--r-md); }
 .toast.bad svg { color: var(--bad); }
-.toast .act { margin-left: 4px; color: var(--accent); font-weight: 700; }
+.toast svg.info { color: var(--on-inverse-muted); }
+.toast.has-act { padding-right: 4px; }
+.toast .act { position: relative; margin-left: 2px; height: 36px; padding: 0 12px; border-radius: 999px; color: var(--accent); font-size: 13px; font-weight: 700; flex: none; }
+.toast .act::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
 
 .fab { position: fixed; right: max(16px, calc((100vw - var(--rail) - var(--shell)) / 2 + 16px)); bottom: calc(var(--tabbar-h) + 24px + var(--safe-bottom)); z-index: 25; box-shadow: var(--shadow); }
 .fade-bottom { position: fixed; left: var(--rail); right: 0; bottom: 0; height: 150px; z-index: 20; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--bg) 55%); }
@@ -302,6 +325,7 @@ select.inp { appearance: auto; min-width: 0; text-overflow: ellipsis; }
   :root { --shell: 860px; --sheet: 720px; --chat: 760px; }
   .page, .chat { padding: 0 24px; }
   .banner { margin: 0 24px; }
+  .notice { margin: 0 24px 12px; }
   .msg { max-width: 76%; }
 }
 
@@ -334,3 +358,10 @@ select.inp { appearance: auto; min-width: 0; text-overflow: ellipsis; }
 .btn.sm, .seg button, .back, .round, .linkbtn { position: relative; }
 .btn.sm::after, .seg button::after, .back::after, .round::after, .linkbtn::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
 .round::after { left: 50%; right: auto; width: 44px; transform: translate(-50%, -50%); }
+
+/* Tasdiq oynasi */
+.confirm-backdrop { z-index: 60; }
+.confirm { position: fixed; z-index: 61; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100vw - 32px)); background: var(--card); border-radius: var(--r-lg); padding: 20px; display: grid; gap: 10px; box-shadow: var(--shadow); }
+.confirm h2 { margin: 0; font-size: 19px; font-weight: 750; letter-spacing: -0.3px; line-height: 1.25; }
+.confirm .sub { margin: 0; white-space: pre-line; }
+.confirm-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 6px; }

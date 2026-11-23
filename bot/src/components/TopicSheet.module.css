@@ -42,18 +42,23 @@
 .meterRow b span { color: var(--muted); font-weight: 500; }
 .meterRow b.bad { color: var(--bad); }
 
-/* sana va soat: chapda ikonka */
-.iconInp { position: relative; display: block; min-width: 0; }
-.iconInp svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
-.iconInp input { padding-left: 40px; }
-/* Tizim belgisi (kalendar/soat) yashirin, lekin butun maydon ustida: istalgan joy bosilsa tanlov oynasi ochiladi. */
-.iconInp input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; opacity: 0; cursor: pointer; }
-/* Bo'sh qiymat: «dd/mm/yyyy» o'rniga dizayndagi «Avtomatik» / «18:00» (fokusda tizim ko'rinishi qaytadi). */
-.iconInp input[data-empty]::-webkit-datetime-edit { color: transparent; }
-.iconInp input[data-empty]:focus::-webkit-datetime-edit { color: inherit; }
-.ph { position: absolute; left: 41px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; white-space: nowrap; }
-.iconInp:focus-within .ph { display: none; }
-@supports not selector(::-webkit-datetime-edit) { .ph { display: none; } }
+/* sana va soat: dizayndagidek matn + belgi; haqiqiy native input pastida ko'rinmas holda butun maydonni qoplaydi */
+.pick { position: relative; display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 12px; background: var(--sunken); border: 2px solid transparent; border-radius: var(--r-sm); color: var(--ink); min-width: 0; }
+.pick:focus-within { border-color: var(--accent); background: var(--card); }
+.pickVal { flex: 1; min-width: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pickBold { font-weight: 600; }
+.pickEmpty { color: var(--muted); }
+.pickIc { color: var(--muted); flex: none; }
+.pickInput { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; font-size: 16px; }
+.pickInput::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; cursor: pointer; }
+
+/* Sheet ichida maydon yorliqlari (FORMAT, MAVZU, TITLE, SANA…) - dizaynda ink; elementlar tartibi (grid) buzilmaydi */
+.ink { display: contents; }
+.ink :global(.label) { color: var(--ink); }
+.inkL :global(.label) { color: var(--ink); }
+.ink :global(.field .sub) { color: var(--muted); }
+/* Matn manbai segmenti (Gemini yozadi / O'z matnim / Tayyor audio): dizaynda 13px */
+.rowCard :global(.seg) button { font-size: 13px; }
 
 /* yopiq video qatori */
 .collapsed {

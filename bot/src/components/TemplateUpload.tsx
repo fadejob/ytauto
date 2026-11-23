@@ -41,7 +41,7 @@ export function useTemplateUploads(toast: Toast, enabled = true) {
     return () => window.clearInterval(t);
   }, [enabled, active, load]);
 
-  /** Fayl → Supabase Storage → commit (kompyuterlar ~2 daqiqada yuklab olib o'rnatadi). Muvaffaqiyatda true. */
+  /** Fayl → Supabase Storage → commit (kompyuterlar darhol yuklab olib o'rnatadi). Muvaffaqiyatda true. */
   const start = useCallback(async ({ name, kind, file, machines: picked }: UploadInput): Promise<boolean> => {
     if (!file || !name.trim() || picked.length === 0) return false;
     haptic.tap();
@@ -111,7 +111,7 @@ export default function TemplateUpload({ machines, local, start, onClose }: {
   return (
     <Sheet
       title="Shablon yuklash"
-      sub="Kompyuter ~2 daqiqada yuklab olib o'rnatadi"
+      sub="Kompyuter darhol yuklab olib o'rnatadi"
       onClose={onClose}
       footer={
         <>

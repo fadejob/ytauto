@@ -23,7 +23,7 @@
 .bad .kind { background: var(--card); color: var(--bad); }
 
 .pct { position: absolute; top: 24px; right: 16px; font-size: 15px; font-weight: 750; color: var(--accent-ink); }
-.corner { position: absolute; top: 16px; right: 12px; display: flex; }
+.corner { position: absolute; top: 16px; left: 64px; display: flex; }
 .ok { color: var(--ok); }
 
 .del { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; color: var(--muted); }

@@ -103,6 +103,26 @@ export async function isHostedGuest(hostId: string, guestId: string): Promise<bo
   return !!r;
 }
 
+/**
+ * Hisob kompyuterlaridagi tirik agentlar (oxirgi 2 daqiqada yurak urishi, tunnel manzili bor). Mehmon hisobi uchun - mezbon hisob
+ * kompyuterlari (mehmon videolari o'sha yerda tayyorlanadi): shuning uchun egasi ulanishi bilan, faqat shu ikki hisob doirasida.
+ * Sxema v7 dan eski bo'lsa (ustunlar yo'q) - bo'sh ro'yxat: bot avvalgidek bazaga yozib qo'yadi, kompyuter so'rovni o'zi topadi.
+ */
+export async function agentEndpoints(accountId: string): Promise<{ machine: string; url: string; secret: string }[]> {
+  if (!/^[0-9a-f-]{36}$/i.test(accountId)) return [];
+  try {
+    const rows = await ownerSql()`
+      SELECT m.machine, m.agent_url, m.agent_secret FROM ytauto.machines m
+      WHERE m.account_id = COALESCE((SELECT a.host_account_id FROM ytauto.accounts a WHERE a.id = ${accountId}), ${accountId}::uuid)
+        AND m.agent_url IS NOT NULL AND m.agent_secret IS NOT NULL AND m.agent_seen_utc > now() - interval '2 minutes'
+      ORDER BY m.agent_seen_utc DESC LIMIT 5`;
+    return rows.map((r) => ({ machine: r.machine as string, url: r.agent_url as string, secret: r.agent_secret as string }));
+  } catch (e) {
+    if ((e as { code?: string }).code === "42703") return []; // undefined_column: baza hali v7 emas
+    throw e;
+  }
+}
+
 // ------------------------------------------------------------------ qo'shimcha (mehmon) tokenlar
 export const GUEST_LIMIT = 20;
 const ALNUM = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";

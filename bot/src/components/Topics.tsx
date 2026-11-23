@@ -5,12 +5,13 @@
  * kerak bo'lgan, tayyor yoki jarayondagi videolar to'liq karta (bosqichlar chizig'i, xato, bitta asosiy amal), oddiy navbat va
  * chiqqanlar - ixcham qatorlar. Karta yoki qator bosilsa video tafsiloti ochiladi (u yerda barcha amallar ham bor).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CalendarClock, ChevronRight, ChevronsUpDown, CircleX, CloudUpload, Ellipsis, ExternalLink, Inbox, ListVideo, Pencil, Plus, RotateCcw, RotateCw,
-  Trash2, Undo2, Upload, Zap, CircleCheck, LoaderCircle,
+  CalendarClock, ChevronRight, ChevronsUpDown, CircleX, CloudUpload, Ellipsis, ExternalLink, ListVideo, Pencil, Plus, RotateCcw, RotateCw,
+  Trash2, Undo2, Upload, Zap, CircleCheck, LoaderCircle, Sparkles,
 } from "lucide-react";
 import { confirmBox, haptic, openExternal } from "@/lib/client";
+import { useLiveRefresh } from "@/lib/live";
 import { StatusText, type Action, type State, type Topic } from "@/lib/types";
 import type { Run } from "./App";
 import type { SettingsPage } from "./settings/types";
@@ -75,9 +76,11 @@ type Item = { key: string; label: string; icon: IconT; danger?: boolean; kind?: 
 type Props = {
   state: State | null; loading: boolean; refresh: () => Promise<void>; run: Run; locked?: boolean;
   openVideo?: (id: number) => void; openSettings?: (p: SettingsPage | null) => void;
+  /** «AI yordamchi» tabiga o'tish (bo'sh navbat kartasidagi tugma). */
+  openAi?: () => void;
 };
 
-export default function Topics({ state, loading, refresh, run, locked, openVideo, openSettings }: Props) {
+export default function Topics({ state, loading, refresh, run, locked, openVideo, openSettings, openAi }: Props) {
   const [group, setGroup] = useState<Group>("queue");
   const [sheet, setSheet] = useState<{ mode: "new" } | { mode: "edit"; topic: Topic } | null>(null);
   const [resched, setResched] = useState<Topic | null>(null);
@@ -91,6 +94,17 @@ export default function Topics({ state, loading, refresh, run, locked, openVideo
     return c;
   }, [topics]);
   const tz = state?.catalog.youtube.timeZone ?? "Asia/Tashkent";
+
+  // Real vaqt: kompyuter agenti video holati o'zgarganini yuborsa ro'yxat darhol yangilanadi (ketma-ket hodisalar birlashtiriladi).
+  // Ro'yxatda faqat holat/band belgisi ko'rinadi: har log qatorida emas, ular o'zgarganda yangilanadi.
+  const seen = useRef(new Map<number, string>());
+  useLiveRefresh((e) => {
+    if (e.type !== "job") return false;
+    const key = `${e.job.status}|${e.job.claimed}|${e.job.hasVideo}|${e.job.youtubeId ?? ""}`;
+    if (seen.current.get(e.job.id) === key) return false;
+    seen.current.set(e.job.id, key);
+    return true;
+  }, () => { if (document.visibilityState === "visible") void refresh(); }, 1500);
 
   // Shablon serverdan kompyuterga tushayotgan bo'lsa, ro'yxat o'zi yangilanadi: o'rnatilishi bilan tanlash mumkin bo'ladi.
   const waitingTemplates = (state?.catalog.pendingTemplates?.length ?? 0) > 0;
@@ -234,10 +248,22 @@ export default function Topics({ state, loading, refresh, run, locked, openVideo
 
       {state && items.length === 0 ? (
         group === "queue" ? (
-          <Empty icon={Inbox} title="Navbat bo'sh"
-            action={!locked ? <Btn icon={Plus} onClick={() => { haptic.tap(); setSheet({ mode: "new" }); }}>Yangi video</Btn> : undefined}>
-            «Yangi video» tugmasi yoki AI yordamchi orqali qo&apos;shing.
-          </Empty>
+          <section className={s.emptyCard} aria-label="Navbat bo'sh">
+            <div className="strip" aria-hidden>
+              <div className="bars">{STAGES.map((n) => <i key={n} />)}</div>
+              <div className="names">{STAGES.map((n) => <span key={n}>{n}</span>)}</div>
+            </div>
+            <div className={s.emptyText}>
+              <b>Navbat bo&apos;sh</b>
+              <span>Mavzu va boshlang&apos;ich savol qo&apos;shing — tunda Gemini ssenariy yozadi, ovoz o&apos;qiydi, montaj qilinib YouTube&apos;ga chiqadi.</span>
+            </div>
+            <div className={s.emptyActs}>
+              <Btn block icon={Plus} disabled={locked} title={locked ? "Avval Gemini kalitini qo'shing" : undefined}
+                onClick={() => { haptic.tap(); setSheet({ mode: "new" }); }}>Yangi video</Btn>
+              <Btn block icon={Sparkles} disabled={locked} title={locked ? "Avval Gemini kalitini qo'shing" : undefined}
+                onClick={() => { haptic.tap(); openAi?.(); }}>AI yordamchi</Btn>
+            </div>
+          </section>
         ) : group === "work" ? (
           <Empty icon={ListVideo} title="Hozir hech narsa tayyorlanmayapti">Navbatdagi video vaqti kelganda kompyuter uni shu yerda tayyorlaydi.</Empty>
         ) : (
@@ -314,7 +340,7 @@ export default function Topics({ state, loading, refresh, run, locked, openVideo
         </div>
       ) : null}
 
-      {group !== "done" ? (
+      {group !== "done" && !(state && group === "queue" && items.length === 0) ? (
         <>
           {/* Oxirgi karta/qator «Yangi video» tugmasi ostida qolib ketmasin. */}
           <div className={s.fabSpace} aria-hidden />

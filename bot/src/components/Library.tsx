@@ -35,7 +35,7 @@ const STAGE: Record<Upload["status"], string> = {
 export default function Library({ toast, canUpload = true, onCount }: { toast: Toast; canUpload?: boolean; onCount?: (n: number) => void }) {
   const [templates, setTemplates] = useState<TemplateItem[] | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
-  /** O'chirish so'rovi yuborilganlar: kompyuter (~2 daqiqada) bajargach ro'yxatdan yo'qoladi. */
+  /** O'chirish so'rovi yuborilganlar: kompyuter bajargach ro'yxatdan yo'qoladi. */
   const [deleting, setDeleting] = useState<Set<string>>(() => new Set());
   const [sheet, setSheet] = useState(false);
   const busy = useBusy((m) => toast(m, true));
@@ -113,11 +113,11 @@ export default function Library({ toast, canUpload = true, onCount }: { toast: T
               <span className={st.kind} title={KIND[t.kind] ?? t.kind} aria-label={KIND[t.kind] ?? t.kind} role="img"><KindIcon kind={t.kind} /></span>
               {gone ? (
                 <span className={st.corner}><Status>o'chirilmoqda</Status></span>
-              ) : (
+              ) : canUpload ? (
                 <button type="button" className={st.del} aria-label={`«${t.name}» shablonini o'chirish`} disabled={busy.is("del:" + k)} onClick={() => void del(t)}>
                   {busy.is("del:" + k) ? <LoaderCircle size={18} className="spin" /> : <Trash2 size={18} />}
                 </button>
-              )}
+              ) : null}
               <b className={st.name}>{t.name}</b>
               <span className={st.grow} />
               <span className={st.src}>
@@ -181,7 +181,7 @@ function UploadTile({ u }: { u: Upload }) {
       {showPct ? <span className={`${st.pct} tnum`}>{u.progress}%</span> : done ? <span className={st.corner}><CircleCheck size={20} className={st.ok} /></span> : null}
       <b className={st.name}>{u.name}</b>
       <span className={st.grow} />
-      <span className={`${st.stage}${done ? " " + st.stageOk : ""}`}>{STAGE[u.status]}{u.status === "pending" ? " (~2 daqiqa)" : ""}</span>
+      <span className={`${st.stage}${done ? " " + st.stageOk : ""}`}>{STAGE[u.status]}{u.status === "pending" ? " (kompyuter kutilmoqda)" : ""}</span>
       {u.message ? <span className={st.note}>{u.message}</span> : null}
       <span className={`${st.meta} tnum`}>{size(u.size)} → {u.machine}</span>
       {done ? null : <Bar pct={showPct ? u.progress : 0} label={STAGE[u.status]} />}

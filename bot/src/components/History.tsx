@@ -10,6 +10,8 @@ import Machines, { ago, useMachines } from "./Machines";
 import { Alert, Btn, Empty, Sheet, Skel, Status, useBusy } from "./ui";
 import s from "./History.module.css";
 
+/** Desktop worker hodisalaridagi bosqich nomi (script, voice...) -> ko'rinadigan nom (VideoDetail bilan bir xil). */
+const EVENT_TAG: Record<string, string> = { script: "Ssenariy", voice: "Ovoz", align: "Subtitr", edit: "Montaj", render: "Render", validate: "Sifat", archive: "Arxiv", upload: "YouTube" };
 const STAGE_NAME: Record<number, string> = { 1: "Ssenariy", 2: "Ovoz", 3: "Subtitr vaqtlari", 4: "Montaj", 5: "Render", 6: "Sifat tekshiruvi", 7: "Arxiv", 8: "YouTube" };
 const STATE_NAME: Record<number, string> = { 0: "kutmoqda", 1: "ishlamoqda", 2: "tayyor", 3: "xato", 4: "o'tkazildi" };
 const STATE_TONE: Record<number, Tone> = { 1: "accent", 2: "ok", 3: "bad" };
@@ -34,9 +36,9 @@ const day = (iso: string) => {
   return diff === 0 ? `Bugun, ${hm(d)}` : diff === 1 ? `Kecha, ${hm(d)}` : dt(iso);
 };
 const tm = (iso: string) => { const d = new Date(iso); return `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`; };
+/** Tugamagan ishga tushish uchun davomiylik hozirgacha hisoblanadi («34 daq»). */
 const dur = (a: string, b: string | null) => {
-  if (!b) return "…";
-  const m = (new Date(b).getTime() - new Date(a).getTime()) / 60000;
+  const m = ((b ? new Date(b).getTime() : Date.now()) - new Date(a).getTime()) / 60000;
   return m < 1 ? "<1 daq" : m < 90 ? `${num(m)} daq` : `${num(m / 60, 1)} soat`;
 };
 const bytes = (b: number) => (b >= 2 ** 30 ? `${num(b / 2 ** 30, 2)} GB` : b >= 2 ** 20 ? `${num(b / 2 ** 20)} MB` : `${num(b / 1024)} KB`);
@@ -87,7 +89,7 @@ function ownerFocal(list: Machine[] | null, error: string | null, schedule: Sche
   }
   const onlineM = list.find((m) => m.online);
   if (onlineM) {
-    const rest = onlineM.run.requested ? "ishga tushirish so'rovi yuborildi — ~2 daqiqada boshlanadi"
+    const rest = onlineM.run.requested ? "ishga tushirish so'rovi yuborildi — kompyuter darhol boshlaydi"
       : schedule?.enabled ? `onlayn · navbatdagi videolar ${schedule.startTime} da tayyorlanadi`
       : "onlayn · hozir ish yo'q";
     return { text: "Kutish rejimida", tone: "ok", who: onlineM.name, rest };
@@ -392,8 +394,8 @@ export default function History({ state, toast }: { state: State | null; toast: 
 
       {!guest ? (
         <p className={s.footnote}>
-          Onlayn — oxirgi 6 daqiqada signal kelgan. Kunduzi kompyuter har 2 daqiqada bog&apos;lanadi, videolar esa tunda, ish oynasida tayyorlanadi.
-          Og&apos;ir ish paytida signal yuborilmaydi — shu payt «band» ko&apos;rinadi. Task Scheduler vazifasi o&apos;rnatilmagan va ilova yopiq bo&apos;lsa, yoniq kompyuter ham oflayn ko&apos;rinishi mumkin.
+          Onlayn — kompyuterdagi YtAuto agenti har 30 soniyada signal beradi va botdagi so&apos;rovlarni darhol bajaradi (Cloudflare tunnel); videolar esa tunda, ish oynasida tayyorlanadi.
+          Agent Windows&apos;ga kirilganda o&apos;zi ishga tushadi; kompyuter o&apos;chiq yoki internetsiz bo&apos;lsa oflayn ko&apos;rinadi, so&apos;rovlar esa yoqilgach bajariladi.
         </p>
       ) : null}
 
@@ -426,7 +428,7 @@ export default function History({ state, toast }: { state: State | null; toast: 
             <div className={`logbox ${s.logbox}`}>
               {logs.events.length === 0 ? <div className="hint">Hodisalar yo&apos;q.</div> : logs.events.map((e) => (
                 <div key={e.id} className={`logline ${e.level.toLowerCase()}`}>
-                  <span className="t">{tm(e.at)}</span>{e.stage ? <span className="s">{e.stage}</span> : null}{e.message}
+                  <span className="t">{tm(e.at)}</span>{e.stage ? <span className="s">{EVENT_TAG[e.stage.toLowerCase()] ?? e.stage}</span> : null}{e.message}
                 </div>
               ))}
             </div>

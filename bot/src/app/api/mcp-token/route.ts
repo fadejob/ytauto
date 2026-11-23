@@ -14,7 +14,7 @@ export const GET = handler(async (req, viewer): Promise<Res> => {
   const url = `${originOf(req)}/api/mcp`;
   if (isDemo()) return { exists: false, createdAt: null, lastUsedAt: null, url };
   return { ...(await mcpTokenInfo(viewer.accountId)), url };
-});
+}, { ownerOnly: true });
 
 export const POST = handler(async (req, viewer): Promise<Res> => {
   if (isDemo()) throw new Error("Demo rejimda token yaratilmaydi.");
@@ -31,4 +31,4 @@ export const POST = handler(async (req, viewer): Promise<Res> => {
     return { ...(await mcpTokenInfo(viewer.accountId)), url, message: "Token bekor qilindi: Claude Code endi u bilan ulana olmaydi." };
   }
   throw new Error("Noma'lum amal.");
-});
+}, { ownerOnly: true });

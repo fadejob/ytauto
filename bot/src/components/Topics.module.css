@@ -3,15 +3,15 @@
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 .chip {
-  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 12px 6px 6px; border-radius: 999px;
-  background: var(--card); color: var(--ink); font-size: 15px; font-weight: 650; min-width: 0; max-width: 100%;
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 16px 6px 8px; border-radius: 999px;
+  background: var(--card); color: var(--ink); font-size: 14px; font-weight: 650; min-width: 0; max-width: 100%;
 }
-.chip svg { color: var(--muted); flex: none; }
+.chip svg { color: var(--muted); flex: none; width: 14px; height: 14px; }
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .total { color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .avatar {
   width: 28px; height: 28px; border-radius: 999px; background: var(--ink); color: var(--bg); display: grid; place-items: center;
-  font-size: 13px; font-weight: 750; flex: none; text-transform: uppercase;
+  font-size: 12px; font-weight: 800; flex: none; text-transform: uppercase;
 }
 .refresh { width: 44px; height: 44px; }
 
@@ -21,7 +21,16 @@
 .list { display: grid; gap: 12px; }
 .fabSpace { height: 48px; }
 
-.foot .meta { flex: 1; }
+/* Karta ostki qatori bitta qatorda: meta uzun bo'lsa kesiladi, tugma o'z joyida qoladi. */
+.foot .meta { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* bo'sh navbat: uzuq chiziqli karta (dizayn: Holatlar → Bo'sh va ogohlantirish → Bo'sh · Navbat) */
+.emptyCard { display: grid; gap: 16px; padding: 20px; border-radius: var(--r-lg); border: 1.5px dashed var(--line); }
+.emptyText { display: grid; gap: 4px; }
+.emptyText b { font-size: 17px; font-weight: 700; color: var(--ink); }
+.emptyText span { font-size: 14px; line-height: 1.4; color: var(--muted); }
+.emptyActs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.emptyActs > :global(.btn) { min-width: 0; padding: 0 10px; }
 
 /* to'liq karta: e'tibor kerak / tayyor / jarayonda */
 .card { cursor: pointer; }

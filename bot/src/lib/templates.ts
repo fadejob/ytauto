@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { currentAccountId, sql } from "./db";
+import { currentAccountId, sql, wakeAgents } from "./db";
 import { isDemo } from "./demo";
 import { BUCKET, storageCfg } from "./storage";
 import type { PendingTemplate, PreparedUpload, TemplateUpload } from "./types";
@@ -8,7 +8,7 @@ import type { PendingTemplate, PreparedUpload, TemplateUpload } from "./types";
 /**
  * Shablon yuklash: brauzer faylni Supabase Storage'ga (private "templates" bucket) imzolangan havola bilan to'g'ridan-to'g'ri yuboradi
  * (Vercel'ning ~4.5 MB so'rov chegarasini chetlab o'tish uchun). So'ng har tanlangan kompyuter uchun bazada "pending" yozuv qo'shiladi;
- * har 2 daqiqada (ilova yopiq bo'lsa ham) uni yuklab, o'rnatadi va holatni (progress, tayyor/xato) yozadi. Hamma yozuv tugagach fayl Storage'dan o'chiriladi.
+ * kompyuter agenti darhol uyg'otiladi (ilova yopiq bo'lsa ham) - uni yuklab, o'rnatadi va holatni (progress, tayyor/xato) yozadi. Hamma yozuv tugagach fayl Storage'dan o'chiriladi.
  */
 const MAX_BYTES = 600 * 1024 * 1024;
 const VIDEO_EXT = [".mp4", ".mov", ".webm", ".mkv", ".m4v"];
@@ -53,6 +53,7 @@ export async function commitUpload(i: { groupId: string; path: string; name: str
     await sql()`INSERT INTO ytauto.template_uploads(group_id, name, kind, storage_path, size_bytes, machine, download_url)
                 VALUES (${i.groupId}, ${i.name.trim().slice(0, 60)}, ${i.kind}, ${i.path}, ${Math.round(i.size)}, ${m}, ${downloadUrl})`;
   }
+  if (i.machines.length) wakeAgents("template");
   return { ok: true };
 }
 

@@ -1,7 +1,8 @@
 import "server-only";
 import crypto from "node:crypto";
-import { currentAccountId, isGuest, sql } from "./db";
-import { geminiReady, GEMINI_REQUIRED } from "./config";
+import { currentAccountId, isGuest, sql, wakeAgents } from "./db";
+import { mediaLinks, waitJobChange } from "./agent";
+import { geminiReady, GEMINI_REQUIRED, getConfig } from "./config";
 import { getCatalog, pickTemplateFormat } from "./topics";
 import { getMachines } from "./machines";
 import { objectInfo, signDownload, signUpload } from "./storage";
@@ -141,8 +142,23 @@ export async function createDemoVideo(args: Record<string, unknown>) {
   const format = ({ "16:9": 0, "9:16": 1, "1:1": 2 } as Record<string, number>)[fmtArg];
   if (format === undefined) fail('requirements.format "16:9", "9:16" yoki "1:1" bo\'lsin.');
   const cat = await getCatalog();
+  // Ovoz tilga mos bo'lishi shart: o'zbekcha matnni inglizcha ovoz o'qisa tushunarsiz chiqadi. Aniq voice_profile berilmasa,
+  // shu tildagi profil tanlanadi (bot standarti mos bo'lsa - o'sha); topilmasa aniq yo'riqnoma bilan to'xtaydi.
+  let voiceArg = q.voice_profile === undefined ? undefined : str(q.voice_profile, 120);
+  const profiles = (await getConfig()).voice.profiles;
+  const voiceWarning: string[] = [];
+  if (!voiceArg) {
+    const defName = (await getConfig()).defaults.voiceProfile;
+    const same = profiles.filter((p) => (p.language || "en").toLowerCase() === language);
+    const pick = same.find((p) => p.name === defName) ?? same[0];
+    if (pick) voiceArg = pick.name;
+    else if (language !== "en") fail(`"${language}" tilida ovoz profili yo'q. Botda Sozlamalar → Ovoz → «Profil qo'shish» orqali shu tildagi ovoz qo'shing (til: ${language}) yoki requirements.voice_profile bering. Mavjud profillar: ${profiles.map((p) => `${p.name} (${p.language || "en"})`).join(", ") || "yo'q"}.`);
+  } else {
+    const chosen = profiles.find((p) => p.name === voiceArg);
+    if (chosen && (chosen.language || "en").toLowerCase() !== language) voiceWarning.push(`Ovoz profili "${chosen.name}" tili "${chosen.language || "en"}", video tili "${language}": talaffuz noto'g'ri bo'lishi mumkin.`);
+  }
   // Demo videoda kanal shabloni ishlatilmaydi (faqat loyiha materiallari): bu yerda faqat format va ovoz tanlanadi.
-  const tf = await pickTemplateFormat(cat, undefined, format, q.voice_profile === undefined ? undefined : str(q.voice_profile, 120));
+  const tf = await pickTemplateFormat(cat, undefined, format, voiceArg);
   if ("error" in tf) fail(tf.error);
   const t = tf as { template: string; format: number; voice: string };
 
@@ -167,13 +183,18 @@ export async function createDemoVideo(args: Record<string, unknown>) {
     channel_id: await activeChannelId(), // chiqarilsa - so'rov paytidagi faol kanalga
     kind: "demo", demo_spec: JSON.stringify({ ...spec, publish: { requested: publish.requested, when: publish.when } }),
   })} RETURNING id::int AS id`;
+  wakeAgents("demo");
   const machines = await machineSummary();
+  const live = machines.some((m) => m.agent);
   return {
     job_id: row.id as number, status: "queued",
     voice_profile: t.voice || "(kompyuterdagi standart ovoz)", effects: spec.requirements.effects ?? "auto (varied mix)", format: fmtArg, language,
+    ...(voiceWarning.length ? { warnings: voiceWarning } : {}),
     publish: publish.requested ? { requested: true, when: publish.when } : { requested: false },
     machines,
-    next: "The YtAuto worker on the user's PC picks the job up within ~10 minutes (when the PC is on and online) and runs script → voice → montage → render. Poll get_video_status every few minutes; when status is \"ready\" call get_video_result.",
+    next: live
+      ? "The user's PC agent is online and is being notified: the job starts right away (script → voice → montage → render). Call get_video_status with wait_sec: 25 — it returns as soon as the job changes (real time); repeat until status is \"ready\", then call get_video_result."
+      : "No PC agent is online right now: the job waits in the queue and starts as soon as the user's PC is on and online. Call get_video_status (wait_sec: 25) from time to time; when status is \"ready\" call get_video_result.",
   };
 }
 
@@ -193,7 +214,7 @@ async function publishIntent(pub: Record<string, unknown>): Promise<Intent> {
 async function machineSummary() {
   try {
     const ms = await getMachines();
-    return ms.map((m) => ({ name: m.name, online: m.online, worker: m.worker.state, working_on: m.worker.jobId }));
+    return ms.map((m) => ({ name: m.name, online: m.online, agent: m.agent.live, worker: m.worker.state, working_on: m.worker.jobId }));
   } catch { return []; }
 }
 
@@ -251,7 +272,42 @@ export async function videoStatus(args: Record<string, unknown>) {
     recent_events: events.reverse().map((e) => `${(e.at_utc as Date).toISOString().slice(11, 19)} ${e.level}${e.stage ? ` [${e.stage}]` : ""}: ${e.message as string}`),
     hint: p === "ready" ? "Video is ready: call get_video_result. Publish only if the user explicitly asks (publish_video)."
       : p === "failed" ? "The job needs attention; show the error to the user. It can be retried from the Telegram bot after fixing the cause."
-      : "Still working; check again in a few minutes.",
+      : "Still working: call get_video_status again with wait_sec: 25 (returns as soon as something changes).",
+  };
+}
+
+const SETTLED = ["ready", "published", "failed", "cancelled", "ready_with_problem"];
+type Run = <T>(fn: () => Promise<T>) => Promise<T>;
+
+/**
+ * get_video_status + real vaqt: wait_sec > 0 bo'lsa (≤25) va video hali tayyorlanayotgan bo'lsa, kompyuter agentidan o'zgarish
+ * signalini kutadi (long-poll) va yangi holatni qaytaradi. Kutish DB tranzaksiyasidan TASHQARIDA (ulanish band qilinmaydi).
+ */
+export async function videoStatusLive(args: Record<string, unknown>, run: Run, accountId: string) {
+  const wait = Math.min(25, Math.max(0, Math.round(Number(args.wait_sec ?? 0)) || 0));
+  const first = await run(() => videoStatus(args));
+  if (!wait || SETTLED.includes(first.status)) return first;
+  const changed = await waitJobChange(accountId, first.job_id, wait);
+  if (changed === null) {
+    // Agent yo'q (kompyuter o'chiq yoki eski versiya): MCP mijozi tez-tez qayta so'ramasligi uchun shu yerda kutib, bazadan o'qiymiz.
+    await new Promise((r) => setTimeout(r, Math.min(wait, 20) * 1000));
+    return { ...(await run(() => videoStatus(args))), live: false };
+  }
+  if (!changed) return { ...first, changed: false, waited_sec: wait };
+  return { ...(await run(() => videoStatus(args))), changed: true };
+}
+
+/** get_video_result + kompyuterdagi faylga to'g'ridan-to'g'ri public havola (agent online bo'lsa; tunnel orqali, Range bilan). */
+export async function videoResultLive(args: Record<string, unknown>, run: Run, accountId: string) {
+  const r = await run(() => videoResult(args));
+  if (!r.ready) return r;
+  const links = await mediaLinks(accountId, r.job_id).catch(() => null);
+  return {
+    ...r,
+    direct: links
+      ? { watch_url: links.video, download_url: links.download, cover_url: links.cover, subtitles_url: links.subtitles, machine: links.machine,
+          note: "Served live from the user's PC through its Cloudflare tunnel: works while the PC is on. The link changes when the PC restarts — call get_video_result again for a fresh one." }
+      : null,
   };
 }
 
@@ -309,10 +365,11 @@ export async function publishVideo(args: Record<string, unknown>) {
     : await sql()`UPDATE ytauto.jobs SET publish_at_utc = ${intent.at!}, upload_requested = TRUE, publish_now = FALSE, updated_at_utc = now()
         WHERE id = ${r.id} AND claimed_by IS NULL AND youtube_video_id IS NULL AND cancel_requested = FALSE`;
   if (!n.count) fail(`#${r.id}: holat o'zgardi — qayta urinib ko'ring.`);
+  wakeAgents("publish");
   return {
     job_id: r.id, ok: true,
     message: intent.when === "now"
-      ? "Chiqarish so'rovi yuborildi: kompyuter ~2 daqiqada tayyor videoni asosiy YouTube kanaliga public yuklaydi (qayta tayyorlanmaydi)."
+      ? "Chiqarish so'rovi yuborildi: kompyuter tayyor videoni darhol asosiy YouTube kanaliga public yuklaydi (qayta tayyorlanmaydi)."
       : `Chiqarish so'rovi yuborildi: video asosiy YouTube kanaliga yuklanadi va ${intent.when} da public bo'ladi.`,
     next: "Use get_video_status / get_video_result to see the YouTube link once the upload finishes.",
   };

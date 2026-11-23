@@ -2,6 +2,7 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { after } from "next/server";
 import postgres from "postgres";
 
 /**
@@ -87,8 +88,17 @@ export function ownerSql(): Sql {
   return g.__ytautoSql;
 }
 
-type Ctx = { tx: Sql; accountId: string; guest: boolean };
+type Ctx = { tx: Sql; accountId: string; guest: boolean; wake: Set<string> };
 const als = new AsyncLocalStorage<Ctx>();
+
+/**
+ * Shu so'rov kompyuterga ish qo'shdi (hozir chiqarish, tekshiruv, buyruq, demo video...): tranzaksiya COMMIT bo'lgach hisob
+ * kompyuterlaridagi agentlar darhol uyg'otiladi (Cloudflare tunnel orqali) - worker 2 daqiqa kutmasdan boshlaydi.
+ * Agent yo'q yoki javob bermasa - hech narsa bo'lmaydi: so'rov bazada, agent/worker uni baribir topadi.
+ */
+export function wakeAgents(reason: string) {
+  als.getStore()?.wake.add(reason);
+}
 
 /** Joriy so'rov hisobining tranzaksiyasi (RLS bilan). Hisob konteksti bo'lmasa xato - tasodifan hamma ma'lumotni o'qib qo'ymaslik uchun. */
 export function sql(): Sql {
@@ -114,11 +124,23 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function withAccount<T>(accountId: string, fn: () => Promise<T>, opts?: { guest?: boolean }): Promise<T> {
   if (!UUID.test(accountId)) throw new Error("Hisob aniqlanmadi.");
   await ensureSchema();
+  const wake = new Set<string>();
   const result = await ownerSql().begin(async (tx) => {
     await tx.unsafe("SET LOCAL ROLE ytauto_bot");
     await tx`SELECT set_config('ytauto_ctx.account', ${accountId}, true)`;
-    return { v: await als.run({ tx: tx as unknown as Sql, accountId, guest: opts?.guest === true }, fn) };
+    return { v: await als.run({ tx: tx as unknown as Sql, accountId, guest: opts?.guest === true, wake }, fn) };
   });
+  if (wake.size) {
+    // COMMIT'dan keyin: agent bazadan o'qiganda so'rov allaqachon ko'rinadi. So'rov ichida - javob yuborilgach (after, Vercel
+    // waitUntil): foydalanuvchi tunnel javobini kutmaydi. So'rovdan tashqarida (cron) - shu yerda kutiladi.
+    const poke = async () => {
+      try { await (await import("./agent")).pokeAgents(accountId, [...wake]); }
+      catch (e) { console.error("[agent] wake", e); }
+    };
+    let scheduled = false;
+    try { after(poke); scheduled = true; } catch { /* so'rov konteksti yo'q */ }
+    if (!scheduled) await poke();
+  }
   return (result as { v: T }).v;
 }
 

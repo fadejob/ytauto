@@ -35,7 +35,7 @@ type CardProps = { config: BotConfig | null; saveConfig: SaveConfig; toast: Toas
 /** Server kalitning boshi va oxirini beradi ("AIza…Qx7f"): dizayndagidek yashirilgan ko'rinish. */
 const mask = (hint: string) => hint.replace("…", " •••• •••• ");
 
-const savedMsg = "Saqlandi. Kompyuterlar ~2 daqiqada yangilanadi, yangi videolardan boshlab qo'llanadi.";
+const savedMsg = "Saqlandi. Yangi videolardan boshlab qo'llanadi.";
 
 export default function AiPrompts({ state, toast, run, back, onChanged, setSubBack }: SettingsPageProps) {
   const guest = state?.account?.guest === true;

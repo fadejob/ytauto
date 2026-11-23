@@ -12,7 +12,7 @@ export type AccountViewer = Viewer & { accountId: string; guest: boolean; hostLa
  * Har API so'rovi: Telegram auth → token bilan bog'langan hisob → shu hisob kontekstida (RLS, bitta tranzaksiya) handler.
  * Hisob topilmasa 401 "token_required": ilova token kiritish oynasini ko'rsatadi.
  */
-export function handler(fn: (req: Request, viewer: AccountViewer) => Promise<unknown>) {
+export function handler(fn: (req: Request, viewer: AccountViewer) => Promise<unknown>, opts?: { ownerOnly?: boolean }) {
   return async (req: Request) => {
     await connection(); // har doim so'rov vaqtida (prerender qilinmaydi)
     try {
@@ -20,7 +20,29 @@ export function handler(fn: (req: Request, viewer: AccountViewer) => Promise<unk
       if (isDemo()) return json(await fn(req, { ...viewer, accountId: "00000000-0000-0000-0000-000000000000", guest: false, hostLabel: null }));
       const acc = await accountForTelegram(viewer.id);
       if (!acc) throw new AuthError("YtAuto ilovasidagi tokenni kiriting.", 401, viewer.id, "token_required");
+      // ownerOnly: handler faqat ownerSql() (accounts.ts) bilan ishlaydi - hisob tranzaksiyasi ochilmaydi (aks holda har so'rov pool'dan
+      // 2 ta ulanish ushlaydi va parallel so'rovlarda pool (max 3) to'lib qotib qoladi).
+      if (opts?.ownerOnly) return json(await fn(req, { ...viewer, accountId: acc.id, guest: acc.guest, hostLabel: acc.hostLabel }));
       return json(await withAccount(acc.id, () => fn(req, { ...viewer, accountId: acc.id, guest: acc.guest, hostLabel: acc.hostLabel }), { guest: acc.guest }));
+    } catch (e) {
+      return errorResponse(e);
+    }
+  };
+}
+
+/**
+ * Hisob aniqlanadi, lekin DB tranzaksiyasi ochilmaydi: tashqi tarmoq so'rovlari (kompyuter agenti, tunnel) uchun - sekin javob
+ * ulanishni band qilmasin. Bu yerda sql() ishlamaydi.
+ */
+export function accountHandler(fn: (req: Request, viewer: AccountViewer) => Promise<unknown>) {
+  return async (req: Request) => {
+    await connection();
+    try {
+      const viewer = authenticate(req);
+      if (isDemo()) return json(await fn(req, { ...viewer, accountId: "00000000-0000-0000-0000-000000000000", guest: false, hostLabel: null }));
+      const acc = await accountForTelegram(viewer.id);
+      if (!acc) throw new AuthError("YtAuto ilovasidagi tokenni kiriting.", 401, viewer.id, "token_required");
+      return json(await fn(req, { ...viewer, accountId: acc.id, guest: acc.guest, hostLabel: acc.hostLabel }));
     } catch (e) {
       return errorResponse(e);
     }

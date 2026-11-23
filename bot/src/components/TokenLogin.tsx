@@ -68,7 +68,7 @@ export default function TokenLogin({ onDone }: { onDone: () => void }) {
               onChange={(e) => { setToken(e.target.value); if (error) setError(null); }} onKeyDown={(e) => { if (e.key === "Enter") void submit(); }} />
             <Btn tone="secondary" size="sm" icon={ClipboardPaste} disabled={checking} onClick={paste}>Qo&apos;yish</Btn>
           </div>
-          {error ? <div className="field-err" id="login-error" role="alert">{error}</div> : null}
+          {error ? <div className="alert" id="login-error" role="alert"><span>{error}</span></div> : null}
           <Btn block loading={checking} disabled={!token.trim()} onClick={submit}>{checking ? "Tekshirilmoqda…" : "Kirish"}</Btn>
           <div className={s.safety}>
             <Lock size={15} aria-hidden />

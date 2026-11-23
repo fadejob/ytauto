@@ -1,5 +1,5 @@
 import "server-only";
-import { isGuest, sql } from "./db";
+import { isGuest, sql, wakeAgents } from "./db";
 import { queueForAll } from "./commands";
 import { GEMINI_REQUIRED, geminiReady, getConfig } from "./config";
 import { templateCatalog } from "./library";
@@ -111,7 +111,7 @@ function toTopic(r: Row, tz: string): Topic {
     canUploadReady: !r.upload_requested && !r.publish_now && readyNotUploaded(r),
     uploadRequested: r.upload_requested && !r.youtube_video_id,
     template: r.template_name, format: r.format, voice: r.voice_profile,
-    manualScript: r.manual_script, manualTitle: r.manual_title, hasAudio: !!r.manual_audio_url, hook: r.hook,
+    manualScript: r.manual_script, manualTitle: r.manual_title, hasAudio: !!r.manual_audio_url, hook: r.hook, hasVideo: !!r.video_archive_path,
     canRetry: !r.claimed_by && (r.status === Status.Failed || r.status === Status.NeedsAttention),
     canCancel: !(FINAL as readonly number[]).includes(r.status),
     canReschedule: made && !r.claimed_by && !r.cancel_requested && !(FINAL as readonly number[]).includes(r.status),
@@ -327,8 +327,9 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       const n = await sql()`
         UPDATE ytauto.jobs SET publish_now = TRUE, next_attempt_at_utc = NULL, updated_at_utc = now()
         WHERE id = ${a.id} AND status NOT IN ${sql()(FINAL as unknown as number[])} AND cancel_requested = FALSE`;
+      if (n.count) wakeAgents("publish-now");
       return n.count
-        ? { ok: true, message: `#${a.id}: "Hozir chiqarish" yuborildi — internetga ulangan kompyuter ~2 daqiqada boshlaydi.` }
+        ? { ok: true, message: `#${a.id}: "Hozir chiqarish" yuborildi — kompyuter darhol boshlaydi (yoqiq va internetda bo'lsa).` }
         : { ok: false, message: `#${a.id}: chiqarilgan yoki bekor qilingan — hozir chiqarib bo'lmaydi.` };
     }
     case "cancel_publish_now": {
@@ -344,8 +345,9 @@ export async function applyAction(a: Action): Promise<ActionResult> {
         UPDATE ytauto.jobs SET upload_requested = TRUE, updated_at_utc = now()
         WHERE id = ${a.id} AND youtube_video_id IS NULL AND video_archive_path IS NOT NULL AND claimed_by IS NULL
           AND cancel_requested = FALSE AND status NOT IN ${sql()(FINAL as unknown as number[])}`;
+      if (n.count) wakeAgents("upload");
       return n.count
-        ? { ok: true, message: `#${a.id}: "YouTube'ga yuklash" yuborildi — video qayta tayyorlanmaydi, kompyuter ~2 daqiqada yuklaydi.` }
+        ? { ok: true, message: `#${a.id}: "YouTube'ga yuklash" yuborildi — video qayta tayyorlanmaydi, kompyuter darhol yuklaydi.` }
         : { ok: false, message: `#${a.id}: kompyuter shu payt band — keyinroq urinib ko'ring.` };
     }
     case "cancel_upload_ready": {

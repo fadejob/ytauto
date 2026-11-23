@@ -26,9 +26,14 @@ public sealed class ScheduledTaskInfo
 public sealed class TaskSchedulerService
 {
     public const string TaskName = "YtAuto Daily Worker";
-    /// <summary>Masofaviy "Hozir chiqarish" buyrug'ini kutuvchi vazifa: kunduzi har 2 daqiqada yengil --poll: holat yuboradi, so'rov bo'lsagina ishlaydi (navbatga tegmaydi).</summary>
+    /// <summary>Doimiy agent vazifasi (--agent): kirishda ishga tushadi, botdan uyg'otishni kutadi. Nomi eski o'rnatishlar bilan bir xil.</summary>
     public const string PollTaskName = "YtAuto Remote Trigger";
+    /// <summary>Ochiq ilovaning yengil tekshiruvi oralig'i (ilova oynasi ochiq bo'lganda).</summary>
     public const int PollIntervalMinutes = 2;
+    /// <summary>Agent qo'riqchisi: agent yiqilgan bo'lsa shuncha daqiqada qayta ko'tariladi.</summary>
+    public const int AgentWatchdogMinutes = 5;
+    /// <summary>Agent vazifasi XML versiyasi: o'zgarsa mavjud o'rnatishlarda vazifa qayta yoziladi.</summary>
+    public const int AgentTaskVersion = 1;
     /// <summary>Bir ishga tushishda bir nechta video + har biridan keyin 15 daqiqa tanaffus: ish vaqti limiti kamida shuncha soat.</summary>
     public const int MinBatchExecutionHours = 10;
     private const int TASK_CREATE_OR_UPDATE = 6;
@@ -96,8 +101,10 @@ public sealed class TaskSchedulerService
     }
 
     /// <summary>
-    /// Masofaviy buyruq kutuvchi: foydalanuvchi tizimda bo'lganda har <see cref="PollIntervalMinutes"/> daqiqada, faqat internet bo'lsa,
-    /// "YtAuto.Worker.exe --poll" ishga tushadi. So'rov bo'lmasa worker bir zumda chiqadi; bo'lsa videoni tayyorlab, darhol chiqaradi.
+    /// Doimiy agent vazifasi (nomi eski - "Remote Trigger" - mavjud o'rnatishlar ustiga yozilishi uchun): Windows'ga kirilganda
+    /// "YtAuto.exe --agent" ishga tushadi va to'xtovsiz ishlaydi (lokal server + Cloudflare tunnel, botdan uyg'otishni kutadi).
+    /// Qo'riqchi: har <see cref="AgentWatchdogMinutes"/> daqiqada takror - agent ishlayotgan bo'lsa (IgnoreNew) hech narsa qilinmaydi,
+    /// yiqilgan bo'lsa qayta ko'tariladi. Avvalgidek har 2 daqiqada yangi jarayon ochilmaydi.
     /// </summary>
     public static string BuildPollXml(string workerExe, DateTimeOffset nowUtc)
     {
@@ -111,11 +118,15 @@ public sealed class TaskSchedulerService
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
     <Author>YtAuto</Author>
-    <Description>YtAuto: online bazadagi "Hozir chiqarish" buyrug'ini kutadi. Buyruq bo'lsa videoni tayyorlab, YouTube'ga darhol chiqaradi.</Description>
+    <Description>YtAuto agent: doimiy yengil server (Cloudflare tunnel). Botdagi so'rovlarni darhol bajaradi, video holatini real vaqtda yuboradi, tayyor videolarni havola orqali ko'rsatadi.</Description>
   </RegistrationInfo>
   <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>{X(user)}</UserId>
+    </LogonTrigger>
     <TimeTrigger>
-      <Repetition><Interval>PT{PollIntervalMinutes}M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>
+      <Repetition><Interval>PT{AgentWatchdogMinutes}M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>
       <StartBoundary>{boundary}</StartBoundary>
       <Enabled>true</Enabled>
     </TimeTrigger>
@@ -132,26 +143,34 @@ public sealed class TaskSchedulerService
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
     <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
     <AllowHardTerminate>true</AllowHardTerminate>
-    <StartWhenAvailable>false</StartWhenAvailable>
-    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
     <IdleSettings><StopOnIdleEnd>false</StopOnIdleEnd><RestartOnIdle>false</RestartOnIdle></IdleSettings>
     <AllowStartOnDemand>true</AllowStartOnDemand>
     <Enabled>true</Enabled>
     <Hidden>true</Hidden>
     <RunOnlyIfIdle>false</RunOnlyIfIdle>
     <WakeToRun>false</WakeToRun>
-    <ExecutionTimeLimit>PT8H</ExecutionTimeLimit>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
     <Priority>7</Priority>
+    <RestartOnFailure><Interval>PT1M</Interval><Count>99</Count></RestartOnFailure>
   </Settings>
   <Actions Context="Author">
     <Exec>
       <Command>{X(workerExe)}</Command>
-      <Arguments>--poll</Arguments>
+      <Arguments>--agent</Arguments>
       <WorkingDirectory>{X(dir)}</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>
 """;
+    }
+
+    /// <summary>Agent vazifasini hozir ishga tushiradi (agent allaqachon ishlayotgan bo'lsa yangi nusxa darhol chiqadi).</summary>
+    public void StartAgent()
+    {
+        dynamic svc = Service();
+        svc.GetFolder("\\").GetTask(PollTaskName).Run(null);
     }
 
     private static dynamic Service()

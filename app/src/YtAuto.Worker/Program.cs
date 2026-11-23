@@ -29,6 +29,7 @@ public static class Program
     {
         var console = args.Contains("--console") || args.Contains("--selftest-local") || args.Contains("--check");
         if (console) AttachConsole(-1);
+        if (args.Contains("--agent")) return await RunAgentAsync(console);
         var dataIdx = Array.IndexOf(args, "--data");
         var dataRoot = dataIdx >= 0 && dataIdx + 1 < args.Length ? args[dataIdx + 1] : null;
         if (args.Contains("--selftest-local") && dataRoot is null)
@@ -44,7 +45,7 @@ public static class Program
         bool owned;
         try { owned = mutex.WaitOne(0); }
         catch (AbandonedMutexException) { owned = true; } // oldingi worker kutilmaganda o'lgan
-        // --poll har 2 daqiqada ishga tushadi: boshqa worker ishlayotgan bo'lsa (u "hozir chiqarish"ni ham tekshiradi) jim chiqamiz.
+        // --poll agent uyg'otganda (yoki 10 daqiqada) ishga tushadi: boshqa worker ishlayotgan bo'lsa (u "hozir chiqarish"ni ham tekshiradi) jim chiqamiz.
         if (!owned && (poll || batchNow)) return 3;
         AppServices svc;
         try { svc = new AppServices(dataRoot is null ? "worker" : "worker-selftest", dataRoot, console, online: dataRoot is not null && args.Contains("--online")); }
@@ -100,13 +101,13 @@ public static class Program
                 return 0;
             }
 
-            // Jadval botda o'zgargan bo'lsa Task Scheduler shu yerda yangilanadi (har --poll da, ~2 daqiqada).
+            // Jadval botda o'zgargan bo'lsa Task Scheduler shu yerda yangilanadi (har --poll da; agent ishlamayotgan bo'lsa ishga tushiriladi).
             if (dataRoot is null && (poll || scheduled)) Infrastructure.Scheduling.ScheduleSync.Apply(svc, Environment.ProcessPath);
 
-            // Heartbeat: poll har 2 daqiqada "kompyuter yoniq va online" deb yozadi (yengil: faqat holat, og'ir ish yo'q); botdan tekshiruv so'rovi bo'lsa bajaradi.
+            // Heartbeat: poll "kompyuter yoniq va online" deb yozadi (yengil: faqat holat, og'ir ish yo'q); botdan tekshiruv so'rovi bo'lsa bajaradi.
             if (dataRoot is null && (poll || scheduled))
             {
-                if (poll) Infrastructure.Heartbeat.MachineBeat.Beat(svc, workerState: "idle", jobId: null, detail: "bo'sh (har 2 daqiqada holat yuboradi)");
+                if (poll) Infrastructure.Heartbeat.MachineBeat.Beat(svc, workerState: "idle", jobId: null, detail: "bo'sh");
                 if (poll) Infrastructure.Heartbeat.ToolStatus.Publish(svc); // dasturlar holati (bot ko'rsatadi)
                 await Infrastructure.Heartbeat.MachineBeat.RunCheckIfRequestedAsync(svc, Environment.ProcessPath, cts.Token);
             }
@@ -178,6 +179,24 @@ public static class Program
             try { beat?.Dispose(); } catch { }
             if (owned) try { mutex.ReleaseMutex(); } catch { }
         }
+    }
+
+    /// <summary>
+    /// Doimiy agent: lokal server + Cloudflare tunnel, botdan uyg'otishni kutadi va workerni darhol ishga tushiradi (worker mutex'ini
+    /// egallamaydi - og'ir ish alohida jarayonda). Bir nusxa (o'z mutex'i); Task Scheduler kirishda va har 5 daqiqada qo'riqlaydi.
+    /// </summary>
+    private static async Task<int> RunAgentAsync(bool console)
+    {
+        if (Infrastructure.Agent.AgentHost.IsRunning()) return 3;
+        AppServices svc;
+        try { svc = new AppServices("agent", null, console); }
+        catch (Exception e) { Console.Error.WriteLine("Agent ishga tushmadi: " + e); return 4; }
+        using var cts = new CancellationTokenSource();
+        AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { cts.Cancel(); } catch (ObjectDisposedException) { } };
+        Console.CancelKeyPress += (_, e) => { e.Cancel = true; try { cts.Cancel(); } catch (ObjectDisposedException) { } };
+        try { return await Infrastructure.Agent.AgentHost.RunAsync(svc, Environment.ProcessPath!, cts.Token); }
+        catch (OperationCanceledException) { return 0; }
+        catch (Exception e) { svc.Log.Error("Agent kutilmagan xato: " + e); return 4; }
     }
 
     /// <summary>

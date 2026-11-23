@@ -6,6 +6,7 @@
  * natija xabari - toast (App). Urg'u rangi faqat asosiy amal, faol holat va boshlang'ich savol uchun.
  */
 import { useCallback, useEffect, useRef, useState, type ButtonHTMLAttributes, type ComponentType, type ReactNode } from "react";
+import { setConfirmHost } from "@/lib/client";
 import { Check, ChevronLeft, ChevronRight, CircleAlert, LoaderCircle, MessageCircleQuestion, X } from "lucide-react";
 
 export type IconT = ComponentType<{ className?: string; size?: number | string; strokeWidth?: number | string }>;
@@ -216,11 +217,47 @@ export function Sheet({ title, sub, onClose, children, footer, label }: { title:
         <div className="grab" />
         <div className="sheet-head">
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}><h2>{title}</h2>{sub ? <span className="sub">{sub}</span> : null}</div>
-          <button type="button" className="round" style={{ background: "var(--sunken)", width: 36, height: 36 }} aria-label="Yopish" onClick={onClose}><X size={18} /></button>
+          <button type="button" className="round" style={{ background: "var(--sunken)", width: 44, height: 44 }} aria-label="Yopish" onClick={onClose}><X size={18} /></button>
         </div>
         {children}
         {footer ? <div className="sheet-foot">{footer}</div> : null}
       </section>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ tasdiq oynasi (confirmBox o'rniga; dizayn: Holatlar -> Xabarlar va tugmalar)
+/** Birinchi qator - sarlavha, qolgani - izoh. Qaytarib bo'lmaydigan amallarda tasdiq tugmasi qizil. */
+const DANGER = /o'chiril|uzil|bekor qilinsin|qaytarib bo'lmaydi|chiqasizmi/i;
+
+export function ConfirmHost() {
+  const [q, setQ] = useState<{ message: string; resolve: (v: boolean) => void } | null>(null);
+  useEffect(() => {
+    setConfirmHost((message) => new Promise<boolean>((resolve) => setQ((cur) => { cur?.resolve(false); return { message, resolve }; })));
+    return () => setConfirmHost(null);
+  }, []);
+  const answer = useCallback((v: boolean) => setQ((cur) => { cur?.resolve(v); return null; }), []);
+  useEffect(() => {
+    if (!q) return;
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") answer(false); };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [q, answer]);
+  if (!q) return null;
+  const [title, ...rest] = q.message.split("\n");
+  const body = rest.join("\n").trim();
+  const danger = DANGER.test(q.message);
+  return (
+    <>
+      <div className="backdrop confirm-backdrop" onClick={() => answer(false)} />
+      <div className="confirm" role="alertdialog" aria-modal="true" aria-label={title}>
+        <h2>{title}</h2>
+        {body ? <p className="sub">{body}</p> : null}
+        <div className="confirm-actions">
+          <Btn tone="secondary" onClick={() => answer(false)}>Bekor qilish</Btn>
+          <Btn tone={danger ? "danger" : "primary"} onClick={() => answer(true)} autoFocus>Tasdiqlash</Btn>
+        </div>
+      </div>
     </>
   );
 }

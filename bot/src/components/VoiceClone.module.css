@@ -21,7 +21,7 @@
 .meter i.loud { background: var(--bad); }
 
 /* O'qiladigan matn */
-.passage { background: var(--sunken); border-radius: var(--r-md); padding: 14px 16px; font-size: 17px; line-height: 1.55; color: var(--ink); border: 1.5px solid transparent; overflow-wrap: anywhere; }
+.passage { background: var(--sunken); border-radius: var(--r-md); padding: 14px 16px; font-size: 15px; line-height: 1.55; color: var(--ink); border: 1.5px solid transparent; overflow-wrap: anywhere; }
 .passage.live { border-color: var(--bad); }
 .actions { display: grid; gap: 10px; }
 
