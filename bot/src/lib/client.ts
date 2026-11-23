@@ -93,7 +93,12 @@ export function openExternal(url: string) {
   else window.open(url, "_blank", "noopener");
 }
 
+/** Ilova ichidagi tasdiq oynasi (ui.tsx ConfirmHost): ro'yxatdan o'tmagan bo'lsa Telegram/brauzer oynasi ishlatiladi. */
+let confirmHost: ((message: string) => Promise<boolean>) | null = null;
+export function setConfirmHost(h: ((message: string) => Promise<boolean>) | null) { confirmHost = h; }
+
 export function confirmBox(message: string): Promise<boolean> {
+  if (confirmHost) return confirmHost(message);
   const t = tg();
   if (t?.isVersionAtLeast?.("6.2")) return new Promise((res) => t.showConfirm(message, res));
   return Promise.resolve(window.confirm(message));

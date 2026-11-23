@@ -48,3 +48,5 @@
 .lock { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--accent-ink); line-height: 1.4; }
 .lock svg { width: 15px; height: 15px; flex: none; }
 .foot { padding: 0 4px; display: grid; gap: 6px; }
+
+.expired { display: inline-flex; align-items: center; gap: 6px; color: var(--bad); font-size: 13px; font-weight: 650; }

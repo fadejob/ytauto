@@ -23,10 +23,10 @@ export const MAX_CHANNELS = 10;
 /** Kanal id'si aniqlanmagan eski ulanish (token bekor qilingan bo'lsa): shu kanal qayta ulanganda haqiqiy id bilan almashtiriladi. */
 const LEGACY_ID = "legacy";
 
-export type YtChannel = { id: string; title: string; refreshToken: string; scope: string; connectedAt: string };
+export type YtChannel = { id: string; title: string; refreshToken: string; scope: string; connectedAt: string; /** Google ruxsatni bekor qilgan/muddati tugagan (tekshiruvda aniqlangan); qayta ulansa tozalanadi. */ expired?: boolean };
 type ChannelList = { active: string; channels: YtChannel[] };
 
-export type YouTubeChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number };
+export type YouTubeChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired: boolean };
 export type YouTubeStatus = {
   connected: boolean; channelId: string; channelTitle: string; connectedAt: string | null;
   channels: YouTubeChannelInfo[]; maxChannels: number;
@@ -90,7 +90,7 @@ function parseList(raw: string | null): ChannelList | null {
     const j = JSON.parse(raw) as Partial<ChannelList>;
     const channels = (Array.isArray(j.channels) ? j.channels : [])
       .filter((c): c is YtChannel => !!c && typeof c.id === "string" && !!c.id && typeof c.refreshToken === "string" && !!c.refreshToken)
-      .map((c) => ({ id: c.id, title: String(c.title ?? ""), refreshToken: c.refreshToken, scope: String(c.scope ?? ""), connectedAt: String(c.connectedAt ?? "") }));
+      .map((c) => ({ id: c.id, title: String(c.title ?? ""), refreshToken: c.refreshToken, scope: String(c.scope ?? ""), connectedAt: String(c.connectedAt ?? ""), ...(c.expired ? { expired: true } : {}) }));
     const active = channels.some((c) => c.id === j.active) ? String(j.active) : channels[0]?.id ?? "";
     return { active, channels };
   } catch { return null; }
@@ -184,7 +184,7 @@ export async function getYouTubeStatus(origin: string): Promise<YouTubeStatus> {
   const a = l.channels.find((x) => x.id === l.active);
   return {
     connected: !!a, channelId: a?.id ?? "", channelTitle: a?.title ?? "", connectedAt: a?.connectedAt || null,
-    channels: l.channels.map((x) => ({ id: x.id, title: x.title, connectedAt: x.connectedAt, active: x.id === l.active, pending: pending.get(x.id) ?? 0 })),
+    channels: l.channels.map((x) => ({ id: x.id, title: x.title, connectedAt: x.connectedAt, active: x.id === l.active, pending: pending.get(x.id) ?? 0, expired: x.expired === true })),
     maxChannels: MAX_CHANNELS,
     clientConfigured: !!c.clientId && !!c.clientSecret, redirectUri: redirectOf(origin),
   };
@@ -300,6 +300,16 @@ export async function youtubeAccessToken(c: { refreshToken: string; clientId: st
   return j.access_token;
 }
 
+/** Kanalning «token eskirgan» belgisini yangilaydi (o'zgarmasa yozmaydi). */
+async function markExpired(id: string, expired: boolean) {
+  await lockList();
+  const l = await channelList();
+  const c = l.channels.find((x) => x.id === id);
+  if (!c || (c.expired === true) === expired) return;
+  if (expired) c.expired = true; else delete c.expired;
+  await writeList(l);
+}
+
 /**
  * Ulanishni HAQIQATAN tekshiradi (faqat bazadagi belgiga ishonmaydi): saqlangan refresh token bilan Google'dan access token oladi va
  * kanal nomini so'raydi. Token bekor qilingan/muddati o'tgan (masalan Google "Testing" rejimida 7 kundan keyin) bo'lsa sababini aytadi.
@@ -322,8 +332,10 @@ export async function verifyYouTube(id?: string): Promise<{ ok: boolean; channel
     const why = j.error === "invalid_grant"
       ? "ruxsat bekor qilingan yoki muddati tugagan (Google Cloud'da ilova «Testing» rejimida bo'lsa token 7 kunda tugaydi) — qayta ulang"
       : j.error === "invalid_client" ? "Client ID/Secret noto'g'ri" : (j.error_description ?? j.error ?? `HTTP ${res.status}`);
+    if (j.error === "invalid_grant") await markExpired(s.id, true);
     return { ok: false, message: `«${s.title}»: token yangilanmadi: ${why}.` };
   }
+  await markExpired(s.id, false);
   const ch = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", { headers: { Authorization: `Bearer ${j.access_token}` } });
   const cj = (await ch.json().catch(() => ({}))) as { items?: { id?: string; snippet?: { title?: string } }[]; error?: { message?: string } };
   if (!ch.ok) return { ok: false, message: `YouTube API xatosi: ${cj.error?.message ?? ch.status}` };

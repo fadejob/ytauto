@@ -7,7 +7,7 @@ import type { Toast } from "./App";
 import { Alert, Btn, SkelCard, useBusy } from "./ui";
 import styles from "./YouTubeChannels.module.css";
 
-export type YtChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number };
+export type YtChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired?: boolean };
 export type YtStatus = {
   connected: boolean; channelId: string; channelTitle: string; connectedAt: string | null;
   channels: YtChannelInfo[]; maxChannels: number; clientConfigured: boolean; redirectUri: string;
@@ -142,6 +142,7 @@ export default function YouTubeChannels({ yt, setYt, toast, blocked, onSwitched,
                 <span className={styles.names}>
                   {c.active ? <span className={styles.kicker}>Faol kanal</span> : null}
                   <span className={styles.title}>{name}</span>
+                  {c.expired ? <span className={styles.expired}><CircleX size={14} />Token eskirgan — uzib, qayta ulang</span> : null}
                   {!c.active ? (
                     <span className={styles.meta}>
                       {switching ? "Faol qilinmoqda…" : `${c.pending ? `${c.pending} ta video navbatda · ` : ""}bosib faol qiling`}

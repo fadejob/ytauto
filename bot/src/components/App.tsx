@@ -10,6 +10,7 @@ import Channel from "./Channel";
 import Ai from "./Ai";
 import History from "./History";
 import TokenLogin from "./TokenLogin";
+import { ConfirmHost } from "./ui";
 import Hub from "./settings/Hub";
 import Channels from "./settings/Channels";
 import Voice from "./settings/Voice";
@@ -139,6 +140,7 @@ export default function App() {
 
   return (
     <main className="shell">
+      <ConfirmHost />
       {state?.demo ? <div className="banner" style={{ marginBottom: 12 }}><CircleAlert />Demo rejim: namunaviy ma&apos;lumotlar (baza ulanmagan).</div>
         : state?.viewer.dev ? <div className="banner" style={{ marginBottom: 12 }}><CircleAlert />Brauzer (dev) rejimi — Telegram&apos;siz. Productionda ALLOW_BROWSER_DEV=0 qiling.</div> : null}
       {state && !state.catalog.known && tab === "videos" ? (
