@@ -378,7 +378,7 @@ function Header({ back, onRefresh, refreshing }: { back: () => void; onRefresh: 
 }
 
 
-type Media = { video: string; download: string; cover: string; subtitles: string; machine: string };
+type Media = { video: string; download: string; cover: string | null; subtitles: string | null; machine: string };
 
 /**
  * Tayyor video pleeri: fayl kompyuterdan agent orqali (imzolangan public havola, Range - oldinga/orqaga o'tish ishlaydi).
@@ -398,7 +398,7 @@ function Player({ id, format, toast }: { id: number; format: number; toast: Toas
     <Card title="Tayyor video" sub={media ? `Kompyuterdan (${media.machine}) to'g'ridan-to'g'ri` : undefined}
       action={media ? <Btn tone="secondary" size="sm" icon={Download} onClick={() => { haptic.tap(); openExternal(media.download); }}>Yuklab olish</Btn> : null}>
       {media === undefined ? <Skel h={180} /> : media && !failed ? (
-        <video className={s.player} style={{ aspectRatio: ratio }} src={media.video} poster={media.cover} controls playsInline preload="metadata"
+        <video className={s.player} style={{ aspectRatio: ratio }} src={media.video} poster={media.cover ?? undefined} controls playsInline preload="metadata"
           onError={() => { setFailed(true); toast("Video ochilmadi — kompyuter manzili o'zgargan bo'lishi mumkin. Yangilanmoqda…", true); void load(); }} />
       ) : (
         <div className="hint">

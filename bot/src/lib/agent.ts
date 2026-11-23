@@ -20,6 +20,9 @@ export type AgentEndpoint = { machine: string; url: string; secret: string };
 const TOKEN_TTL_SEC = 10 * 60;
 /** Faqat Cloudflare quick tunnel manzillari (bazadagi ixtiyoriy manzilga server so'rov yubormasligi uchun - SSRF). */
 const URL_RE = /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/;
+/** Lokal sinov (next dev): agent tunnelsiz, http://localhost:PORT. Production'da hech qachon qabul qilinmaydi. */
+const DEV_URL_RE = /^http:\/\/localhost:\d{2,5}$/;
+const urlAllowed = (u: string) => URL_RE.test(u) || (process.env.NODE_ENV !== "production" && DEV_URL_RE.test(u));
 export const MEDIA_FILES = ["video.mp4", "cover.jpg", "subtitles.srt"] as const;
 export type MediaFile = (typeof MEDIA_FILES)[number];
 
@@ -39,7 +42,7 @@ export function mediaSig(secret: string, account: string, jobId: number, file: M
 /** Hisobning tirik agentlari (mehmon bo'lsa - mezbon kompyuterlari). Manzil formati noto'g'ri bo'lsa tashlab yuboriladi. */
 export async function liveAgents(accountId: string): Promise<AgentEndpoint[]> {
   const list = await agentEndpoints(accountId);
-  return list.filter((a) => URL_RE.test(a.url) && a.secret.length >= 32);
+  return list.filter((a) => urlAllowed(a.url) && a.secret.length >= 32);
 }
 
 async function call(ep: AgentEndpoint, account: string, path: string, init: RequestInit & { timeoutMs: number }): Promise<Response | null> {
@@ -100,7 +103,7 @@ export async function waitJobChange(accountId: string, jobId: number, seconds: n
   } finally { ctl.abort(); }
 }
 
-export type MediaLinks = { machine: string; video: string; download: string; cover: string; subtitles: string };
+export type MediaLinks = { machine: string; video: string; download: string; cover: string | null; subtitles: string | null };
 
 /** Shu kompyuterdagi tayyor video uchun public havolalar (tunnel manzili o'zgarsa - qayta so'rang). Fayl topilmasa null. */
 export async function mediaLinks(accountId: string, jobId: number): Promise<MediaLinks | null> {
@@ -108,18 +111,22 @@ export async function mediaLinks(accountId: string, jobId: number): Promise<Medi
   if (!agents.length) return null;
   const has = await Promise.all(agents.map(async (a) => {
     const r = await call(a, accountId, `/v1/has?job=${jobId}`, { method: "GET", timeoutMs: 3000 });
-    const j = r?.ok ? ((await r.json().catch(() => null)) as { video?: boolean } | null) : null;
-    return j?.video ? a : null;
+    const j = r?.ok ? ((await r.json().catch(() => null)) as { video?: boolean; cover?: boolean; subtitles?: boolean } | null) : null;
+    return j?.video ? { a, cover: !!j.cover, subtitles: !!j.subtitles } : null;
   }));
-  const a = has.find((x): x is AgentEndpoint => !!x);
-  if (!a) return null;
+  const hit = has.find((x) => !!x);
+  if (!hit) return null;
+  const { a } = hit;
   const acc = accountId.toLowerCase();
   const link = (f: MediaFile, extra = "") => `${a.url}/media/${jobId}/${f}?a=${acc}&s=${mediaSig(a.secret, acc, jobId, f)}${extra}`;
-  return { machine: a.machine, video: link("video.mp4"), download: link("video.mp4", "&download=1"), cover: link("cover.jpg"), subtitles: link("subtitles.srt") };
+  return {
+    machine: a.machine, video: link("video.mp4"), download: link("video.mp4", "&download=1"),
+    cover: hit.cover ? link("cover.jpg") : null, subtitles: hit.subtitles ? link("subtitles.srt") : null,
+  };
 }
 
 /** Bot web app uchun WebSocket manzillari (token 10 daqiqa: ulanish uzilsa ilova yangisini so'raydi). */
 export async function liveSockets(accountId: string): Promise<{ machine: string; url: string }[]> {
   const agents = await liveAgents(accountId);
-  return agents.map((a) => ({ machine: a.machine, url: `${a.url.replace(/^https:/, "wss:")}/v1/ws?t=${encodeURIComponent(signAgentToken(a.secret, "ws", accountId))}` }));
+  return agents.map((a) => ({ machine: a.machine, url: `${a.url.replace(/^http/, "ws")}/v1/ws?t=${encodeURIComponent(signAgentToken(a.secret, "ws", accountId))}` }));
 }

@@ -168,7 +168,8 @@ public sealed class AgentServer : IDisposable
             case "/v1/has" when method == "GET":
             {
                 long.TryParse(req.QueryString["job"], out var job);
-                Reply(ctx, 200, new { video = job > 0 && _h.HasVideo(account, job) });
+                bool Has(string f) => job > 0 && _h.ResolveMedia(account, job, f) is { } m && File.Exists(m.Path);
+                Reply(ctx, 200, new { video = job > 0 && _h.HasVideo(account, job), cover = Has("cover.jpg"), subtitles = Has("subtitles.srt") });
                 return;
             }
         }
