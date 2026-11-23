@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Activity, ChevronRight, CircleAlert, CircleCheck, Clapperboard, KeyRound, Lock, MonitorOff, Package, RefreshCw, Settings2, Sparkles, Tv, UserRound } from "lucide-react";
+import { applyOptimistic } from "@/lib/optimistic";
 import { ApiError, api, cache, followSystemTheme, haptic, initTelegram, telegramBack } from "@/lib/client";
 import type { Action, ActionResult, State } from "@/lib/types";
 import Topics from "./Topics";
@@ -124,14 +125,21 @@ export default function App() {
     else setPage(null);
   } : null), [inner, tab]);
 
+  // Amal: holat darhol (optimistik) o'zgaradi, server javobida kelgan yangi holat bilan almashtiriladi - alohida /api/state kutilmaydi.
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
   const run: Run = useCallback(async (actions) => {
+    const before = stateRef.current;
+    if (before) setState(applyOptimistic(before, actions));
     try {
-      const { results } = await api<{ results: ActionResult[] }>("/api/actions", { actions });
-      const bad = results.find((r) => !r.ok);
-      if (bad) { haptic.fail(); show(bad.message, true); } else { haptic.ok(); show(results.map((r) => r.message).join(" ")); }
-      void refresh();
-      return results;
+      const r = await api<{ results: ActionResult[]; state?: State }>("/api/actions", { actions });
+      const bad = r.results.find((x) => !x.ok);
+      if (bad) { haptic.fail(); show(bad.message, true); } else { haptic.ok(); show(r.results.map((x) => x.message).join(" ")); }
+      if (r.state) { setState(r.state); cache.set("state", r.state); }
+      else void refresh();
+      return r.results;
     } catch (e) {
+      if (before) setState(before); // tarmoq xatosi: optimistik o'zgarish bekor
       haptic.fail();
       const msg = e instanceof Error ? e.message : String(e);
       show(msg, true);
