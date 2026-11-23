@@ -39,7 +39,7 @@ function summaries(state: State | null, config: BotConfig | null, guest: boolean
 
   const fmt = config?.defaults.format ?? cat?.defaults.format;
   const tpl = config ? config.defaults.template : cat?.defaults.template;
-  const video = fmt === undefined ? "Standart format va shablon · real rasmlar · render"
+  const video = fmt === undefined ? "Standart format va shablon · real rasmlar"
     : [FORMAT_SHORT[fmt] ?? `Format ${fmt}`, tpl || "Shablonsiz", config?.visuals.realMedia ? "real rasmlar" : null].filter(Boolean).join(" · ");
 
   const library = cat

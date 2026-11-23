@@ -2,8 +2,8 @@
 
 /**
  * «Video va sifat» (dizayn: Sozlamalar → Video va sifat euFqPV, to'liq sahifa yX7XZY).
- * To'rt karta, har biri o'z qismini o'zi saqlaydi (saveConfig): yangi video standartlari, real rasm va ikonlar,
- * shablonga moslik, render. Render - kompyuter darajasidagi sozlama: qo'shimcha token (mehmon) uchun ko'rsatilmaydi.
+ * Ikki karta, har biri o'z qismini o'zi saqlaydi (saveConfig): yangi video standartlari va real rasm/ikonlar.
+ * Shablonga moslik va render sozlamalari botdan olib tashlandi - kompyuterdagi standart qiymatlar ishlatiladi.
  */
 import { useCallback, useState, type ReactNode } from "react";
 import { AudioLines, Check, ChevronDown, ClipboardPaste, KeyRound, LayoutTemplate, Lock, Minus, Plus, RotateCcw, Trash2 } from "lucide-react";
@@ -20,8 +20,6 @@ type CardProps = { config: BotConfig; save: (title: string, patch: (d: ConfigDra
 const CONFIRM = "Saqlansinmi? Yangi videolardan boshlab qo'llanadi.";
 
 export default function VideoQuality({ state, toast, back, onChanged }: SettingsPageProps) {
-  const guest = state?.account.guest === true;
-  const host = state?.account.hostLabel;
   const { config, error, reload, saveConfig } = useBotConfig();
   const fail = useCallback((m: string) => { haptic.fail(); toast(m, true); }, [toast]);
   const busy = useBusy(fail);
@@ -39,7 +37,7 @@ export default function VideoQuality({ state, toast, back, onChanged }: Settings
   return (
     <div className="page narrow">
       <PageHead back={{ label: "Sozlamalar", onClick: back }} title="Video va sifat"
-        sub="Yangi videolar qanday ko'rinishda chiqadi: format, rasmlar, shablon va render" />
+        sub="Yangi videolar qanday ko'rinishda chiqadi: format, ovoz, shablon va rasmlar" />
 
       {!config && error ? (
         <Card>
@@ -52,17 +50,8 @@ export default function VideoQuality({ state, toast, back, onChanged }: Settings
         {props ? <>
           <DefaultsCard {...props} catalog={state?.catalog ?? null} />
           <MediaCard {...props} />
-          <StyleCard {...props} catalog={state?.catalog ?? null} />
-          {guest ? (
-            <Card title="Render" sub="OpenFilm tayyor videoni shunday chiqaradi" action={<Status>Kompyuter egasida</Status>}>
-              <div className="sub">
-                Videolaringiz {host ? <b>«{host}»</b> : "token bergan hisob"} kompyuterida render qilinadi: kadr tezligi, ovoz balandligi,
-                subtitr va vaqt chegarasini kompyuter egasi sozlaydi.
-              </div>
-            </Card>
-          ) : <RenderCard {...props} />}
         </> : !error ? <>
-          <SkelCard lines={6} /><SkelCard lines={6} /><SkelCard lines={5} /><SkelCard lines={5} />
+          <SkelCard lines={6} /><SkelCard lines={6} />
         </> : null}
       </div>
     </div>
@@ -143,17 +132,6 @@ function Row({ title, desc, children }: { title: ReactNode; desc?: ReactNode; ch
 }
 
 /** Tanlov (radio) tugmalari: faol qiymat urg'u rangida. Saqlangan qiymat ro'yxatda bo'lmasa u ham qo'shiladi. */
-function Pills({ label, options, value, onChange, fmt }: { label: string; options: number[]; value: number; onChange: (v: number) => void; fmt: (v: number) => string }) {
-  const all = options.includes(value) ? options : [...options, value].sort((a, b) => a - b);
-  return (
-    <div className={s.pills} role="radiogroup" aria-label={label}>
-      {all.map((v) => (
-        <button key={v} type="button" role="radio" aria-checked={v === value} className={v === value ? s.on : ""} onClick={() => onChange(v)}>{fmt(v)}</button>
-      ))}
-    </div>
-  );
-}
-
 /** Belgili va o'qli tanlov qutisi (asl <select>). */
 function SelectBox({ icon: Icon, label, value, onChange, children }: { icon: typeof LayoutTemplate; label: string; value: string; onChange: (v: string) => void; children: ReactNode }) {
   return (
@@ -371,109 +349,5 @@ function StockKey({ name, placeholderNew, stored, keep, value, error, onKeep, on
         </div>
       ) : null}
     </div>
-  );
-}
-
-// ------------------------------------------------------------------ 3. Shablonga moslik
-
-type StyleDraft = { templateStyleGuide: boolean; templateMotion: boolean; styleReview: boolean; minStyleScore: number };
-const pickStyle = (c: BotConfig): StyleDraft => ({
-  templateStyleGuide: c.visuals.templateStyleGuide, templateMotion: c.visuals.templateMotion, styleReview: c.visuals.styleReview, minStyleScore: c.visuals.minStyleScore,
-});
-const TEMPLATE_KIND: Record<string, string> = { Mp4Reference: "video namuna", OpenFilmProject: "OpenFilm loyihasi" };
-
-function StyleCard({ config, save, busy, catalog }: CardProps & { catalog: Catalog | null }) {
-  const TITLE = "Shablonga moslik";
-  const { draft, setDraft, saved, dirty } = useDraft(config, pickStyle);
-  const set = (p: Partial<StyleDraft>) => setDraft((d) => ({ ...d, ...p }));
-  const tpl = config.defaults.template;
-  const kind = catalog?.templates.find((t) => t.name === tpl)?.kind;
-  const pct = (draft.minStyleScore / 10) * 100;
-
-  return (
-    <Card title={TITLE} sub="Video tanlangan shablon uslubida chiqadi">
-      <div className={s.tpl}>
-        <span className={`${s.thumb} ${tpl ? "" : s.none}`} aria-hidden><i /><i /><i /></span>
-        <span className={s.tplText}>
-          <b>{tpl || "Shablonsiz"}</b>
-          <span className="sub">{tpl ? `Standart shablon${kind ? ` · ${TEMPLATE_KIND[kind] ?? kind}` : ""}` : "Yangi video standartlarida shablon tanlanmagan"}</span>
-        </span>
-      </div>
-
-      <div className={s.toggles}>
-        <ToggleRow title="Uslub qo'llanmasi" sub="Rang va shrift shablondan olinadi · doim yoqiq" on={draft.templateStyleGuide} disabled onChange={() => {}} />
-        <ToggleRow title="Harakat va o'tishlar" sub="Shablondagi animatsiyalar takrorlanadi · doim yoqiq" on={draft.templateMotion} disabled onChange={() => {}} />
-        <ToggleRow title="Tayyor videoni solishtirish" sub="Mos kelmasa Claude tuzattiradi" on={draft.styleReview} onChange={(v) => set({ styleReview: v })} />
-      </div>
-
-      <hr className={s.divider} />
-
-      <div className={`${s.score} ${draft.styleReview ? "" : s.dim}`}>
-        <div className={s.readout}>
-          <span className={`${s.big} tnum`}>{draft.minStyleScore.toFixed(1).replace(/\.0$/, "")}<span>/10</span></span>
-          <span className={s.scoreText}><span className="label">Minimal moslik</span><span className="sub">Bundan past chiqsa — qayta tuzatiladi</span></span>
-        </div>
-        <input type="range" className={s.range} min={0} max={10} step={0.5} value={draft.minStyleScore} aria-label="Minimal moslik bali (0–10)"
-          style={{ ["--p" as string]: `${pct}%` }} onChange={(e) => set({ minStyleScore: Number(e.target.value) })} />
-        <div className={`${s.scale} tnum`} aria-hidden><span>0</span><span>5</span><span>10</span></div>
-      </div>
-
-      <Foot hint="Tekshiruv yoqilganda ishlaydi" dirty={dirty} saving={busy.is(TITLE)} done={busy.done(TITLE)}
-        dirtyHint={changed(draft, saved, { styleReview: "Solishtirish", minStyleScore: "Minimal moslik" })}
-        onReset={() => setDraft(saved)}
-        onSave={async () => {
-          const r = await save(TITLE, (d) => ({ ...d, visuals: { ...d.visuals, ...draft } }));
-          if (r) setDraft(pickStyle(r));
-        }} />
-    </Card>
-  );
-}
-
-// ------------------------------------------------------------------ 4. Render (faqat kompyuter egasi)
-
-const pickRender = (c: BotConfig): BotConfig["openFilm"] => ({ ...c.openFilm });
-const lufs = (v: number) => `${v < 0 ? "−" : ""}${Math.abs(v)} LUFS`;
-
-function RenderCard({ config, save, busy }: CardProps) {
-  const TITLE = "Render";
-  const { draft, setDraft, saved, dirty } = useDraft(config, pickRender);
-  const set = (p: Partial<BotConfig["openFilm"]>) => setDraft((d) => ({ ...d, ...p }));
-
-  return (
-    <Card title={TITLE} sub="OpenFilm tayyor videoni shunday chiqaradi">
-      <div className="field">
-        <div className={s.groupHead}><span className="label">Kadr tezligi</span></div>
-        <Pills label="Kadr tezligi" options={[24, 30, 60]} value={draft.fps} onChange={(v) => set({ fps: v })} fmt={(v) => `${v} fps`} />
-      </div>
-      <div className="field">
-        <div className={s.groupHead}><span className="label">Ovoz balandligi</span><span className="sub">YouTube: −14</span></div>
-        <Pills label="Ovoz balandligi" options={[-16, -14, -12]} value={draft.loudnessLufs} onChange={(v) => set({ loudnessLufs: v })} fmt={lufs} />
-      </div>
-
-      <div className={s.toggles}>
-        <ToggleRow title="Subtitrni kuydirish" sub="Matn kadrning o'ziga yoziladi" on={draft.burnSubtitles} onChange={(v) => set({ burnSubtitles: v })} />
-        <ToggleRow title="Renderdan keyin to'liq ko'rish" sub="Claude videoni oxirigacha tekshiradi" on={draft.lookFullAfterRender} onChange={(v) => set({ lookFullAfterRender: v })} />
-      </div>
-
-      <hr className={s.divider} />
-
-      <Row title="Parallel render" desc="1–4 ta video bir vaqtda · 8 GB RAM: 1">
-        <Stepper label="Parallel render" value={draft.renderWorkers} min={1} max={4} onChange={(v) => set({ renderWorkers: v })} />
-      </Row>
-      <Row title="Vaqt chegarasi" desc="Oshsa — render to'xtatiladi · 5–600 daq">
-        <Stepper label="Render vaqt chegarasi (daqiqa)" value={draft.renderTimeoutMinutes} min={5} max={600} step={15} suffix="daq" onChange={(v) => set({ renderTimeoutMinutes: v })} />
-      </Row>
-
-      <Foot hint="Keyingi renderdan qo'llanadi" dirty={dirty} saving={busy.is(TITLE)} done={busy.done(TITLE)}
-        dirtyHint={changed(draft, saved, {
-          fps: "Kadr tezligi", loudnessLufs: "Ovoz balandligi", burnSubtitles: "Subtitr", lookFullAfterRender: "To'liq ko'rish",
-          renderWorkers: "Parallel render", renderTimeoutMinutes: "Vaqt chegarasi",
-        })}
-        onReset={() => setDraft(saved)}
-        onSave={async () => {
-          const r = await save(TITLE, (d) => ({ ...d, openFilm: { ...draft } }));
-          if (r) setDraft(pickRender(r));
-        }} />
-    </Card>
   );
 }

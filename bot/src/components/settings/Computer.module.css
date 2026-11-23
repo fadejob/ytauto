@@ -44,41 +44,14 @@
 .toolBad { color: var(--bad); }
 .toolBad i { background: var(--bad); }
 
-/* ---------- cheklovlar: stepper qatorlari */
-.limits { display: grid; }
-.limit { display: grid; gap: 4px; padding: 12px 0; }
-.limit + .limit { border-top: 1px solid var(--line); }
-.limit:first-child { padding-top: 0; }
-.limitRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.limitText { display: grid; gap: 2px; min-width: 0; }
-.limitText b { font-weight: 600; }
-.stepper { display: flex; align-items: center; gap: 4px; flex: none; }
-.stepBtn { width: 44px; height: 44px; border-radius: 999px; background: var(--sunken); color: var(--ink); display: grid; place-items: center; flex: none; }
-.stepBtn:disabled { opacity: 0.4; }
-.value { display: inline-flex; align-items: baseline; justify-content: center; gap: 4px; min-width: 56px; padding: 0 2px; }
-.valueInp { width: auto; min-width: 1ch; max-width: 5ch; border: 0; border-bottom: 1.5px solid transparent; background: none; color: var(--ink); font-size: 17px; font-weight: 700; text-align: center; padding: 2px 0; outline: none; }
-.valueInp:focus { border-bottom-color: var(--accent); }
-.valueErr { border-bottom-color: var(--bad); color: var(--bad); }
-.unit { font-size: 15px; font-weight: 600; color: var(--muted); }
-
 /* ---------- karta tagi: izoh + «Saqlash» */
 .foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .foot .hint { min-width: 0; }
 .foot button { flex: none; }
 
-/* ---------- kengaytirilgan (yopiq karta) */
-.adv { padding: 12px 16px 12px 12px; }
-.advHead { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; text-align: left; color: var(--ink); }
-.advText { display: grid; gap: 2px; flex: 1; min-width: 0; }
-.advText b { font-size: 17px; font-weight: 700; }
-.advText .sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chev { color: var(--muted); flex: none; transition: transform 0.2s; }
-.chevOpen { transform: rotate(180deg); }
-.advBody { display: grid; gap: 14px; padding: 4px 4px 4px 4px; }
-
 /* ---------- mehmon */
 .guest { display: flex; gap: 12px; align-items: flex-start; }
 
 @media (prefers-reduced-motion: reduce) {
-  .arc, .chev { transition: none; }
+  .arc { transition: none; }
 }

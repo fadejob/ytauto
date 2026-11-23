@@ -73,41 +73,6 @@
 .keyInput input { padding-right: 48px; }
 .paste { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); border-radius: var(--r-sm); }
 
-/* ------------------------------------------------ shablon ko'rinishi va moslik bali */
-.tpl { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--r-md); background: var(--sunken); }
-.thumb { width: 64px; height: 40px; border-radius: 8px; background: var(--inverse); display: flex; align-items: center; justify-content: center; gap: 4px; flex: none; }
-.thumb i { width: 10px; height: 10px; border-radius: 999px; }
-.thumb i:nth-child(1) { background: var(--accent); }
-.thumb i:nth-child(2) { background: var(--on-inverse); }
-.thumb i:nth-child(3) { background: var(--on-inverse-muted); }
-.thumb.none { background: var(--line); }
-.thumb.none i { background: var(--faint); }
-.tplText { display: grid; gap: 2px; min-width: 0; }
-.tplText b { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.score { display: grid; gap: 10px; transition: opacity 0.15s; }
-.score.dim { opacity: 0.5; }
-.readout { display: flex; align-items: center; gap: 12px; }
-.big { font-size: 26px; font-weight: 750; letter-spacing: -0.5px; flex: none; }
-.big span { color: var(--muted); }
-.scoreText { display: grid; gap: 2px; min-width: 0; }
-.scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
-
-.range { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; background: transparent; cursor: pointer; margin: 0; }
-.range::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, var(--accent) var(--p), var(--line) var(--p)); }
-.range::-moz-range-track { height: 6px; border-radius: 999px; background: var(--line); }
-.range::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--accent); }
-.range::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; margin-top: -9px; border-radius: 999px; background: var(--card); border: 3px solid var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
-.range::-moz-range-thumb { width: 18px; height: 18px; border-radius: 999px; background: var(--card); border: 3px solid var(--accent); }
-.range:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 999px; }
-
-/* ------------------------------------------------ fps / LUFS tanlovi (faol - urg'u) */
-.pills { display: flex; gap: 8px; }
-.pills button { flex: 1; min-height: 44px; padding: 0 8px; border-radius: 999px; background: var(--sunken); color: var(--ink); font-size: 14px; font-weight: 650;
-  white-space: nowrap; font-variant-numeric: tabular-nums; }
-.pills button.on { background: var(--accent); color: var(--on-accent); }
-
 @media (max-width: 360px) {
   .format { padding: 10px; }
-  .pills button { font-size: 13px; padding: 0 4px; }
 }
