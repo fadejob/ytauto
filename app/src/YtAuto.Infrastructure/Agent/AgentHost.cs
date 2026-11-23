@@ -104,6 +104,7 @@ public static class AgentHost
         public async Task<int> RunAsync(CancellationToken ct)
         {
             RefreshGuests();
+            try { MediaRoots(); } catch (Exception e) { _svc.Log.Debug("Agent: media papkalari o'qilmadi: " + e.Message); }
             var port = StartServer();
             using var udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
             var udpPort = ((IPEndPoint)udp.Client.LocalEndPoint!).Port;
@@ -198,8 +199,7 @@ public static class AgentHost
                 if (!_guests.Contains(account) || !Guid.TryParse(account, out var g)) return null;
                 scope = g;
             }
-            VideoJob? job;
-            using (Pg.UseScope(scope)) job = _svc.Store.Get(jobId);
+            var job = CachedJob(account, scope, jobId);
             if (job is null) return null;
             var (path, types) = file switch
             {
@@ -210,10 +210,33 @@ public static class AgentHost
             };
             if (string.IsNullOrWhiteSpace(path) || !types.TryGetValue(Path.GetExtension(path).ToLowerInvariant(), out var type)) return null;
             // Yo'l bazadan keladi: faqat YtAuto papkalaridagi fayllar beriladi (bazadagi yo'l bilan ixtiyoriy faylni o'qitib bo'lmaydi).
-            var s = _svc.Settings.Load().Paths;
-            var roots = new[] { s.VideoArchiveDir, s.AudioArchiveDir, s.WorkDir, s.TemplatesDir, _svc.Paths.RecordsDir }.Where(r => !string.IsNullOrWhiteSpace(r));
-            if (!roots.Any(r => PathGuard.IsUnder(r, path)) || PathGuard.IsReparsePoint(path)) return null;
+            if (!MediaRoots().Any(r => PathGuard.IsUnder(r, path)) || PathGuard.IsReparsePoint(path)) return null;
             return (path, type);
+        }
+
+        // Video pleer har oldinga o'tkazishda yangi Range so'rovi yuboradi, /v1/has esa uch faylni tekshiradi: har safar sozlamalarni
+        // (online konfiguratsiya bilan, bir necha soniya) va vazifani qayta o'qimaslik uchun qisqa kesh.
+        private readonly ConcurrentDictionary<(string, long), (DateTime At, VideoJob? Job)> _jobCache = new();
+        private (DateTime At, string[] Roots) _roots = (DateTime.MinValue, Array.Empty<string>());
+
+        private VideoJob? CachedJob(string account, Guid? scope, long jobId)
+        {
+            if (_jobCache.TryGetValue((account, jobId), out var c) && DateTime.UtcNow - c.At < TimeSpan.FromSeconds(30)) return c.Job;
+            VideoJob? job;
+            using (Pg.UseScope(scope)) job = _svc.Store.Get(jobId);
+            if (_jobCache.Count > 200) _jobCache.Clear();
+            _jobCache[(account, jobId)] = (DateTime.UtcNow, job);
+            return job;
+        }
+
+        private string[] MediaRoots()
+        {
+            var r = _roots;
+            if (DateTime.UtcNow - r.At < TimeSpan.FromMinutes(5)) return r.Roots;
+            var s = _svc.Settings.Load().Paths;
+            var roots = new[] { s.VideoArchiveDir, s.AudioArchiveDir, s.WorkDir, s.TemplatesDir, _svc.Paths.RecordsDir }.Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+            _roots = (DateTime.UtcNow, roots);
+            return roots;
         }
 
         // ------------------------------------------------------------------ bazaga yurak urishi
