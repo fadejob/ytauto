@@ -19,12 +19,13 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#F5F1EA" },
-    { media: "(prefers-color-scheme: dark)", color: "#151311" },
+    { media: "(prefers-color-scheme: dark)", color: "#F5F1EA" },
   ],
 };
 
 /** Birinchi chizishdan oldin mavzu: Telegram ichida uning colorScheme, brauzerda tizim sozlamasi (keyin initTelegram kuzatadi). */
-const THEME = `(function(){try{var t=window.Telegram&&window.Telegram.WebApp;var d=t&&t.initData?t.colorScheme==="dark":window.matchMedia("(prefers-color-scheme: dark)").matches;document.documentElement.dataset.theme=d?"dark":"light"}catch(e){}})()`;
+// Ilova faqat yorug' mavzuda ishlaydi (Telegram yoki tizim qorong'i bo'lsa ham).
+const THEME = `document.documentElement.dataset.theme="light"`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

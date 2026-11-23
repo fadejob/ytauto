@@ -1,0 +1,14 @@
+/* Videolar ekranidagi kanal tugmasi va ochiladigan ro'yxat (ro'yxat bandlari YouTubeChannels.module.css dan). */
+.wrap { position: relative; z-index: 25; min-width: 0; }
+.chip { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 14px 6px 8px; border-radius: 999px; background: var(--card);
+  color: var(--ink); font-size: 14px; font-weight: 650; min-width: 0; max-width: 100%; border: 1.5px solid transparent; transition: border-color 0.15s; }
+.chip:hover, .chip.open { border-color: var(--accent); }
+.chip:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.chip svg { color: var(--muted); flex: none; }
+.avatar { width: 30px; height: 30px; border-radius: 999px; background: var(--inverse); color: var(--on-inverse); display: grid; place-items: center; font-size: 13px; font-weight: 750; flex: none; }
+.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.total { color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+
+.menu { right: auto; width: min(360px, calc(100vw - 32px)); }
+.loading { display: flex; align-items: center; gap: 8px; padding: 14px 12px; font-size: 14px; color: var(--muted); }
+.err { padding: 10px 12px; font-size: 13px; color: var(--bad); }

@@ -94,3 +94,6 @@
 @media (hover: hover) and (pointer: fine) {
   .chip:not(:disabled):hover { background: var(--sunken); }
 }
+
+/* Telefonda tanishtiruv kartasi ko'rsatilmaydi: joy suhbat va yozish maydoniga qoladi. */
+@media (max-width: 767px) { .intro { display: none; } }

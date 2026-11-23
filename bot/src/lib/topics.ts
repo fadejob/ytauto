@@ -233,12 +233,15 @@ export async function applyAction(a: Action): Promise<ActionResult> {
         if ("error" in tf) return { ok: false, message: tf.error };
         const manualErr = checkManual(items[i].script, items[i].title, !!items[i].audioPath);
         if (manualErr) return { ok: false, message: `"${t.topic}": ${manualErr}` };
-        // Gemini yozadigan mavzu: boshlang'ich savol (hook) majburiy. O'z matni bo'lsa - matn formatga sig'ishi kerak.
+        // Gemini yozadigan mavzu: boshlang'ich savolni Gemini video matniga qarab o'zi yozadi; berilgan bo'lsa (AI yordamchi) - tekshiriladi.
+        // O'z matni bo'lsa - matn formatga sig'ishi kerak.
         let hook: string | null = null;
         if (!items[i].script) {
-          const h = checkHook(t.hook);
-          if ("error" in h) return { ok: false, message: `"${t.topic}": ${h.error}` };
-          hook = h.hook;
+          if (t.hook?.trim()) {
+            const h = checkHook(t.hook);
+            if ("error" in h) return { ok: false, message: `"${t.topic}": ${h.error}` };
+            hook = h.hook;
+          }
         } else if (!items[i].audioPath) {
           const lp = manualLengthProblem(items[i].script, tf.format);
           if (lp) return { ok: false, message: `"${t.topic}": ${lp}` };
@@ -284,7 +287,7 @@ export async function applyAction(a: Action): Promise<ActionResult> {
       let hook: string | null = null;
       if (!script) {
         const given = a.hook !== undefined ? a.hook : r.hook;
-        if (given !== null) {
+        if (given !== null && given.trim()) {
           const h = checkHook(given);
           if ("error" in h) return { ok: false, message: `#${a.id}: ${h.error}` };
           hook = h.hook;

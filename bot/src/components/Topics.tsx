@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CalendarClock, ChevronRight, ChevronsUpDown, CircleX, CloudUpload, Ellipsis, ExternalLink, ListVideo, Pencil, Plus, RotateCcw, RotateCw,
+  CalendarClock, ChevronRight, CircleX, CloudUpload, Ellipsis, ExternalLink, ListVideo, Pencil, Plus, RotateCcw, RotateCw,
   Trash2, Undo2, Upload, Zap, CircleCheck, LoaderCircle, Sparkles,
 } from "lucide-react";
 import { confirmBox, haptic, openExternal } from "@/lib/client";
@@ -17,6 +17,7 @@ import type { Run } from "./App";
 import type { SettingsPage } from "./settings/types";
 import { Alert, Btn, Empty, HookLine, Segmented, Sheet, Skel, SkelCard, StageStrip, Status, useBusy, type IconT, type StageState } from "./ui";
 import TopicSheet, { RescheduleSheet, MONTHS, fmtWhen, formatShort, isLate, todayIn } from "./TopicSheet";
+import ChannelMenu from "./ChannelMenu";
 import s from "./Topics.module.css";
 
 type Group = "queue" | "work" | "done";
@@ -202,13 +203,7 @@ export default function Topics({ state, loading, refresh, run, locked, openVideo
     <div className="page">
       <div className={s.top}>
         {state ? (
-          <button type="button" className={s.chip} onClick={() => openSettings?.("channels")}
-            aria-label={channel?.title ? `Kanal: ${channel.title}. Almashtirish` : "Kanal tanlash"}>
-            <span className={s.avatar} aria-hidden>{(channel?.title || "?").trim().charAt(0) || "?"}</span>
-            <span className={s.name}>{channel?.title || "Kanal tanlanmagan"}</span>
-            {channel && channel.total > 1 ? <span className={s.total}>{channel.total} ta</span> : null}
-            <ChevronsUpDown size={16} />
-          </button>
+          <ChannelMenu title={channel?.title || null} total={channel?.total ?? 0} onSwitched={() => void refresh()} onManage={() => openSettings?.("channels")} />
         ) : <Skel h={44} w={200} r={999} />}
         <button type="button" className={`round ${s.refresh}`} aria-label="Yangilash" disabled={loading} onClick={() => { haptic.tap(); void refresh(); }}>
           <RotateCw size={18} className={loading && state ? "spin" : undefined} />
@@ -279,10 +274,8 @@ export default function Topics({ state, loading, refresh, run, locked, openVideo
             const meta = [formatShort(t.format), sourceText(t), musicText(t, state), relWhen(t.publishLocal, tz)].filter(Boolean).join(" · ");
             return (
               <article key={t.id} className={`card ${s.card}`} onClick={() => open(t)}>
-                <div className={s.head}>
-                  <button type="button" className={s.title} onClick={(e) => { e.stopPropagation(); open(t); }}>{t.title || t.topic}</button>
-                  <Status tone={statusTone(t)}>{StatusText[t.status]}</Status>
-                </div>
+                <div className={s.statusRow}><Status tone={statusTone(t)}>{StatusText[t.status]}</Status></div>
+                <button type="button" className={s.title} title={t.title || t.topic} onClick={(e) => { e.stopPropagation(); open(t); }}>{t.title || t.topic}</button>
                 {t.hook ? <HookLine>{t.hook}</HookLine> : null}
                 <StageStrip stages={stagesOf(t)} />
                 {t.error ? <Alert>{t.error}</Alert> : null}
@@ -322,7 +315,7 @@ export default function Topics({ state, loading, refresh, run, locked, openVideo
                     <span>{MONTHS[Number(t.publishLocal.date.slice(5, 7)) - 1]}</span>
                   </span>
                   <span className={s.texts}>
-                    <span className={s.rowTitle}>{t.title || t.topic}</span>
+                    <span className={s.rowTitle} title={t.title || t.topic}>{t.title || t.topic}</span>
                     {t.hook ? <HookLine>{t.hook}</HookLine> : null}
                     <span className={`${s.meta} tnum`}>{meta}</span>
                     {t.status === 14 || t.claimed ? <span><Status tone={statusTone(t)}>{StatusText[t.status]}</Status></span> : null}

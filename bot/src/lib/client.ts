@@ -38,12 +38,11 @@ export function initTelegram() {
   t.ready();
   t.expand();
   try { t.disableVerticalSwipes?.(); } catch {}
-  // Telegram sarlavhasi va fon ilovaning o'z rangida (Telegram mavzu ranglari emas): yorug'/qorong'i Telegram'nikiga ergashadi.
+  // Ilova doim yorug' mavzuda (Telegram qorong'i bo'lsa ham): sarlavha, fon va pastki panel ham yorug'.
   const applyTheme = () => {
-    const dark = t.colorScheme === "dark";
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
-    const bg = dark ? "#151311" : "#F5F1EA";
-    try { t.setHeaderColor?.(bg); t.setBackgroundColor?.(bg); } catch {}
+    document.documentElement.dataset.theme = "light";
+    const tt = t as TgWebApp & { setBottomBarColor?: (c: string) => void };
+    try { tt.setHeaderColor?.("#F5F1EA"); tt.setBackgroundColor?.("#F5F1EA"); tt.setBottomBarColor?.("#F5F1EA"); } catch {}
   };
   applyTheme();
   try { t.onEvent?.("themeChanged", applyTheme); } catch {}
@@ -64,7 +63,7 @@ function isLargeDevice(t: TgWebApp): boolean {
 export function followSystemTheme(): () => void {
   if (tg() || typeof window === "undefined") return () => {};
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
-  const on = () => { document.documentElement.dataset.theme = mq.matches ? "dark" : "light"; };
+  const on = () => { document.documentElement.dataset.theme = "light"; }; // ilova faqat yorug' mavzuda
   on();
   mq.addEventListener("change", on);
   return () => mq.removeEventListener("change", on);

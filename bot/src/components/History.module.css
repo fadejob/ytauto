@@ -94,3 +94,11 @@
 .stageRow b { font-size: 15px; font-weight: 650; }
 .events { display: grid; gap: 8px; }
 .logbox { padding: 10px 12px; border-radius: var(--r-sm); background: var(--sunken); }
+
+/* Kartalar ustunlarga oqadi (masonry): qisqa karta yonida uzun karta bo'lsa ham bo'shliq qolmaydi.
+   Kompyuter kartalari .pair (display: contents) ichida - ular ham alohida bo'lak. */
+@media (min-width: 1024px) {
+  .flow { display: block; columns: 2 380px; column-gap: 16px; }
+  .flow > *, .flow > div > :global(.card) { break-inside: avoid; margin-bottom: 16px; }
+  .flow > div:has(> :global(.card)) { margin-bottom: 0; }
+}

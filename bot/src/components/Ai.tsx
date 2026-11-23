@@ -27,7 +27,7 @@ const SUGGESTIONS = [
 ];
 
 const CAPABILITIES: { icon: IconT; title: string; sub: string }[] = [
-  { icon: ListPlus, title: "Mavzu qo'shish", sub: "5 tagacha, har biriga boshlang'ich savol" },
+  { icon: ListPlus, title: "Mavzu qo'shish", sub: "5 tagacha, bir yo'la" },
   { icon: Pencil, title: "O'zgartirish yoki o'chirish", sub: "Video hali tayyorlanmagan mavzularni" },
   { icon: Send, title: "Hozir chiqarish yoki yuklash", sub: "Navbatni kutmasdan YouTube'ga" },
   { icon: FilePenLine, title: "Promptni o'zgartirish", sub: "Ssenariy (Gemini) yoki montaj (Claude)" },

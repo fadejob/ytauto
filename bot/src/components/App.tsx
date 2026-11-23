@@ -227,11 +227,11 @@ export default function App() {
 
       <nav className="tabbar" aria-label="Bo'limlar">
         <span className="brand"><i><Clapperboard size={18} /></i>YtAuto</span>
-        <button className={tab === "videos" ? "on" : ""} aria-current={tab === "videos" ? "page" : undefined} onClick={() => go("videos")}><Clapperboard />Videolar</button>
-        <button className={tab === "channel" ? "on" : ""} aria-current={tab === "channel" ? "page" : undefined} onClick={() => go("channel")}><Tv />Kanal</button>
-        <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => go("ai")} disabled={geminiOff}><Sparkles />AI</button>
-        <button className={tab === "activity" ? "on" : ""} aria-current={tab === "activity" ? "page" : undefined} onClick={() => go("activity")}><Activity />Faoliyat</button>
-        <button className={tab === "settings" ? "on" : ""} aria-current={tab === "settings" ? "page" : undefined} onClick={() => go("settings")}><Settings2 />Sozlamalar</button>
+        <button className={tab === "videos" ? "on" : ""} aria-label="Videolar" title="Videolar" aria-current={tab === "videos" ? "page" : undefined} onClick={() => go("videos")}><Clapperboard /><span className="lbl">Videolar</span></button>
+        <button className={tab === "channel" ? "on" : ""} aria-label="Kanal" title="Kanal" aria-current={tab === "channel" ? "page" : undefined} onClick={() => go("channel")}><Tv /><span className="lbl">Kanal</span></button>
+        <button className={tab === "ai" ? "on" : ""} aria-label="AI" title="AI" aria-current={tab === "ai" ? "page" : undefined} onClick={() => go("ai")} disabled={geminiOff}><Sparkles /><span className="lbl">AI</span></button>
+        <button className={tab === "activity" ? "on" : ""} aria-label="Faoliyat" title="Faoliyat" aria-current={tab === "activity" ? "page" : undefined} onClick={() => go("activity")}><Activity /><span className="lbl">Faoliyat</span></button>
+        <button className={tab === "settings" ? "on" : ""} aria-label="Sozlamalar" title="Sozlamalar" aria-current={tab === "settings" ? "page" : undefined} onClick={() => go("settings")}><Settings2 /><span className="lbl">Sozlamalar</span></button>
       </nav>
     </main>
   );

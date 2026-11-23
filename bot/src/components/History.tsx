@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, CircleAlert, Gauge, RotateCw, ScrollText } from "lucide-react";
+import { CircleAlert, Gauge, RotateCw, ScrollText } from "lucide-react";
 import { api, haptic } from "@/lib/client";
 import { useSchedule, type Schedule } from "@/lib/settings-data";
 import { StatusText, type JobLogs, type Machine, type RunStats, type State, type Topic, type WorkerRun } from "@/lib/types";
@@ -114,20 +114,6 @@ function windowText(sc: Schedule | null) {
 }
 
 // ------------------------------------------------------------------ bitta ishga tushishning resurslari (ochiladigan)
-function StatsDetail({ st }: { st: RunStats }) {
-  return (
-    <div className={s.detailBox}>
-      {st.tools.map((t) => (
-        <div key={t.name} className={s.kv}><span>{t.name} <i className="muted">· CPU {num(t.cpuSeconds)} s</i></span><b className="tnum">{num(t.peakRamMb)} MB</b></div>
-      ))}
-      {st.disk.map((d) => (
-        <div key={d.name} className={s.kv} title={d.path}><span>{d.name}</span><b className="tnum">{bytes(d.bytes)}</b></div>
-      ))}
-      <div className="hint">Bo&apos;sh disk: {num(st.system.freeDiskGbStart, 1)} → {num(st.system.freeDiskGbEnd, 1)} GB ({st.system.diskRoot})</div>
-    </div>
-  );
-}
-
 const DISK_COLORS = ["var(--ink)", "var(--muted)", "var(--faint)", "var(--line)"];
 
 export default function History({ state, toast }: { state: State | null; toast: Toast }) {
@@ -141,7 +127,6 @@ export default function History({ state, toast }: { state: State | null; toast: 
   const [runsError, setRunsError] = useState<string | null>(null);
   const [runsShown, setRunsShown] = useState(RUNS_PAGE);
   const [videosShown, setVideosShown] = useState(VIDEOS_PAGE);
-  const [openStats, setOpenStats] = useState<string | null>(null);
   const [logs, setLogs] = useState<JobLogs | null>(null);
 
   const loadRuns = useCallback(async () => {
@@ -203,12 +188,12 @@ export default function History({ state, toast }: { state: State | null; toast: 
       </section>
 
       {!guest ? (
-        <div className="cards">
+        <div className={`cards ${s.flow}`}>
           <Machines list={machines.list} error={machines.error} reload={machines.reload} toast={toast} />
         </div>
       ) : null}
 
-      <div className="cards">
+      <div className={`cards ${s.flow}`}>
         {!guest ? (
           <section className={s.runs} aria-labelledby="runs-title">
             <div className={s.sectionHead}>
@@ -238,7 +223,6 @@ export default function History({ state, toast }: { state: State | null; toast: 
                   {runs.slice(0, runsShown).map((r, idx, arr) => {
                     const o = outcome(r);
                     const last = idx === arr.length - 1;
-                    const open = openStats === r.runId;
                     return (
                       <li key={r.runId} className={s.run}>
                         <div className={s.rail}>
@@ -254,24 +238,6 @@ export default function History({ state, toast }: { state: State | null; toast: 
                             <Status tone={o.tone}>{o.text}</Status>
                             <span className="sub">{TRIGGER[r.trigger ?? ""] ?? r.trigger ?? "—"}{r.machine ? ` · ${r.machine}` : ""}</span>
                           </div>
-                          {r.message ? <Alert tone={o.tone === "bad" ? "bad" : "note"}>{r.message}</Alert> : null}
-                          {r.stats ? (
-                            <>
-                              <button type="button" className={s.statsToggle} aria-expanded={open} onClick={() => { haptic.tap(); setOpenStats(open ? null : r.runId); }}>
-                                <Gauge size={14} />
-                                <span className="tnum">RAM eng ko&apos;pi {num(r.stats.system.peakUsedRamGb, 1)}/{num(r.stats.system.totalRamGb, 0)} GB · disk {bytes(r.stats.diskTotalBytes)}</span>
-                                <ChevronDown size={14} className={open ? s.flip : undefined} />
-                              </button>
-                              {open ? <StatsDetail st={r.stats} /> : null}
-                            </>
-                          ) : null}
-                          {r.jobId ? (
-                            <div>
-                              <Btn size="sm" tone="secondary" icon={ScrollText} loading={busy.is(`run-logs:${r.runId}`)} onClick={() => void openLogs(`run-logs:${r.runId}`, r.jobId!)}>
-                                {busy.is(`run-logs:${r.runId}`) ? "Yuklanmoqda" : "Video loglari"}
-                              </Btn>
-                            </div>
-                          ) : null}
                         </div>
                       </li>
                     );

@@ -11,8 +11,8 @@ import { ArrowRight, Calendar, ChevronRight, CircleAlert, Clock, FileAudio, Info
 import { api, confirmBox, haptic, putFile } from "@/lib/client";
 import { FormatText, type Catalog, type PreparedAudio, type ScriptSource, type Topic } from "@/lib/types";
 import type { Run } from "./App";
-import { checkHook, countWords, FormatLength, HOOK_MAX_WORDS, manualLengthProblem, TTS_WORDS_PER_SEC } from "@/lib/video-rules";
-import { Alert, Btn, Field, HookSlab, Segmented, Sheet, Status, type IconT } from "./ui";
+import { countWords, FormatLength, manualLengthProblem, TTS_WORDS_PER_SEC } from "@/lib/video-rules";
+import { Alert, Btn, Field, Segmented, Sheet, Status, type IconT } from "./ui";
 import st from "./TopicSheet.module.css";
 
 // ------------------------------------------------------------------ umumiy yordamchilar (Topics ham ishlatadi)
@@ -113,12 +113,10 @@ const SOURCES: { key: ScriptSource; label: string }[] = [{ key: "gemini", label:
  * Qatorni saqlashdan oldin tekshiradi: Gemini rejimida mavzu va boshlang'ich savol (hook), qo'lda rejimda subtitr va title (matn
  * formatga sig'ishi kerak), audio rejimda fayl ham kerak. legacyHook - hook'siz qo'shilgan eski mavzu: hook bo'sh qolishi mumkin.
  */
-function rowProblem(r: Row, hasAudio: boolean, format: number, legacyHook: boolean): string | null {
+function rowProblem(r: Row, hasAudio: boolean, format: number): string | null {
   if (r.source === "gemini") {
-    if (!r.topic.trim()) return "";
-    if (legacyHook && !r.hook.trim()) return null;
-    const h = checkHook(r.hook);
-    return "error" in h ? h.error : null;
+    // Boshlang'ich savolni Gemini video matniga qarab o'zi yozadi - foydalanuvchidan so'ralmaydi.
+    return r.topic.trim() ? null : "";
   }
   if (!r.title.trim() || !r.script.trim()) return "Subtitr matni va title majburiy.";
   if (r.title.trim().length > 100) return "Title 100 belgidan oshmasin.";
@@ -161,8 +159,7 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
   const set = (i: number, patch: Partial<Row>) => { setError(null); setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x))); };
   const at = (r: Row) => (r.date ? `${r.date} ${r.time || "18:00"}` : undefined);
   const hasAudio = !!edit?.hasAudio;
-  const legacyHook = !!edit && edit.hook === null;
-  const problemAt = (i: number) => (isFilled(rows[i]) ? rowProblem(rows[i], hasAudio, format, legacyHook) : null);
+  const problemAt = (i: number) => (isFilled(rows[i]) ? rowProblem(rows[i], hasAudio, format) : null);
   const filledIdx = rows.map((_, i) => i).filter((i) => isFilled(rows[i]));
   // Hali kompyuterga tushmagan shablon tanlanmaydi (tahrirdagi eski mavzuda tanlangan bo'lsa, saqlash ham to'xtaydi).
   const pending = catalog.pendingTemplates ?? [];
@@ -195,12 +192,11 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
       const results = await run(edit
         ? [{
             type: "update_topic", id: edit.id, topic: topicOf(filled[0]), notes: filled[0].notes, publishAt: at(filled[0]), template, format, voice, music, ...manual(filled[0]),
-            hook: filled[0].source === "gemini" && (filled[0].hook.trim() || !legacyHook) ? filled[0].hook : undefined,
           }]
         : [{
             type: "create_topics",
             topics: filled.map((r, i) => ({
-              topic: topicOf(r), notes: r.source === "gemini" ? r.notes : "", hook: r.source === "gemini" ? r.hook : undefined, publishAt: at(r), template, format, voice, music,
+              topic: topicOf(r), notes: r.source === "gemini" ? r.notes : "", publishAt: at(r), template, format, voice, music,
               ...(r.source === "gemini" ? {} : { script: r.script, title: r.title }), audioPath: audioPaths[i],
             })),
           }]);
@@ -312,14 +308,7 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
                   <input className="inp" aria-label="Mavzu" value={r.topic} maxLength={500} placeholder="Masalan: How black holes form"
                     onChange={(e) => set(i, { topic: e.target.value })} autoFocus={i === rows.length - 1} />
                 </Field>
-                <div className="field">
-                  <HookSlab right={`${countWords(r.hook)}/${HOOK_MAX_WORDS} so'z`}
-                    hint="Video aynan shu savol bilan boshlanadi: montaj ham shundan quriladi, qolgani — javob. Inglizcha, «?» bilan.">
-                    <textarea className={st.hookInput} rows={2} aria-label="Boshlang'ich savol (hook)" value={r.hook} maxLength={200}
-                      placeholder="What really happens inside a black hole?" onChange={(e) => set(i, { hook: e.target.value })} />
-                  </HookSlab>
-                  {problem ? <div className="field-err"><CircleAlert size={15} />{problem}</div> : null}
-                </div>
+                {problem ? <div className="field-err"><CircleAlert size={15} />{problem}</div> : null}
                 <Field label="Tushuntirish (ixtiyoriy)">
                   <textarea className="inp" aria-label="Tushuntirish" value={r.notes} maxLength={4000} placeholder="Nimalarni yoritish kerak, auditoriya, ohang…"
                     onChange={(e) => set(i, { notes: e.target.value })} />

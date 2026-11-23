@@ -85,12 +85,12 @@ export default function Channels({ toast, back, onChanged }: SettingsPageProps) 
   const y = config?.youtube;
   const google = useDraft(useMemo(() => (y ? { clientId: y.clientId, clientSecret: "" } : null), [y]));
   const configured = !!yt?.clientConfigured;
-  const blocked = !yt ? null : !configured ? "Avval Client ID va Secret'ni saqlang" : google.dirty ? "Avval Google ulanishi o'zgarishlarini saqlang" : null;
+  const blocked = !yt ? null : !configured ? "Avval Client ID va Secret'ni saqlang" : google.dirty ? "Avval YouTube ulanishi o'zgarishlarini saqlang" : null;
 
   async function saveGoogle() {
     if (!google.value) return;
     const { clientId, clientSecret } = google.value;
-    const ok = await save("google", "Google ulanishi", clientSecret ? { clientId, clientSecret } : { clientId });
+    const ok = await save("google", "YouTube ulanishi", clientSecret ? { clientId, clientSecret } : { clientId });
     if (!ok) return;
     google.reset();
     setGoogleOpen(false);
@@ -140,7 +140,7 @@ export default function Channels({ toast, back, onChanged }: SettingsPageProps) 
           <div className="section-label"><span>Ulanish</span></div>
           {googleOpen || google.dirty ? googleCard : (
             <div className={styles.ulanish}>
-              <SettingsRow icon={KeyRound} title="Google ulanishi" summary={y?.clientSecretSet ? "Client ID va Secret saqlangan" : "Client ID va Secret"} onClick={() => setGoogleOpen(true)} />
+              <SettingsRow icon={KeyRound} title="YouTube ulanishi" summary={y?.clientSecretSet ? "Client ID va Secret saqlangan" : "Client ID va Secret"} onClick={() => setGoogleOpen(true)} />
             </div>
           )}
         </>
@@ -149,7 +149,7 @@ export default function Channels({ toast, back, onChanged }: SettingsPageProps) 
   );
 }
 
-// ------------------------------------------------------------------ Google ulanishi
+// ------------------------------------------------------------------ YouTube ulanishi (Google OAuth client)
 function GoogleCard({ value, set, dirty, busy, secretSet, redirectUri, toast, onSave, onCollapse }: {
   value: { clientId: string; clientSecret: string }; set: (p: Partial<{ clientId: string; clientSecret: string }>) => void;
   dirty: boolean; busy: Busy; secretSet: boolean; redirectUri: string | null; toast: SettingsPageProps["toast"];
@@ -168,7 +168,7 @@ function GoogleCard({ value, set, dirty, busy, secretSet, redirectUri, toast, on
   }
   const saving = busy.is("google");
   return (
-    <Card title="Google ulanishi" sub="Bir marta, barcha kanallar uchun" action={
+    <Card title="YouTube ulanishi" sub="Bir marta, barcha kanallar uchun" action={
       <div className={styles.headActions}>
         <SaveBtn dirty={dirty} saving={saving} done={busy.done("google")} onClick={onSave} />
         {onCollapse && !saving ? <button type="button" className={styles.collapse} aria-label="Yig'ish" onClick={onCollapse}><ChevronUp /></button> : null}
