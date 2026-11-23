@@ -93,7 +93,8 @@ const MARK: Record<CheckItem["level"], { icon: typeof Check; cls: string }> = {
 };
 
 /** Kompyuterlar: online/offline, ilova ochiqligi, worker faoliyati, kerakli dasturlar va botdan integratsiyalarni tekshirish. */
-export default function Machines({ list, error, reload, toast }: { list: Machine[] | null; error: string | null; reload: () => Promise<void>; toast: Toast }) {
+/** part: "main" - faqat kompyuter kartasi, "side" - faqat kerakli dasturlar va tekshiruv (Faoliyat sahifasining ikki ustuni uchun). */
+export default function Machines({ list, error, reload, toast, part }: { list: Machine[] | null; error: string | null; reload: () => Promise<void>; toast: Toast; part?: "main" | "side" }) {
   const busy = useBusy((m) => toast(m, true));
 
   async function check(name: string) {
@@ -146,7 +147,7 @@ export default function Machines({ list, error, reload, toast }: { list: Machine
         const showCheck = m.check.results.length > 0 && !pending;
         return (
           <div key={m.name} className={s.pair}>
-            <article className={`card ${m.online ? "" : s.offline}`} aria-label={`Kompyuter ${m.name}`}>
+            {part !== "side" ? <article className={`card ${m.online ? "" : s.offline}`} aria-label={`Kompyuter ${m.name}`}>
               <div className={s.head}>
                 <span className={`${s.tile} ${m.online ? "" : s.dim}`}>
                   <DeviceIcon size={22} />
@@ -210,9 +211,9 @@ export default function Machines({ list, error, reload, toast }: { list: Machine
                 >{pending ? "Tekshirilmoqda" : "Tekshirish"}</Btn>
               </div>
               {pending ? <div className="hint">So&apos;rov yuborildi. Kompyuter {m.agent.live ? "darhol bajarib" : "yoqilganda olib"}, natijani yuboradi.</div> : null}
-            </article>
+            </article> : null}
 
-            {m.tools || showCheck ? (
+            {part !== "main" && (m.tools || showCheck) ? (
               <section className="card" aria-label={`${m.name}: kerakli dasturlar`}>
                 {m.tools ? (
                   <>

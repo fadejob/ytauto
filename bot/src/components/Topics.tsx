@@ -21,7 +21,8 @@ import ChannelMenu from "./ChannelMenu";
 import s from "./Topics.module.css";
 
 type Group = "queue" | "work" | "done";
-const groupOf = (t: Topic): Group => (t.status === 11 ? "done" : [0, 12, 13, 14].includes(t.status) && !t.claimed ? "queue" : "work");
+/** Chiqqan va bekor qilingan - yakunlangan (navbatda turmaydi); kutayotgan/xato - navbat; qolgani - jarayonda. */
+const groupOf = (t: Topic): Group => ([11, 14].includes(t.status) ? "done" : [0, 12, 13].includes(t.status) && !t.claimed ? "queue" : "work");
 
 // ------------------------------------------------------------------ bosqichlar chizig'i (holatdan)
 const STAGES = ["Ssenariy", "Ovoz", "Montaj", "Render", "YouTube"] as const;
@@ -305,7 +306,7 @@ export default function Topics({ state, loading, refresh, run, locked, openVideo
         <div className={`group ${s.rows}`}>
           {rows.map((t) => {
             const meta = (group === "done"
-              ? ["Chiqdi", t.publishLocal.time, formatShort(t.format)]
+              ? [t.status === 14 ? null : "Chiqdi", t.publishLocal.time, formatShort(t.format)]
               : [t.publishLocal.time, formatShort(t.format), sourceText(t), musicText(t, state)]).filter(Boolean).join(" · ");
             return (
               <div key={t.id} className={s.row}>

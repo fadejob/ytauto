@@ -187,13 +187,10 @@ export default function History({ state, toast }: { state: State | null; toast: 
         )}
       </section>
 
-      {!guest ? (
-        <div className={`cards ${s.flow}`}>
-          <Machines list={machines.list} error={machines.error} reload={machines.reload} toast={toast} />
-        </div>
-      ) : null}
-
-      <div className={`cards ${s.flow}`}>
+      {/* Ikki mustaqil ustun: har biri o'z balandligida o'sadi - qisqa karta yonida bo'shliq qolmaydi. Telefonda bitta ustun. */}
+      <div className={s.board}>
+      <div className={s.col}>
+        {!guest ? <Machines part="main" list={machines.list} error={machines.error} reload={machines.reload} toast={toast} /> : null}
         {!guest ? (
           <section className={s.runs} aria-labelledby="runs-title">
             <div className={s.sectionHead}>
@@ -252,7 +249,10 @@ export default function History({ state, toast }: { state: State | null; toast: 
             )}
           </section>
         ) : null}
+      </div>
 
+      <div className={s.col}>
+        {!guest && machines.list?.length ? <Machines part="side" list={machines.list} error={null} reload={machines.reload} toast={toast} /> : null}
         {!guest ? (
           !runs ? (
             runsError ? null : (
@@ -356,6 +356,7 @@ export default function History({ state, toast }: { state: State | null; toast: 
             </>
           )}
         </section>
+      </div>
       </div>
 
       {!guest ? (
