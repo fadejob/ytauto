@@ -72,6 +72,18 @@ public class AgentTests
         Assert.NotNull(doc.Root);
     }
 
+    [Fact]
+    public void AgentTaskXml_IsAcceptedByWindowsTaskScheduler()
+    {
+        // TASK_VALIDATE_ONLY (1): Task Scheduler XML'ni tekshiradi, vazifa yaratilmaydi.
+        var t = Type.GetTypeFromProgID("Schedule.Service");
+        if (t is null) return;
+        dynamic svc = Activator.CreateInstance(t)!;
+        svc.Connect();
+        var xml = TaskSchedulerService.BuildPollXml(Environment.ProcessPath!, DateTimeOffset.UtcNow);
+        svc.GetFolder("\\").RegisterTask("YtAuto Agent Validate", xml, 1, null, null, 3, null);
+    }
+
     private static int FreePort()
     {
         var l = new TcpListener(IPAddress.Loopback, 0);

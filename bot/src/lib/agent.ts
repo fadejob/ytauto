@@ -81,12 +81,13 @@ export async function agentStatuses(accountId: string): Promise<AgentStatus[]> {
 }
 
 /**
- * Vazifa o'zgarishini kutish (long-poll): agent worker'dan signal kelishi bilan javob beradi (yoki timeout). Agent yo'q bo'lsa
- * false darhol. Bir nechta kompyuter bo'lsa - qaysi biri birinchi signal bersa.
+ * Vazifa o'zgarishini kutish (long-poll): agent worker'dan signal kelishi bilan javob beradi (yoki timeout). Bir nechta kompyuter
+ * bo'lsa - qaysi biri birinchi signal bersa. null - tirik agent yo'q (chaqiruvchi oddiy kutishga o'tadi).
  */
-export async function waitJobChange(accountId: string, jobId: number, seconds: number): Promise<boolean> {
+export async function waitJobChange(accountId: string, jobId: number, seconds: number): Promise<boolean | null> {
   const agents = await liveAgents(accountId);
-  if (!agents.length || seconds <= 0) return false;
+  if (!agents.length) return null;
+  if (seconds <= 0) return false;
   const sec = Math.min(25, Math.max(1, Math.round(seconds)));
   const ctl = new AbortController();
   try {

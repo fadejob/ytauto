@@ -2,6 +2,7 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { after } from "next/server";
 import postgres from "postgres";
 
 /**
@@ -130,9 +131,15 @@ export async function withAccount<T>(accountId: string, fn: () => Promise<T>, op
     return { v: await als.run({ tx: tx as unknown as Sql, accountId, guest: opts?.guest === true, wake }, fn) };
   });
   if (wake.size) {
-    // COMMIT'dan keyin: agent bazadan o'qiganda so'rov allaqachon ko'rinadi.
-    try { await (await import("./agent")).pokeAgents(accountId, [...wake]); }
-    catch (e) { console.error("[agent] wake", e); }
+    // COMMIT'dan keyin: agent bazadan o'qiganda so'rov allaqachon ko'rinadi. So'rov ichida - javob yuborilgach (after, Vercel
+    // waitUntil): foydalanuvchi tunnel javobini kutmaydi. So'rovdan tashqarida (cron) - shu yerda kutiladi.
+    const poke = async () => {
+      try { await (await import("./agent")).pokeAgents(accountId, [...wake]); }
+      catch (e) { console.error("[agent] wake", e); }
+    };
+    let scheduled = false;
+    try { after(poke); scheduled = true; } catch { /* so'rov konteksti yo'q */ }
+    if (!scheduled) await poke();
   }
   return (result as { v: T }).v;
 }

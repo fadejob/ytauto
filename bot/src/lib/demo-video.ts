@@ -174,7 +174,7 @@ export async function createDemoVideo(args: Record<string, unknown>) {
     publish: publish.requested ? { requested: true, when: publish.when } : { requested: false },
     machines,
     next: live
-      ? "The user's PC agent is online and was notified: the job starts now (script → voice → montage → render). Call get_video_status with wait_sec: 25 — it returns as soon as the job changes (real time); repeat until status is \"ready\", then call get_video_result."
+      ? "The user's PC agent is online and is being notified: the job starts right away (script → voice → montage → render). Call get_video_status with wait_sec: 25 — it returns as soon as the job changes (real time); repeat until status is \"ready\", then call get_video_result."
       : "No PC agent is online right now: the job waits in the queue and starts as soon as the user's PC is on and online. Call get_video_status (wait_sec: 25) from time to time; when status is \"ready\" call get_video_result.",
   };
 }
@@ -269,6 +269,11 @@ export async function videoStatusLive(args: Record<string, unknown>, run: Run, a
   const first = await run(() => videoStatus(args));
   if (!wait || SETTLED.includes(first.status)) return first;
   const changed = await waitJobChange(accountId, first.job_id, wait);
+  if (changed === null) {
+    // Agent yo'q (kompyuter o'chiq yoki eski versiya): MCP mijozi tez-tez qayta so'ramasligi uchun shu yerda kutib, bazadan o'qiymiz.
+    await new Promise((r) => setTimeout(r, Math.min(wait, 20) * 1000));
+    return { ...(await run(() => videoStatus(args))), live: false };
+  }
   if (!changed) return { ...first, changed: false, waited_sec: wait };
   return { ...(await run(() => videoStatus(args))), changed: true };
 }
