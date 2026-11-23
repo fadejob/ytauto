@@ -45,7 +45,7 @@ export async function liveAgents(accountId: string): Promise<AgentEndpoint[]> {
   return list.filter((a) => urlAllowed(a.url) && a.secret.length >= 32);
 }
 
-async function call(ep: AgentEndpoint, account: string, path: string, init: RequestInit & { timeoutMs: number }): Promise<Response | null> {
+async function call(ep: AgentEndpoint, account: string, path: string, init: RequestInit & { timeoutMs: number }, errors?: string[]): Promise<Response | null> {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), init.timeoutMs);
   try {
@@ -53,7 +53,11 @@ async function call(ep: AgentEndpoint, account: string, path: string, init: Requ
       ...init, signal: init.signal ? AbortSignal.any([ctl.signal, init.signal]) : ctl.signal, cache: "no-store",
       headers: { ...(init.headers ?? {}), Authorization: `Bearer ${signAgentToken(ep.secret, "api", account)}` },
     });
-  } catch { return null; }
+  } catch (e) {
+    const c = (e as { cause?: { code?: string; message?: string } }).cause;
+    errors?.push(`${ep.machine}: ${ctl.signal.aborted ? "vaqt tugadi" : (c?.code ?? c?.message ?? (e instanceof Error ? e.message : String(e)))}`);
+    return null;
+  }
   finally { clearTimeout(t); }
 }
 
@@ -107,21 +111,32 @@ export type MediaLinks = { machine: string; video: string; download: string; cov
 
 /** Shu kompyuterdagi tayyor video uchun public havolalar (tunnel manzili o'zgarsa - qayta so'rang). Fayl topilmasa null. */
 export async function mediaLinks(accountId: string, jobId: number): Promise<MediaLinks | null> {
-  const agents = await liveAgents(accountId);
-  if (!agents.length) return null;
+  return (await mediaLinksWhy(accountId, jobId)).links;
+}
+
+/** mediaLinks + havola nima uchun yo'qligi (kompyuter o'chiq / agentga yetib bo'lmadi / fayl yo'q) - MCP javobida ko'rsatiladi. */
+export async function mediaLinksWhy(accountId: string, jobId: number): Promise<{ links: MediaLinks | null; reason?: string }> {
+  const listed = await agentEndpoints(accountId);
+  const agents = listed.filter((a) => urlAllowed(a.url) && a.secret.length >= 32);
+  if (!agents.length) return { links: null, reason: listed.length ? "agent manzili yaroqsiz" : "kompyuter agenti online emas (kompyuter o'chiq yoki YtAuto eski versiya)" };
+  const errors: string[] = [];
   const has = await Promise.all(agents.map(async (a) => {
-    const r = await call(a, accountId, `/v1/has?job=${jobId}`, { method: "GET", timeoutMs: 3000 });
+    const r = await call(a, accountId, `/v1/has?job=${jobId}`, { method: "GET", timeoutMs: 6000 }, errors);
+    if (r && !r.ok) errors.push(`${a.machine}: HTTP ${r.status}`);
     const j = r?.ok ? ((await r.json().catch(() => null)) as { video?: boolean; cover?: boolean; subtitles?: boolean } | null) : null;
+    if (j && !j.video) errors.push(`${a.machine}: video fayli kompyuterda topilmadi`);
     return j?.video ? { a, cover: !!j.cover, subtitles: !!j.subtitles } : null;
   }));
   const hit = has.find((x) => !!x);
-  if (!hit) return null;
+  if (!hit) return { links: null, reason: errors.join("; ") || "agent javob bermadi" };
   const { a } = hit;
   const acc = accountId.toLowerCase();
   const link = (f: MediaFile, extra = "") => `${a.url}/media/${jobId}/${f}?a=${acc}&s=${mediaSig(a.secret, acc, jobId, f)}${extra}`;
   return {
-    machine: a.machine, video: link("video.mp4"), download: link("video.mp4", "&download=1"),
-    cover: hit.cover ? link("cover.jpg") : null, subtitles: hit.subtitles ? link("subtitles.srt") : null,
+    links: {
+      machine: a.machine, video: link("video.mp4"), download: link("video.mp4", "&download=1"),
+      cover: hit.cover ? link("cover.jpg") : null, subtitles: hit.subtitles ? link("subtitles.srt") : null,
+    },
   };
 }
 

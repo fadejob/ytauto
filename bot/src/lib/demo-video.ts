@@ -1,7 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { currentAccountId, isGuest, sql, wakeAgents } from "./db";
-import { mediaLinks, waitJobChange } from "./agent";
+import { mediaLinksWhy, waitJobChange } from "./agent";
 import { geminiReady, GEMINI_REQUIRED, getConfig } from "./config";
 import { getCatalog, pickTemplateFormat } from "./topics";
 import { getMachines } from "./machines";
@@ -301,13 +301,14 @@ export async function videoStatusLive(args: Record<string, unknown>, run: Run, a
 export async function videoResultLive(args: Record<string, unknown>, run: Run, accountId: string) {
   const r = await run(() => videoResult(args));
   if (!r.ready) return r;
-  const links = await mediaLinks(accountId, r.job_id).catch(() => null);
+  const { links, reason } = await mediaLinksWhy(accountId, r.job_id).catch((e) => ({ links: null, reason: e instanceof Error ? e.message : String(e) }));
   return {
     ...r,
     direct: links
       ? { watch_url: links.video, download_url: links.download, cover_url: links.cover, subtitles_url: links.subtitles, machine: links.machine,
           note: "Served live from the user's PC through its Cloudflare tunnel: works while the PC is on. The link changes when the PC restarts — call get_video_result again for a fresh one." }
       : null,
+    ...(links ? {} : { direct_unavailable: reason }),
   };
 }
 
