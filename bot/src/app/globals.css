@@ -169,7 +169,7 @@ select.inp { appearance: auto; min-width: 0; text-overflow: ellipsis; }
 .seg { display: flex; padding: 4px; border-radius: 999px; background: var(--sunken); gap: 2px; }
 .seg button { flex: 1; min-height: 36px; padding: 0 8px; border-radius: 999px; font-size: 14px; font-weight: 550; color: var(--muted); white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .seg button.on { background: var(--card); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgba(31,27,22,0.08); }
-.seg .n { color: var(--faint); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.seg .n { color: var(--muted); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .seg button:disabled { opacity: 0.45; }
 
 /* ---------- sozlama qatori */
@@ -194,7 +194,7 @@ select.inp { appearance: auto; min-width: 0; text-overflow: ellipsis; }
 .strip .bars i.done { background: var(--ink); }
 .strip .bars i.now { background: var(--accent); }
 .strip .bars i.fail { background: var(--bad); }
-.strip .names { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; font-size: 12px; color: var(--faint); font-weight: 500; }
+.strip .names { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 500; }
 .strip .names span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .strip .names .done { color: var(--ink); }
 .strip .names .now { color: var(--accent-ink); font-weight: 700; }
@@ -329,3 +329,8 @@ select.inp { appearance: auto; min-width: 0; text-overflow: ellipsis; }
   .narrow { max-width: 920px; }
   .logbox { max-height: 60vh; }
 }
+
+/* Tegish maydoni: ko'rinish o'lchami dizayndagidek, bosish maydoni kamida 44px. */
+.btn.sm, .seg button, .back, .round, .linkbtn { position: relative; }
+.btn.sm::after, .seg button::after, .back::after, .round::after, .linkbtn::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 44px; transform: translateY(-50%); }
+.round::after { left: 50%; right: auto; width: 44px; transform: translate(-50%, -50%); }

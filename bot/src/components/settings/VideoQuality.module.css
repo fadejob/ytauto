@@ -89,7 +89,7 @@
 .score.dim { opacity: 0.5; }
 .readout { display: flex; align-items: center; gap: 12px; }
 .big { font-size: 26px; font-weight: 750; letter-spacing: -0.5px; flex: none; }
-.big span { color: var(--faint); }
+.big span { color: var(--muted); }
 .scoreText { display: grid; gap: 2px; min-width: 0; }
 .scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
 

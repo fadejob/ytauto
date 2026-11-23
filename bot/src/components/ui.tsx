@@ -69,11 +69,11 @@ export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChang
   return <button type="button" role="switch" aria-checked={on} aria-label={label} className={`toggle${on ? " on" : ""}`} disabled={disabled} onClick={() => onChange(!on)} />;
 }
 
-export function ToggleRow({ title, sub, on, onChange, disabled }: { title: ReactNode; sub?: ReactNode; on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+export function ToggleRow({ title, sub, on, onChange, disabled, label }: { title: ReactNode; label?: string; sub?: ReactNode; on: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <div className="toggle-row">
       <div className="t"><span className="tt">{title}</span>{sub ? <span className="sub">{sub}</span> : null}</div>
-      <Toggle on={on} onChange={onChange} disabled={disabled} label={typeof title === "string" ? title : undefined} />
+      <Toggle on={on} onChange={onChange} disabled={disabled} label={label ?? (typeof title === "string" ? title : undefined)} />
     </div>
   );
 }
@@ -164,14 +164,14 @@ export function Empty({ icon: Icon, title, children, action }: { icon?: IconT; t
 }
 
 export function Alert({ tone = "bad", children, icon: Icon = CircleAlert }: { tone?: "bad" | "note" | "accent"; children: ReactNode; icon?: IconT }) {
-  return <div className={`alert${tone === "bad" ? "" : " " + tone}`}><Icon />{<div>{children}</div>}</div>;
+  return <div role={tone === "bad" ? "alert" : undefined} className={`alert${tone === "bad" ? "" : " " + tone}`}><Icon />{<div>{children}</div>}</div>;
 }
 
 // ------------------------------------------------------------------ video quvuri va boshlang'ich savol
 export type StageState = "done" | "now" | "fail" | "todo";
 export function StageStrip({ stages }: { stages: { name: string; state: StageState }[] }) {
   return (
-    <div className="strip" aria-label={stages.map((s) => `${s.name}: ${s.state}`).join(", ")}>
+    <div className="strip" role="img" aria-label={stages.map((s) => `${s.name}: ${({ done: "tayyor", now: "hozir", fail: "xato", todo: "kutilmoqda" })[s.state]}`).join(", ")}>
       <div className="bars">{stages.map((s) => <i key={s.name} className={s.state === "todo" ? "" : s.state} />)}</div>
       <div className="names">{stages.map((s) => <span key={s.name} className={s.state === "todo" ? "" : s.state}>{s.name}</span>)}</div>
     </div>
@@ -199,6 +199,16 @@ export function Sheet({ title, sub, onClose, children, footer, label }: { title:
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   }, [onClose]);
+  // Oyna ochiq: orqa fon aylanmaydi, yopilganda fokus oldingi elementga qaytadi (faqat bir marta, onClose o'zgarganda emas).
+  useEffect(() => {
+    const prevFocus = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      prevFocus?.focus?.();
+    };
+  }, []);
   return (
     <>
       <div className="backdrop" onClick={onClose} />

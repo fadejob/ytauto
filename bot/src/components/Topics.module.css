@@ -8,7 +8,7 @@
 }
 .chip svg { color: var(--muted); flex: none; }
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.total { color: var(--faint); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.total { color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
 .avatar {
   width: 28px; height: 28px; border-radius: 999px; background: var(--ink); color: var(--bg); display: grid; place-items: center;
   font-size: 13px; font-weight: 750; flex: none; text-transform: uppercase;
@@ -16,7 +16,7 @@
 .refresh { width: 44px; height: 44px; }
 
 .summary { display: grid; gap: 6px; }
-.tz { color: var(--faint); font-size: 12px; }
+.tz { color: var(--muted); font-size: 12px; }
 
 .list { display: grid; gap: 12px; }
 .fabSpace { height: 48px; }

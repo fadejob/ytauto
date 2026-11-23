@@ -29,7 +29,7 @@
 .phRow dd { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; white-space: pre-line; padding-top: 3px; }
 .chip { display: inline-block; padding: 3px 10px; border-radius: 999px; background: var(--sunken); color: var(--ink); font: 600 12.5px/1.4 var(--mono); }
 .phMissing .chip { color: var(--faint); }
-.missing { display: block; color: var(--faint); font-size: 12px; }
+.missing { display: block; color: var(--muted); font-size: 12px; }
 
 .note { display: flex; gap: 10px; align-items: flex-start; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); line-height: 1.45; }
 .phList + .note { margin-top: 2px; }

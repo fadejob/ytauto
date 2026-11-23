@@ -109,8 +109,8 @@ function Foot({ hint, dirtyHint, dirty, saving, done, onSave, onReset }: {
 }
 
 /** −/+ va qo'lda yoziladigan qiymat (chegaradan chiqmaydi). */
-function Stepper({ value, min, max, step = 1, onChange, label, suffix, compact }: {
-  value: number; min: number; max: number; step?: number; onChange: (v: number) => void; label: string; suffix?: string; compact?: boolean;
+function Stepper({ value, min, max, step = 1, onChange, label, suffix }: {
+  value: number; min: number; max: number; step?: number; onChange: (v: number) => void; label: string; suffix?: string;
 }) {
   const [text, setText] = useState<string | null>(null);
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
@@ -121,7 +121,7 @@ function Stepper({ value, min, max, step = 1, onChange, label, suffix, compact }
     setText(null);
   };
   return (
-    <div className={`${s.stepper} ${compact ? s.compact : ""}`} role="group" aria-label={label}>
+    <div className={`${s.stepper} `} role="group" aria-label={label}>
       <button type="button" className={s.stepBtn} aria-label={`${label}: kamaytirish`} disabled={value <= min} onClick={() => onChange(clamp(value - step))}><Minus size={18} /></button>
       <span className={s.stepVal}>
         <input className="tnum" inputMode="numeric" aria-label={label} value={text ?? String(value)} size={Math.max(2, String(max).length)}
@@ -285,11 +285,11 @@ function MediaCard({ config, save, busy }: CardProps) {
       <div className="grid2">
         <div className={s.counter}>
           <span className="label">Rasm / sahna</span>
-          <Stepper compact label="Sahnaga rasm nomzodlari" value={draft.stockImages} min={1} max={8} onChange={(v) => set({ stockImages: v })} />
+          <Stepper label="Sahnaga rasm nomzodlari" value={draft.stockImages} min={1} max={8} onChange={(v) => set({ stockImages: v })} />
         </div>
         <div className={s.counter}>
           <span className="label">Klip / sahna</span>
-          <Stepper compact label="Sahnaga video nomzodlari" value={draft.stockClips} min={0} max={4} onChange={(v) => set({ stockClips: v })} />
+          <Stepper label="Sahnaga video nomzodlari" value={draft.stockClips} min={0} max={4} onChange={(v) => set({ stockClips: v })} />
         </div>
       </div>
 
@@ -360,7 +360,7 @@ function StockKey({ name, placeholderNew, stored, keep, value, error, onKeep, on
       </div>
       {showInput ? (
         <div className="field">
-          <span className={`${s.keyInput} ${error ? s.err : ""}`}>
+          <span className={s.keyInput}>
             <input className={`inp ${error ? "err" : ""}`} type="password" autoComplete="off" spellCheck={false} aria-label={`${name} API kaliti`} aria-invalid={error || undefined}
               value={value} placeholder={stored ? "O'zgartirish uchun yangisini kiriting" : placeholderNew}
               onChange={(e) => onValue(e.target.value)} />

@@ -51,7 +51,7 @@
 /* Bo'sh qiymat: «dd/mm/yyyy» o'rniga dizayndagi «Avtomatik» / «18:00» (fokusda tizim ko'rinishi qaytadi). */
 .iconInp input[data-empty]::-webkit-datetime-edit { color: transparent; }
 .iconInp input[data-empty]:focus::-webkit-datetime-edit { color: inherit; }
-.ph { position: absolute; left: 41px; top: 50%; transform: translateY(-50%); color: var(--faint); pointer-events: none; white-space: nowrap; }
+.ph { position: absolute; left: 41px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; white-space: nowrap; }
 .iconInp:focus-within .ph { display: none; }
 @supports not selector(::-webkit-datetime-edit) { .ph { display: none; } }
 

@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import { ArrowRight, Calendar, ChevronRight, CircleAlert, Clock, FileAudio, Info, Plus, RectangleHorizontal, RectangleVertical, SlidersHorizontal, Square, Trash2 } from "lucide-react";
-import { api, haptic, putFile } from "@/lib/client";
+import { api, confirmBox, haptic, putFile } from "@/lib/client";
 import { FormatText, type Catalog, type PreparedAudio, type ScriptSource, type Topic } from "@/lib/types";
 import type { Run } from "./App";
 import { checkHook, countWords, FormatLength, HOOK_MAX_WORDS, manualLengthProblem, TTS_WORDS_PER_SEC } from "@/lib/video-rules";
@@ -209,7 +209,11 @@ export default function TopicSheet({ sheet, catalog, channelTitle, close, run }:
       title={edit ? "Tahrirlash" : "Yangi video"}
       sub={`${edit ? `#${edit.id} · ` : ""}${channelTitle ? `${channelTitle} kanaliga · ` : ""}matn inglizcha`}
       label={edit ? "Videoni tahrirlash" : "Yangi video"}
-      onClose={() => { if (!isSaving) close(); }}
+      onClose={async () => {
+        if (isSaving) return;
+        if (!edit && rows.some(isFilled) && !(await confirmBox("Kiritilgan ma'lumot o'chib ketadi. Yopilsinmi?"))) return;
+        close();
+      }}
       footer={
         <>
           {error ? <Alert>{error}</Alert> : null}

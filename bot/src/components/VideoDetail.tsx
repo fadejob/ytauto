@@ -224,7 +224,7 @@ export default function VideoDetail({ state, id, back, run, toast, refresh }: { 
               ) : null}
               <ol className={s.timeline} aria-label="Bosqichlar">
                 {stages.map((st, i) => (
-                  <li key={st.n} className={`${s.stage} ${s[st.state]}`}>
+                  <li key={st.n} className={`${s.stage} ${st.state === "todo" ? "" : s[st.state]}`}>
                     <div className={s.rail} aria-hidden>
                       <span className={s.node}>
                         {st.state === "done" ? <Check size={14} strokeWidth={3} /> : st.state === "now" ? <LoaderCircle size={14} className="spin" /> : st.state === "fail" ? <CircleX size={14} /> : null}

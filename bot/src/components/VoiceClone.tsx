@@ -314,8 +314,8 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
           </div>
           {previewUrl ? <AudioPlayer key={previewUrl} src={previewUrl} durationSec={take.sec} label="Yangi yozuv" /> : null}
           <div className={s.toggles}>
-            <ToggleRow title={<span className={s.toggleText}>Bu mening ovozim va uni videolarim uchun ishlatishga roziman</span>} on={consent} onChange={setConsent} disabled={busy.is("save")} />
-            <ToggleRow title={<span className={s.toggleText}>Yangi mavzular uchun standart ovoz qilish</span>} on={makeDefault} onChange={setMakeDefault} disabled={busy.is("save")} />
+            <ToggleRow label="Bu mening ovozim va uni videolarim uchun ishlatishga roziman" title={<span className={s.toggleText}>Bu mening ovozim va uni videolarim uchun ishlatishga roziman</span>} on={consent} onChange={setConsent} disabled={busy.is("save")} />
+            <ToggleRow label="Yangi mavzular uchun standart ovoz qilish" title={<span className={s.toggleText}>Yangi mavzular uchun standart ovoz qilish</span>} on={makeDefault} onChange={setMakeDefault} disabled={busy.is("save")} />
           </div>
           <Btn block icon={Upload} loading={busy.is("save")} disabled={!consent} onClick={send}>
             {busy.is("save") ? (progress !== null && progress < 100 ? `Yuborilmoqda… ${progress}%` : "Yuborilmoqda…") : "Ovozni yuborish"}
