@@ -1,6 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
-import { currentAccountId, isGuest, sql } from "./db";
+import { currentAccountId, isGuest, sql, wakeAgents } from "./db";
+import { mediaLinks, waitJobChange } from "./agent";
 import { geminiReady, GEMINI_REQUIRED, getConfig } from "./config";
 import { getCatalog, pickTemplateFormat } from "./topics";
 import { getMachines } from "./machines";
@@ -163,14 +164,18 @@ export async function createDemoVideo(args: Record<string, unknown>) {
     channel_id: await activeChannelId(), // chiqarilsa - so'rov paytidagi faol kanalga
     kind: "demo", demo_spec: JSON.stringify({ ...spec, publish: { requested: publish.requested, when: publish.when } }),
   })} RETURNING id::int AS id`;
+  wakeAgents("demo");
   const machines = await machineSummary();
+  const live = machines.some((m) => m.agent);
   return {
     job_id: row.id as number, status: "queued",
     voice_profile: t.voice || "(kompyuterdagi standart ovoz)", template: t.template || null, format: fmtArg, language,
     ...(voiceWarning.length ? { warnings: voiceWarning } : {}),
     publish: publish.requested ? { requested: true, when: publish.when } : { requested: false },
     machines,
-    next: "The YtAuto worker on the user's PC picks the job up within ~10 minutes (when the PC is on and online) and runs script → voice → montage → render. Poll get_video_status every few minutes; when status is \"ready\" call get_video_result.",
+    next: live
+      ? "The user's PC agent is online and was notified: the job starts now (script → voice → montage → render). Call get_video_status with wait_sec: 25 — it returns as soon as the job changes (real time); repeat until status is \"ready\", then call get_video_result."
+      : "No PC agent is online right now: the job waits in the queue and starts as soon as the user's PC is on and online. Call get_video_status (wait_sec: 25) from time to time; when status is \"ready\" call get_video_result.",
   };
 }
 
@@ -190,7 +195,7 @@ async function publishIntent(pub: Record<string, unknown>): Promise<Intent> {
 async function machineSummary() {
   try {
     const ms = await getMachines();
-    return ms.map((m) => ({ name: m.name, online: m.online, worker: m.worker.state, working_on: m.worker.jobId }));
+    return ms.map((m) => ({ name: m.name, online: m.online, agent: m.agent.live, worker: m.worker.state, working_on: m.worker.jobId }));
   } catch { return []; }
 }
 
@@ -248,7 +253,37 @@ export async function videoStatus(args: Record<string, unknown>) {
     recent_events: events.reverse().map((e) => `${(e.at_utc as Date).toISOString().slice(11, 19)} ${e.level}${e.stage ? ` [${e.stage}]` : ""}: ${e.message as string}`),
     hint: p === "ready" ? "Video is ready: call get_video_result. Publish only if the user explicitly asks (publish_video)."
       : p === "failed" ? "The job needs attention; show the error to the user. It can be retried from the Telegram bot after fixing the cause."
-      : "Still working; check again in a few minutes.",
+      : "Still working: call get_video_status again with wait_sec: 25 (returns as soon as something changes).",
+  };
+}
+
+const SETTLED = ["ready", "published", "failed", "cancelled", "ready_with_problem"];
+type Run = <T>(fn: () => Promise<T>) => Promise<T>;
+
+/**
+ * get_video_status + real vaqt: wait_sec > 0 bo'lsa (≤25) va video hali tayyorlanayotgan bo'lsa, kompyuter agentidan o'zgarish
+ * signalini kutadi (long-poll) va yangi holatni qaytaradi. Kutish DB tranzaksiyasidan TASHQARIDA (ulanish band qilinmaydi).
+ */
+export async function videoStatusLive(args: Record<string, unknown>, run: Run, accountId: string) {
+  const wait = Math.min(25, Math.max(0, Math.round(Number(args.wait_sec ?? 0)) || 0));
+  const first = await run(() => videoStatus(args));
+  if (!wait || SETTLED.includes(first.status)) return first;
+  const changed = await waitJobChange(accountId, first.job_id, wait);
+  if (!changed) return { ...first, changed: false, waited_sec: wait };
+  return { ...(await run(() => videoStatus(args))), changed: true };
+}
+
+/** get_video_result + kompyuterdagi faylga to'g'ridan-to'g'ri public havola (agent online bo'lsa; tunnel orqali, Range bilan). */
+export async function videoResultLive(args: Record<string, unknown>, run: Run, accountId: string) {
+  const r = await run(() => videoResult(args));
+  if (!r.ready) return r;
+  const links = await mediaLinks(accountId, r.job_id).catch(() => null);
+  return {
+    ...r,
+    direct: links
+      ? { watch_url: links.video, download_url: links.download, cover_url: links.cover, subtitles_url: links.subtitles, machine: links.machine,
+          note: "Served live from the user's PC through its Cloudflare tunnel: works while the PC is on. The link changes when the PC restarts — call get_video_result again for a fresh one." }
+      : null,
   };
 }
 
@@ -306,10 +341,11 @@ export async function publishVideo(args: Record<string, unknown>) {
     : await sql()`UPDATE ytauto.jobs SET publish_at_utc = ${intent.at!}, upload_requested = TRUE, publish_now = FALSE, updated_at_utc = now()
         WHERE id = ${r.id} AND claimed_by IS NULL AND youtube_video_id IS NULL AND cancel_requested = FALSE`;
   if (!n.count) fail(`#${r.id}: holat o'zgardi — qayta urinib ko'ring.`);
+  wakeAgents("publish");
   return {
     job_id: r.id, ok: true,
     message: intent.when === "now"
-      ? "Chiqarish so'rovi yuborildi: kompyuter ~2 daqiqada tayyor videoni asosiy YouTube kanaliga public yuklaydi (qayta tayyorlanmaydi)."
+      ? "Chiqarish so'rovi yuborildi: kompyuter tayyor videoni darhol asosiy YouTube kanaliga public yuklaydi (qayta tayyorlanmaydi)."
       : `Chiqarish so'rovi yuborildi: video asosiy YouTube kanaliga yuklanadi va ${intent.when} da public bo'ladi.`,
     next: "Use get_video_status / get_video_result to see the YouTube link once the upload finishes.",
   };

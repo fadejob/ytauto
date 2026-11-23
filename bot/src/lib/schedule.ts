@@ -1,5 +1,5 @@
 import "server-only";
-import { sql } from "./db";
+import { sql, wakeAgents } from "./db";
 import { isDemo } from "./demo";
 
 export type Schedule = { enabled: boolean; startTime: string; endTime: string; timeZoneId: string; wakeToRun: boolean; executionLimitHours: number };
@@ -48,5 +48,6 @@ export async function saveSchedule(input: Partial<Schedule>): Promise<Schedule> 
   await sql()`
     INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${KEY}, ${json}, now())
     ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
+  wakeAgents("schedule"); // Windows jadvali darhol yangilanadi
   return next;
 }

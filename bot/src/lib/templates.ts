@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { currentAccountId, sql } from "./db";
+import { currentAccountId, sql, wakeAgents } from "./db";
 import { isDemo } from "./demo";
 import { BUCKET, storageCfg } from "./storage";
 import type { PendingTemplate, PreparedUpload, TemplateUpload } from "./types";
@@ -53,6 +53,7 @@ export async function commitUpload(i: { groupId: string; path: string; name: str
     await sql()`INSERT INTO ytauto.template_uploads(group_id, name, kind, storage_path, size_bytes, machine, download_url)
                 VALUES (${i.groupId}, ${i.name.trim().slice(0, 60)}, ${i.kind}, ${i.path}, ${Math.round(i.size)}, ${m}, ${downloadUrl})`;
   }
+  if (i.machines.length) wakeAgents("template");
   return { ok: true };
 }
 

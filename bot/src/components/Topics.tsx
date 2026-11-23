@@ -5,12 +5,13 @@
  * kerak bo'lgan, tayyor yoki jarayondagi videolar to'liq karta (bosqichlar chizig'i, xato, bitta asosiy amal), oddiy navbat va
  * chiqqanlar - ixcham qatorlar. Karta yoki qator bosilsa video tafsiloti ochiladi (u yerda barcha amallar ham bor).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarClock, ChevronRight, ChevronsUpDown, CircleX, CloudUpload, Ellipsis, ExternalLink, ListVideo, Pencil, Plus, RotateCcw, RotateCw,
   Trash2, Undo2, Upload, Zap, CircleCheck, LoaderCircle, Sparkles,
 } from "lucide-react";
 import { confirmBox, haptic, openExternal } from "@/lib/client";
+import { useLiveRefresh } from "@/lib/live";
 import { StatusText, type Action, type State, type Topic } from "@/lib/types";
 import type { Run } from "./App";
 import type { SettingsPage } from "./settings/types";
@@ -94,6 +95,16 @@ export default function Topics({ state, loading, refresh, run, locked, openVideo
   }, [topics]);
   const tz = state?.catalog.youtube.timeZone ?? "Asia/Tashkent";
 
+  // Real vaqt: kompyuter agenti video holati o'zgarganini yuborsa ro'yxat darhol yangilanadi (ketma-ket hodisalar birlashtiriladi).
+  // Ro'yxatda faqat holat/band belgisi ko'rinadi: har log qatorida emas, ular o'zgarganda yangilanadi.
+  const seen = useRef(new Map<number, string>());
+  useLiveRefresh((e) => {
+    if (e.type !== "job") return false;
+    const key = `${e.job.status}|${e.job.claimed}|${e.job.hasVideo}|${e.job.youtubeId ?? ""}`;
+    if (seen.current.get(e.job.id) === key) return false;
+    seen.current.set(e.job.id, key);
+    return true;
+  }, () => { if (document.visibilityState === "visible") void refresh(); }, 1500);
 
   // Shablon serverdan kompyuterga tushayotgan bo'lsa, ro'yxat o'zi yangilanadi: o'rnatilishi bilan tanlash mumkin bo'ladi.
   const waitingTemplates = (state?.catalog.pendingTemplates?.length ?? 0) > 0;

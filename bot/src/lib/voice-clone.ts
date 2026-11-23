@@ -1,7 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { setCloneProfile } from "./config";
-import { currentAccountId, sql } from "./db";
+import { currentAccountId, sql, wakeAgents } from "./db";
 import { isDemo } from "./demo";
 import { objectExists, removeObjects, signDownload, signUpload } from "./storage";
 import type { VoiceClone } from "./types";
@@ -47,6 +47,7 @@ async function write(s: Stored | Tombstone) {
   await sql()`
     INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${KEY}, ${json}, now())
     ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
+  wakeAgents("voice"); // kompyuter yangi namunani darhol oladi (yoki o'chirilganini tozalaydi)
 }
 
 /** Brauzerga: holat + namunani tinglash uchun qisqa muddatli havola (sirli yo'l va uzoq havola qaytarilmaydi). */
@@ -94,7 +95,7 @@ export async function saveSample(i: { path: string; durationSec: number; passage
     path: i.path, url: isDemo() ? `https://demo.supabase.co/${i.path}` : await signDownload(i.path, DOWNLOAD_TTL_SEC),
     version: crypto.randomBytes(6).toString("hex"), profileName: profileNameFor(accountId), model: MODEL,
     durationSec: Math.round(dur * 10) / 10, refText, uploadedAt: now, consentAt: now, consentBy: i.by.slice(0, 80),
-    status: "pending", message: "Kompyuter namunani VoiceStudio'ga qo'shadi (~2 daqiqada, ilova yopiq bo'lsa ham).", machine: null, readyAt: null,
+    status: "pending", message: "Kompyuter namunani VoiceStudio'ga darhol qo'shadi (ilova yopiq bo'lsa ham).", machine: null, readyAt: null,
   };
   await write(s);
   await setCloneProfile({ name: PROFILE_LABEL, model: MODEL, voice: s.profileName }, i.makeDefault);

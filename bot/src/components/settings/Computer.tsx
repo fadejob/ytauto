@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { ChevronDown, Globe, Lock, Minus, Monitor, MonitorOff, Plus, RotateCw, SlidersHorizontal } from "lucide-react";
 import { api, confirmBox, haptic } from "@/lib/client";
+import { useLiveRefresh } from "@/lib/live";
 import { differs, useBotConfig, useSchedule, type Schedule } from "@/lib/settings-data";
 import type { BotConfig, Machine } from "@/lib/types";
 import { Alert, Btn, Card, Empty, Field, PageHead, SaveBtn, Skel, SkelCard, Status, ToggleRow, useBusy } from "../ui";
@@ -46,8 +47,8 @@ function Head({ back }: { back: () => void }) {
   return <PageHead back={{ label: "Sozlamalar", onClick: back }} title="Kompyuter va jadval" sub="Kompyuter qachon va qanday sharoitda ishlaydi" />;
 }
 
-/** Saqlashdan oldingi tasdiq (eski sozlamalardagidek): kompyuterlar sozlamani ~2 daqiqada oladi. */
-const CONFIRM = "Sozlamalar saqlansinmi? Kompyuterlar ~2 daqiqada yangilanadi, yangi videolardan boshlab qo'llanadi.";
+/** Saqlashdan oldingi tasdiq (eski sozlamalardagidek). */
+const CONFIRM = "Sozlamalar saqlansinmi? Yangi videolardan boshlab qo'llanadi.";
 
 function OwnerComputer({ toast, onChanged, back }: SettingsPageProps) {
   const fail = useCallback((m: string) => { haptic.fail(); toast(m, true); }, [toast]);
@@ -320,7 +321,7 @@ function toolProblems(tools: Tool[]): string {
 const checkPending = (m: Machine) => m.check.requested && (!m.check.finishedAt || (!!m.check.requestedAt && m.check.finishedAt < m.check.requestedAt));
 
 function lastCheck(m: Machine, now: number): string | null {
-  if (checkPending(m)) return "Tekshiruv kutilmoqda — kompyuter ~2 daqiqada bajaradi";
+  if (checkPending(m)) return m.agent.live ? "Tekshiruv bajarilmoqda…" : "Tekshiruv kutilmoqda — kompyuter yoqilganda bajaradi";
   if (!m.check.finishedAt) return null;
   const failed = m.check.results.filter((r) => r.level === "Failed").length;
   const warn = m.check.results.filter((r) => r.level === "Warning").length;
@@ -338,6 +339,7 @@ function useMachineList() {
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     setNow(Date.now());
   }, []);
+  useLiveRefresh((e) => e.type === "machine", () => void reload(), 800);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mount'da bir marta yuklanadi (holat await'dan keyin o'rnatiladi)
     void reload();
@@ -375,7 +377,7 @@ function MachinesSection() {
           <div className="group">
             {list.map((m) => <MachineRow key={m.name} m={m} now={now} />)}
           </div>
-          <div className="hint">Onlayn — oxirgi 6 daqiqada signal kelgan. Og&apos;ir ish paytida kompyuter jim turadi va «Worker band» ko&apos;rinadi.</div>
+          <div className="hint">«Real vaqt» — kompyuterda doimiy YtAuto agenti ishlayapti (Cloudflare tunnel): botdagi so&apos;rovlar darhol bajariladi, video holati jonli keladi, tayyor videoni shu yerda ko&apos;rish mumkin.</div>
         </>
       )}
     </>
@@ -399,6 +401,7 @@ function MachineRow({ m, now }: { m: Machine; now: number }) {
 
       {m.online ? (
         <div className={s.chips}>
+          {m.agent.live ? <Status tone="ok">Real vaqt</Status> : null}
           <Status tone={m.app.open ? "ok" : "neutral"}>{m.app.open ? "Ilova ochiq" : "Ilova yopiq"}</Status>
           {m.worker.state === "busy" ? <Status tone="accent">Worker band{m.worker.jobId ? ` · #${m.worker.jobId}` : ""}</Status>
             : m.worker.state === "idle" ? <Status>Worker bo&apos;sh</Status> : null}
@@ -501,7 +504,7 @@ function LimitsCard({ limits, saving, done, onSave }: { limits: Limits; saving: 
         })}
       </div>
       <div className={s.foot}>
-        <span className="hint">Kompyuterlar ~2 daqiqada yangilanadi</span>
+        <span className="hint">Yangi videolardan boshlab qo&apos;llanadi</span>
         <SaveBtn size="md" dirty={dirty && !invalid} saving={saving} done={done} label={saving ? "Saqlanmoqda…" : "Saqlash"} onClick={() => void save()} />
       </div>
     </Card>
@@ -576,7 +579,7 @@ function AdvancedCard({ settings, saving, done, onSave }: { settings: VoiceSetti
             <input className="inp" value={cur.whisperModel} autoComplete="off" spellCheck={false} placeholder="Systran/faster-whisper-base" aria-label="Whisper modeli" onChange={(e) => set("whisperModel", e.target.value)} />
           </Field>
           <div className={s.foot}>
-            <span className="hint">Kompyuterlar ~2 daqiqada yangilanadi</span>
+            <span className="hint">Yangi videolardan boshlab qo&apos;llanadi</span>
             <SaveBtn size="md" dirty={dirty && !invalid} saving={saving} done={done} label={saving ? "Saqlanmoqda…" : "Saqlash"} onClick={() => void save()} />
           </div>
         </div>

@@ -73,7 +73,7 @@ export default function Channels({ toast, back, onChanged }: SettingsPageProps) 
   }, []);
 
   const save: SaveFn = useCallback(async (key, label, patch) => {
-    if (!(await confirmBox(`«${label}» saqlansinmi? Kompyuterlar ~2 daqiqada yangilanadi, yangi videolardan boshlab qo'llanadi.`))) return false;
+    if (!(await confirmBox(`«${label}» saqlansinmi? Yangi videolardan boshlab qo'llanadi.`))) return false;
     const r = await busy.run(key, () => saveConfig((d) => ({ ...d, youtube: { ...d.youtube, ...patch } })));
     if (r === false) return false;
     toast(`${label} saqlandi.`);

@@ -50,6 +50,8 @@ export type Topic = {
   hook: string | null;
   /** Tayyor ovoz yuklangan (VoiceStudio ishlatilmaydi). */
   hasAudio: boolean;
+  /** Tayyor video fayli kompyuterda bor (agent orqali ko'rish/yuklab olish mumkin). */
+  hasVideo: boolean;
 };
 
 /** Mavzu matni qayerdan keladi: Gemini yozadi / subtitr+title qo'lda / qo'lda + tayyor audio. */
@@ -234,6 +236,8 @@ export type Machine = {
   lastSeen: string;
   /** lastSeen yaqinda bo'lsa true: kompyuter yoniq va internetga ulangan. */
   online: boolean;
+  /** Doimiy agent (Cloudflare tunnel) ishlayapti: bot so'rovlari darhol bajariladi, holat real vaqtda keladi. */
+  agent: { live: boolean; seen: string | null };
   app: { open: boolean; seen: string | null };
   worker: { state: "busy" | "idle" | "unknown"; jobId: number | null; detail: string | null; seen: string | null };
   version: string | null;

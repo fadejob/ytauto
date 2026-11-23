@@ -8,9 +8,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  CalendarClock, Check, ChevronDown, ChevronLeft, ChevronUp, CircleX, Clapperboard, LoaderCircle, Pencil, Play, RefreshCw, RotateCcw, SlidersHorizontal, Trash2, Upload, Zap,
+  CalendarClock, Check, ChevronDown, ChevronLeft, ChevronUp, CircleX, Clapperboard, Download, LoaderCircle, Pencil, Play, RefreshCw, RotateCcw, SlidersHorizontal, Trash2, Upload, Zap,
 } from "lucide-react";
 import { api, confirmBox, haptic, openExternal } from "@/lib/client";
+import { useLiveConnected, useLiveJob, useLiveRefresh } from "@/lib/live";
 import { FormatText, StatusText, type Action, type JobEventRow, type JobLogs, type JobStageRow, type State, type Topic } from "@/lib/types";
 import type { Run, Toast } from "./App";
 import { Alert, Btn, Card, Empty, HookSlab, Skel, SkelCard, Status, useBusy, type IconT } from "./ui";
@@ -123,6 +124,11 @@ export default function VideoDetail({ state, id, back, run, toast, refresh }: { 
     return () => window.clearInterval(h);
   }, [working]);
 
+  // Real vaqt: kompyuter agenti shu video bosqichi/hodisasi o'zgarganini yuborsa, darhol qayta yuklanadi (10 s kutilmaydi).
+  const live = useLiveConnected();
+  const liveJob = useLiveJob(id);
+  useLiveRefresh((e) => e.type === "job" && e.job.id === id, () => { void loadLogs(); void refresh(); }, 500);
+
   const refreshAll = () => { haptic.tap(); void busy.run("refresh", () => Promise.all([refresh(), loadLogs()])); };
 
   async function act(k: Kind) {
@@ -215,7 +221,7 @@ export default function VideoDetail({ state, id, back, run, toast, refresh }: { 
         <div className={s.col}>
           {/* ---- bosqichlar */}
           {!logs && !logErr ? <SkelCard lines={7} /> : (
-            <Card title="Bosqichlar" action={<span className="sub tnum">{doneCount}/8 tayyor{totalMs > 0 ? ` · ${dur(totalMs)}` : ""}</span>}>
+            <Card title="Bosqichlar" action={<span className="sub tnum">{live && working ? <span className={s.live} title="Kompyuterdan real vaqtda">Jonli · </span> : null}{doneCount}/8 tayyor{totalMs > 0 ? ` · ${dur(totalMs)}` : ""}</span>}>
               {logErr ? (
                 <Alert>
                   Bosqichlarni olib bo&apos;lmadi: {logErr}{" "}
@@ -246,6 +252,9 @@ export default function VideoDetail({ state, id, back, run, toast, refresh }: { 
               </ol>
             </Card>
           )}
+
+          {/* ---- tayyor video: kompyuterdan to'g'ridan-to'g'ri (Cloudflare tunnel) */}
+          {t.hasVideo || liveJob?.hasVideo ? <Player id={t.id} format={t.format} toast={toast} /> : null}
 
           {/* ---- boshlang'ich savol */}
           {t.hook ? <HookSlab><div className="q">{t.hook}</div></HookSlab> : null}
@@ -368,6 +377,38 @@ function Header({ back, onRefresh, refreshing }: { back: () => void; onRefresh: 
   );
 }
 
+
+type Media = { video: string; download: string; cover: string; subtitles: string; machine: string };
+
+/**
+ * Tayyor video pleeri: fayl kompyuterdan agent orqali (imzolangan public havola, Range - oldinga/orqaga o'tish ishlaydi).
+ * Havola tunnel manziliga bog'liq: kompyuter qayta yonsa yangisi olinadi. Kompyuter o'chiq bo'lsa - izoh.
+ */
+function Player({ id, format, toast }: { id: number; format: number; toast: Toast }) {
+  const [media, setMedia] = useState<Media | null | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+  const load = useCallback(async () => {
+    try { setMedia((await api<{ media: Media | null }>(`/api/agent?media=${id}`)).media); setFailed(false); }
+    catch { setMedia(null); }
+  }, [id]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- video ochilganda havola bir marta olinadi
+  useEffect(() => { void load(); }, [load]);
+  const ratio = format === 1 ? "9 / 16" : format === 2 ? "1 / 1" : "16 / 9";
+  return (
+    <Card title="Tayyor video" sub={media ? `Kompyuterdan (${media.machine}) to'g'ridan-to'g'ri` : undefined}
+      action={media ? <Btn tone="secondary" size="sm" icon={Download} onClick={() => { haptic.tap(); openExternal(media.download); }}>Yuklab olish</Btn> : null}>
+      {media === undefined ? <Skel h={180} /> : media && !failed ? (
+        <video className={s.player} style={{ aspectRatio: ratio }} src={media.video} poster={media.cover} controls playsInline preload="metadata"
+          onError={() => { setFailed(true); toast("Video ochilmadi — kompyuter manzili o'zgargan bo'lishi mumkin. Yangilanmoqda…", true); void load(); }} />
+      ) : (
+        <div className="hint">
+          Videoni ko&apos;rish uchun kompyuter yoqiq va YtAuto agenti ishlayotgan bo&apos;lishi kerak (video kompyuterda saqlanadi).{" "}
+          <button type="button" className="linkbtn" onClick={() => { haptic.tap(); setMedia(undefined); void load(); }}>Qayta urinish</button>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function Row({ k, v }: { k: string; v: string }) {
   return <div className={s.row}><dt>{k}</dt><dd title={v}>{v}</dd></div>;

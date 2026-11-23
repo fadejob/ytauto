@@ -30,6 +30,25 @@ export function handler(fn: (req: Request, viewer: AccountViewer) => Promise<unk
   };
 }
 
+/**
+ * Hisob aniqlanadi, lekin DB tranzaksiyasi ochilmaydi: tashqi tarmoq so'rovlari (kompyuter agenti, tunnel) uchun - sekin javob
+ * ulanishni band qilmasin. Bu yerda sql() ishlamaydi.
+ */
+export function accountHandler(fn: (req: Request, viewer: AccountViewer) => Promise<unknown>) {
+  return async (req: Request) => {
+    await connection();
+    try {
+      const viewer = authenticate(req);
+      if (isDemo()) return json(await fn(req, { ...viewer, accountId: "00000000-0000-0000-0000-000000000000", guest: false, hostLabel: null }));
+      const acc = await accountForTelegram(viewer.id);
+      if (!acc) throw new AuthError("YtAuto ilovasidagi tokenni kiriting.", 401, viewer.id, "token_required");
+      return json(await fn(req, { ...viewer, accountId: acc.id, guest: acc.guest, hostLabel: acc.hostLabel }));
+    } catch (e) {
+      return errorResponse(e);
+    }
+  };
+}
+
 /** Hisobsiz (lekin Telegram bilan tasdiqlangan) so'rov: token bilan kirish/chiqish. */
 export function viewerHandler(fn: (req: Request, viewer: Viewer) => Promise<unknown>) {
   return async (req: Request) => {

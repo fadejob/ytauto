@@ -208,7 +208,7 @@ export function ModelChainCard({ config, saveConfig, guest, toast, onSaved }: {
     })));
     if (ok === false) return;
     setEdit(null);
-    toast("Saqlandi. Kompyuterlar ~2 daqiqada yangilanadi, yangi videolardan boshlab qo'llanadi.");
+    toast("Saqlandi. Yangi videolardan boshlab qo'llanadi.");
     onSaved();
     if (!guest) void usage.load().catch(() => {});
   }

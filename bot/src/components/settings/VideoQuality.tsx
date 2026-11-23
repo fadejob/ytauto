@@ -17,7 +17,7 @@ import s from "./VideoQuality.module.css";
 
 type CardProps = { config: BotConfig; save: (title: string, patch: (d: ConfigDraft) => ConfigDraft) => Promise<BotConfig | false>; busy: ReturnType<typeof useBusy> };
 
-const CONFIRM = "Kompyuterlar ~2 daqiqada yangilanadi, yangi videolardan boshlab qo'llanadi.";
+const CONFIRM = "Saqlansinmi? Yangi videolardan boshlab qo'llanadi.";
 
 export default function VideoQuality({ state, toast, back, onChanged }: SettingsPageProps) {
   const guest = state?.account.guest === true;

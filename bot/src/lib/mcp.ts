@@ -1,12 +1,12 @@
 import "server-only";
-import { createDemoVideo, McpToolError, MEDIA_LIMIT, publishVideo, requestMediaUpload, videoResult, videoStatus } from "./demo-video";
+import { createDemoVideo, McpToolError, MEDIA_LIMIT, publishVideo, requestMediaUpload, videoResult, videoResultLive, videoStatus, videoStatusLive } from "./demo-video";
 
 /**
  * YtAuto MCP server (Model Context Protocol, Streamable HTTP, holatsiz: har POST - mustaqil JSON-RPC so'rov, SSE yo'q).
  * Claude Code ulanadi: claude mcp add --transport http ytauto https://<bot>/api/mcp --header "Authorization: Bearer <token>".
  * Auth va hisob konteksti route.ts da; bu yerda - protokol va tool'lar.
  */
-export const SERVER_INFO = { name: "ytauto", title: "YtAuto demo video", version: "1.0.0" };
+export const SERVER_INFO = { name: "ytauto", title: "YtAuto demo video", version: "1.1.0" };
 const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 export const INSTRUCTIONS = `YtAuto turns a software project into a narrated product demo video. You (Claude Code) only study the project and capture visuals; YtAuto writes the script (Gemini), generates the voice (VoiceStudio, the user's chosen voice), edits (OpenFilm: zoom/pan, transitions, subtitles, music, SFX), renders and optionally publishes to the user's main YouTube channel.
@@ -17,7 +17,7 @@ Workflow:
 3. Capture visuals: PNG screenshots of the key screens (1920x1080 for a 16:9 video, 1080x1920 for 9:16) and short screen recordings (MP4/WebM, 4-20 s, one action each: e.g. creating an item, filtering, a successful save). Playwright (page.screenshot / recordVideo) works well for web apps. Up to ${MEDIA_LIMIT} files; screenshots up to 25 MB, recordings up to 500 MB.
 4. request_media_upload with the list of files → upload each file with the returned curl line (HTTP PUT of the raw bytes).
 5. create_demo_video with: the project context (name, summary, features), every media_id with a precise title + description of what is visible/what happens, and a highlight (the UI area to zoom into); plus requirements (language — ask the user if the narration should be English or Uzbek (uz) when unclear —, duration, audience, tone, format, notes from the user). Set publish.requested only if the user explicitly asked to publish.
-6. Video production is asynchronous and runs on the user's PC (minutes to an hour). Poll get_video_status every few minutes; when status is "ready" call get_video_result and give the user the download link / local path.
+6. Video production is asynchronous and runs on the user's PC (minutes to an hour). The PC runs a YtAuto agent that is notified instantly and reports progress in real time: call get_video_status with wait_sec: 25 — it returns as soon as the job changes (or after 25 s), so just call it again in a loop. When status is "ready" call get_video_result and give the user the links (direct.watch_url streams the video straight from the PC; video.url is a 24 h download link) and the local path.
 7. publish_video only when the user explicitly tells you to publish; it goes to the user's main YouTube channel only.`;
 
 type Json = Record<string, unknown>;
@@ -87,14 +87,17 @@ export const TOOLS = [
   {
     name: "get_video_status",
     title: "Demo video status",
-    description: "Progress of a demo video job: queued / in_progress (script, voice, align, edit, render, validate, archive) / ready / publishing / published / failed, with percent, queue position, the user's PCs online state and recent log lines.",
-    inputSchema: obj({ job_id: { type: "integer", minimum: 1 } }, ["job_id"]),
+    description: "Progress of a demo video job: queued / in_progress (script, voice, align, edit, render, validate, archive) / ready / publishing / published / failed, with percent, queue position, the user's PCs online state and recent log lines. Real time: with wait_sec (1-25) the call waits for the next change reported by the PC agent and returns immediately when it happens (long-poll) — no need to sleep between calls.",
+    inputSchema: obj({
+      job_id: { type: "integer", minimum: 1 },
+      wait_sec: { type: "integer", minimum: 0, maximum: 25, description: "Wait up to this many seconds for the next change (0 = answer now). Recommended: 25." },
+    }, ["job_id"]),
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
   {
     name: "get_video_result",
     title: "Get the finished demo video",
-    description: "When the job is ready: title, description, duration, a 24 h download link for the MP4 (and cover image + SRT subtitles), the local archive path on the user's PC, and the YouTube link if published.",
+    description: "When the job is ready: title, description, duration, a 24 h download link for the MP4 (and cover image + SRT subtitles), a direct public link that streams the file from the user's PC (direct.watch_url, while the PC is on), the local archive path on the user's PC, and the YouTube link if published.",
     inputSchema: obj({ job_id: { type: "integer", minimum: 1 } }, ["job_id"]),
     annotations: { readOnlyHint: true, openWorldHint: false },
   },
@@ -130,7 +133,7 @@ const err = (id: RpcRequest["id"], code: number, message: string): RpcResponse =
  * shunda model xabarni ko'radi va tuzatib qayta urinadi; protokol xatolari - JSON-RPC error.
  * run - tool'ni hisob kontekstida bajaradi (route.ts: withAccount).
  */
-export async function handleRpc(m: RpcRequest, run: <T>(fn: () => Promise<T>) => Promise<T>): Promise<RpcResponse | null> {
+export async function handleRpc(m: RpcRequest, run: <T>(fn: () => Promise<T>) => Promise<T>, accountId: string): Promise<RpcResponse | null> {
   if (!m || typeof m !== "object" || m.jsonrpc !== "2.0" || typeof m.method !== "string") return err(m?.id, -32600, "Invalid Request");
   const isNotification = m.id === undefined;
   switch (m.method) {
@@ -153,7 +156,10 @@ export async function handleRpc(m: RpcRequest, run: <T>(fn: () => Promise<T>) =>
       if (!fn) return err(m.id, -32602, `Unknown tool: ${name}`);
       const args = (m.params?.arguments ?? {}) as Json;
       try {
-        const result = await run(() => fn(args));
+        // Holat va natija: agent bilan aloqa (kutish, havola) DB tranzaksiyasidan tashqarida.
+        const result = name === "get_video_status" ? await videoStatusLive(args, run, accountId)
+          : name === "get_video_result" ? await videoResultLive(args, run, accountId)
+          : await run(() => fn(args));
         return ok(m.id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: false });
       } catch (e) {
         const known = e instanceof McpToolError;

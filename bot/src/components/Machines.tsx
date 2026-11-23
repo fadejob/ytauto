@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, Cog, History as HistoryIcon, Laptop, Lock, Monitor, Play, RotateCw, Stethoscope, TriangleAlert, X } from "lucide-react";
 import { api, confirmBox, haptic } from "@/lib/client";
+import { useLiveRefresh } from "@/lib/live";
 import type { CheckItem, Machine } from "@/lib/types";
 import type { Toast } from "./App";
 import { Alert, Btn, Empty, Skel, Status, useBusy } from "./ui";
@@ -56,6 +57,9 @@ export function useMachines(toast: Toast, enabled: boolean) {
       toast(msg, true);
     }
   }, [toast]);
+
+  // Real vaqt: agent worker band/bo'sh bo'lganini yuborsa darhol yangilanadi.
+  useLiveRefresh((e) => enabled && e.type === "machine", () => void reload(), 800);
 
   useEffect(() => {
     if (!enabled) return;
@@ -152,9 +156,9 @@ export default function Machines({ list, error, reload, toast }: { list: Machine
               </div>
 
               <div className={s.strip}>
-                <div className={s.sig}>
+                <div className={s.sig} title={m.agent.live ? "Doimiy agent (Cloudflare tunnel): so'rovlar darhol bajariladi" : undefined}>
                   <i className={m.online ? s.barOn : ""} />
-                  <span className={m.online ? s.on : ""}>{m.online ? "Onlayn" : "Oflayn"}</span>
+                  <span className={m.online ? s.on : ""}>{m.online ? (m.agent.live ? "Onlayn · real vaqt" : "Onlayn") : "Oflayn"}</span>
                 </div>
                 <div className={s.sig}>
                   <i className={m.app.open ? s.barOn : ""} />
@@ -192,7 +196,7 @@ export default function Machines({ list, error, reload, toast }: { list: Machine
                   onClick={() => void check(m.name)}
                 >{pending ? "Tekshirilmoqda" : "Tekshirish"}</Btn>
               </div>
-              {pending ? <div className="hint">So&apos;rov yuborildi. Kompyuter ~2 daqiqada olib, natijani yuboradi.</div> : null}
+              {pending ? <div className="hint">So&apos;rov yuborildi. Kompyuter {m.agent.live ? "darhol bajarib" : "yoqilganda olib"}, natijani yuboradi.</div> : null}
             </article>
 
             {m.tools || showCheck ? (
