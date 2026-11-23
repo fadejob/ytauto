@@ -11,7 +11,7 @@ export const GET = handler(async (_req, viewer): Promise<{ guests: GuestToken[] 
   if (viewer.guest) throw new Error("Qo'shimcha tokenlarni faqat asosiy hisob egasi ko'radi.");
   if (isDemo()) return { guests: [] };
   return { guests: await listGuests(viewer.accountId) };
-});
+}, { ownerOnly: true });
 
 export const POST = handler(async (req, viewer): Promise<{ guests: GuestToken[]; token?: string; message: string }> => {
   if (viewer.guest) throw new Error("Qo'shimcha token bilan tokenlarni boshqarib bo'lmaydi.");
@@ -29,4 +29,4 @@ export const POST = handler(async (req, viewer): Promise<{ guests: GuestToken[];
     return { guests: await listGuests(viewer.accountId), message: "Token o'chirildi: u bilan endi kirib bo'lmaydi." };
   }
   throw new Error("Noma'lum amal.");
-});
+}, { ownerOnly: true });
