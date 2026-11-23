@@ -127,7 +127,17 @@ public static class AgentHost
                 Task.Run(() => TimerLoopAsync(stop.Token)),
             };
             Wake("startup"); // kompyuter yoqilgandan beri yig'ilgan so'rovlar darhol bajariladi
-            try { await Task.WhenAny(tasks); }
+            var exit = 0;
+            try
+            {
+                var done = await Task.WhenAny(tasks);
+                if (!ct.IsCancellationRequested)
+                {
+                    // Ichki tsikl kutilmaganda tugadi: xato kodi bilan chiqamiz - Task Scheduler qo'riqchisi (5 daqiqada) qayta ko'taradi.
+                    _svc.Log.Error("Agent ichki tsikli to'xtadi: " + (done.Exception?.GetBaseException().ToString() ?? "sababsiz"));
+                    exit = 1;
+                }
+            }
             finally
             {
                 stop.Cancel();
@@ -137,7 +147,7 @@ public static class AgentHost
                 _server?.Dispose();
                 _svc.Log.Info("Agent to'xtadi.");
             }
-            return 0;
+            return exit;
         }
 
         // ------------------------------------------------------------------ server
@@ -264,6 +274,7 @@ public static class AgentHost
             {
                 var p = Process.Start(new ProcessStartInfo(_exe, "--poll") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(_exe)! });
                 if (p is null) return;
+                _child?.Dispose();
                 p.EnableRaisingEvents = true;
                 p.Exited += (_, _) =>
                 {
