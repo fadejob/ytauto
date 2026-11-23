@@ -5,6 +5,7 @@ import { Check, ChevronUp, Copy, KeyRound } from "lucide-react";
 import { api, confirmBox } from "@/lib/client";
 import { differs, useBotConfig } from "@/lib/settings-data";
 import type { BotConfig } from "@/lib/types";
+import TagInput, { joinTags, parseTags, TAGS_MAX_CHARS } from "../TagInput";
 import YouTubeChannels, { type YtStatus } from "../YouTubeChannels";
 import { Alert, Btn, Card, Field, PageHead, SaveBtn, SettingsRow, SkelCard, ToggleRow, useBusy } from "../ui";
 import type { SettingsPageProps } from "./types";
@@ -302,17 +303,26 @@ const DESC_KEYS = ["defaultTags", "defaultDescription", "locationDescription"] a
 function DescriptionCard({ y, busy, save }: { y: Yt; busy: Busy; save: SaveFn }) {
   const saved = useMemo(() => pick(y, DESC_KEYS), [y]);
   const d = useDraft(saved);
+  /** Yozilayotgan (hali chipga aylanmagan) teg: «Saqlash» bosilsa u ham qo'shiladi. */
+  const [pending, setPending] = useState("");
   if (!d.value) return null;
   const v = d.value;
   const saving = busy.is("desc");
+  const tags = parseTags(v.defaultTags);
+  const allTags = pending.trim() ? parseTags(`${v.defaultTags},${pending}`) : tags;
+  const tooLong = joinTags(allTags).length > TAGS_MAX_CHARS;
+  const dirty = d.dirty || !!pending.trim();
   async function onSave() {
-    if (await save("desc", "Tavsif va teglar", { ...d.value })) d.reset();
+    if (tooLong) return;
+    if (await save("desc", "Tavsif va teglar", { ...d.value, defaultTags: joinTags(allTags) })) { d.reset(); setPending(""); }
   }
   return (
-    <Card title="Tavsif va teglar" sub="Bo'sh qolsa, Gemini o'zi yozadi" action={<SaveBtn dirty={d.dirty} saving={saving} done={busy.done("desc")} onClick={() => void onSave()} />}>
-      <Field label={<label htmlFor="yt-tags">Standart teglar, vergul bilan</label>}
-        hint="To'ldirilsa faqat shular qo'yiladi, bo'sh bo'lsa Gemini har videoga 5 ta teg yozadi.">
-        <input id="yt-tags" className="inp" value={v.defaultTags} disabled={saving} placeholder="fan, texnologiya, ilm-fan" onChange={(e) => d.set({ defaultTags: e.target.value })} />
+    <Card title="Tavsif va teglar" sub="Bo'sh qolsa, Gemini o'zi yozadi" action={<SaveBtn dirty={dirty && !tooLong} saving={saving} done={busy.done("desc")} onClick={() => void onSave()} />}>
+      <Field label={<label htmlFor="yt-tags">Standart teglar</label>}
+        error={tooLong ? `Teglar birga ${TAGS_MAX_CHARS} belgidan oshmasin (YouTube cheklovi).` : undefined}
+        hint="Tegni yozib vergul yoki Enter bosing — u tepada chiqadi. To'ldirilsa faqat shular qo'yiladi, bo'sh bo'lsa Gemini har videoga 5 ta teg yozadi.">
+        <TagInput id="yt-tags" tags={tags} pending={pending} disabled={saving} placeholder="fan, texnologiya, ilm-fan"
+          onTags={(t) => d.set({ defaultTags: joinTags(t) })} onPending={setPending} />
       </Field>
       <Field label={<label htmlFor="yt-desc">Standart tavsif</label>} right={`${v.defaultDescription.length}/2000`}
         hint="To'ldirilsa faqat shu qo'yiladi, bo'sh bo'lsa Gemini har videoga tavsif yozadi.">
