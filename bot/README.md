@@ -81,8 +81,9 @@ Google Cloud sozlamasi (bir marta, administrator):
 1. **Credentials → Create OAuth client → Web application**; *Authorized redirect URIs*: `https://<bot>/api/youtube/callback`.
    Client ID va Secret'ni Vercel env'ga kiriting va qayta deploy qiling.
 2. **APIs & Services → Library**: *YouTube Data API v3* yoqilgan bo'lsin.
-3. **Google Auth Platform → Branding**: ilova nomi, support email, logo, bosh sahifa, **Privacy Policy** va **Terms** havolalari,
-   *Authorized domains* ga bot domeni.
+3. **Google Auth Platform → Branding**: ilova nomi, support email, logo (`public/logo-120.png`), bosh sahifa
+   `https://<bot>/about`, Privacy Policy `https://<bot>/privacy`, Terms `https://<bot>/terms`, *Authorized domains* ga bot
+   domeni. Sahifalardagi aloqa emaili — `CONTACT_EMAIL` env.
 4. **Data Access**: `youtube.upload`, `youtube.readonly`, `youtube.force-ssl` scope'lari.
 5. **Audience → Publish app** («In production»). Shundan keyin istalgan Gmail ulana oladi va token 7 kunda tugamaydi.
    Google tekshiruvi (verification) tugaguncha foydalanuvchilar «tekshirilmagan ilova» ogohlantirishini ko'radi

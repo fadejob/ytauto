@@ -52,6 +52,7 @@ export default function TokenLogin({ onDone }: { onDone: () => void }) {
             <button className="btn primary block" onClick={submit} disabled={busy || !token.trim()}>{busy ? "Tekshirilmoqda…" : "Kirish"}</button>
           </div>
           <p className="hint">Token faqat sizning ma&apos;lumotlaringizga kalit: uni boshqalarga bermang. Ilovada tokenni yangilasangiz, bot uni qayta so&apos;raydi.</p>
+          <p className="hint"><a href="/about">YtAuto haqida</a> · <a href="/privacy">Maxfiylik siyosati</a> · <a href="/terms">Foydalanish shartlari</a></p>
         </div>
       </div>
     </main>
