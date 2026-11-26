@@ -8,6 +8,10 @@ import { isDemo } from "./demo";
  * YouTube kanalini bot orqali ulash (Google OAuth, "Web application" client, authorization code oqimi).
  * Refresh token online bazada (shared_settings.youtube.oauth) saqlanadi: desktop ilova va barcha kompyuterlar
  * o'sha tokendan foydalanadi (alohida kompyuterda qayta ulash shart emas).
+ *
+ * OAuth client: hisob o'zinikini kiritgan bo'lsa - o'shanisi; aks holda serverning UMUMIY client'i (YOUTUBE_CLIENT_ID/SECRET env),
+ * ya'ni har kim Google Cloud loyihasisiz o'z kanalini ulaydi. Token har hisobda alohida (RLS). Umumiy secret foydalanuvchiga
+ * (brauzer yoki kompyuter) hech qachon berilmaydi: kompyuter access token'ni botdan oladi (/api/device/youtube-token).
  */
 const KEY = "youtube.oauth";
 // youtube.force-ssl: Claude Code (MCP) orqali video nomi/tavsifi/holatini tahrirlash va videoni o'chirish uchun.
@@ -18,9 +22,33 @@ const STATE_TTL_MS = 15 * 60 * 1000;
 export type YouTubeStatus = {
   connected: boolean; channelTitle: string; connectedAt: string | null;
   clientConfigured: boolean; redirectUri: string;
+  /** Server umumiy OAuth client'i bor: foydalanuvchi Client ID/Secret kiritmasdan ulay oladi. */
+  globalClient: boolean;
 };
 
-type Stored = { refreshToken: string; channelTitle: string; scope: string; connectedAt: string };
+/** client: qaysi OAuth client bilan ulangan (refresh token faqat o'sha client bilan ishlaydi). Eski yozuvlarda yo'q = "own". */
+type Stored = { refreshToken: string; channelTitle: string; scope: string; connectedAt: string; client?: ClientKind };
+type ClientKind = "own" | "global";
+type Client = { clientId: string; clientSecret: string; kind: ClientKind };
+
+/** Serverning umumiy OAuth client'i (Vercel env). Yo'q bo'lsa null. */
+export function globalClient(): Client | null {
+  const clientId = process.env.YOUTUBE_CLIENT_ID?.trim() ?? "", clientSecret = process.env.YOUTUBE_CLIENT_SECRET?.trim() ?? "";
+  return clientId && clientSecret ? { clientId, clientSecret, kind: "global" } : null;
+}
+
+/** Yangi ulash uchun: hisobning o'z client'i (kiritilgan bo'lsa), aks holda umumiy. */
+async function connectClient(): Promise<Client | null> {
+  const own = await getYouTubeClient();
+  return own.clientId && own.clientSecret ? { ...own, kind: "own" } : globalClient();
+}
+
+/** Saqlangan token qaysi client bilan olingan bo'lsa - o'sha. */
+async function clientOf(s: Stored): Promise<Client | null> {
+  if (s.client === "global") return globalClient();
+  const own = await getYouTubeClient();
+  return own.clientId && own.clientSecret ? { ...own, kind: "own" } : null;
+}
 
 /** So'rov kelgan manzil (Vercel/proxy ortida ham): redirect_uri shundan quriladi va Google konsolida ro'yxatdan o'tgan bo'lishi kerak. */
 export function originOf(req: Request): string {
@@ -61,16 +89,16 @@ async function readStored(): Promise<Stored | null> {
 }
 
 export async function getYouTubeStatus(origin: string): Promise<YouTubeStatus> {
-  const [s, c] = await Promise.all([readStored(), getYouTubeClient()]);
+  const [s, c] = await Promise.all([readStored(), connectClient()]);
   return {
     connected: !!s?.refreshToken, channelTitle: s?.channelTitle ?? "", connectedAt: s?.connectedAt ?? null,
-    clientConfigured: !!c.clientId && !!c.clientSecret, redirectUri: redirectOf(origin),
+    clientConfigured: !!c, redirectUri: redirectOf(origin), globalClient: !!globalClient(),
   };
 }
 
 export async function startYouTube(origin: string): Promise<{ url: string }> {
-  const c = await getYouTubeClient();
-  if (!c.clientId || !c.clientSecret) throw new Error("Avval Sozlamalar → YouTube'da OAuth Client ID va Secret'ni saqlang.");
+  const c = await connectClient();
+  if (!c) throw new Error("YouTube ulash hali sozlanmagan: server administratori YOUTUBE_CLIENT_ID/SECRET ni kiritishi kerak (yoki Sozlamalar → YouTube'da o'z Client ID va Secret'ingizni saqlang).");
   if (isDemo()) throw new Error("Demo rejimda YouTube ulanmaydi.");
   const q = new URLSearchParams({
     response_type: "code", client_id: c.clientId, redirect_uri: redirectOf(origin), scope: SCOPES.join(" "),
@@ -81,7 +109,8 @@ export async function startYouTube(origin: string): Promise<{ url: string }> {
 
 /** Google qaytargan code'ni tokenga almashtiradi, kanal nomini oladi va bazaga yozadi. */
 export async function finishYouTube(code: string, origin: string): Promise<string> {
-  const c = await getYouTubeClient();
+  const c = await connectClient();
+  if (!c) throw new Error("YouTube OAuth client sozlanmagan.");
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ code, client_id: c.clientId, client_secret: c.clientSecret, redirect_uri: redirectOf(origin), grant_type: "authorization_code" }),
@@ -93,7 +122,7 @@ export async function finishYouTube(code: string, origin: string): Promise<strin
   const cj = (await ch.json().catch(() => ({}))) as { items?: { snippet?: { title?: string } }[] };
   const title = cj.items?.[0]?.snippet?.title;
   if (!title) throw new Error("Bu Google hisobida YouTube kanali topilmadi.");
-  const stored: Stored = { refreshToken: j.refresh_token, channelTitle: title, scope: j.scope ?? "", connectedAt: new Date().toISOString() };
+  const stored: Stored = { refreshToken: j.refresh_token, channelTitle: title, scope: j.scope ?? "", connectedAt: new Date().toISOString(), client: c.kind };
   await writeStored(stored);
   return title;
 }
@@ -111,8 +140,9 @@ export const disconnectYouTube = () => writeStored(null);
 
 /** Faqat server ichida (hisob konteksti): fon ishi tranzaksiyadan tashqarida token olishi uchun. Ulanmagan bo'lsa null. */
 export async function youtubeCredentials(): Promise<{ refreshToken: string; clientId: string; clientSecret: string; channelTitle: string } | null> {
-  const [s, c] = await Promise.all([readStored(), getYouTubeClient()]);
-  if (!s?.refreshToken || !c.clientId || !c.clientSecret) return null;
+  const s = await readStored();
+  const c = s?.refreshToken ? await clientOf(s) : null;
+  if (!s?.refreshToken || !c) return null;
   return { refreshToken: s.refreshToken, clientId: c.clientId, clientSecret: c.clientSecret, channelTitle: s.channelTitle };
 }
 
@@ -140,9 +170,10 @@ export async function youtubeAccessToken(c: { refreshToken: string; clientId: st
  * kanal nomini so'raydi. Token bekor qilingan/muddati o'tgan (masalan Google "Testing" rejimida 7 kundan keyin) bo'lsa sababini aytadi.
  */
 export async function verifyYouTube(): Promise<{ ok: boolean; channelTitle?: string; message: string }> {
-  const [s, c] = await Promise.all([readStored(), getYouTubeClient()]);
+  const s = await readStored();
   if (!s?.refreshToken) return { ok: false, message: "Kanal ulanmagan: «YouTube'ni ulash» ni bosing." };
-  if (!c.clientId || !c.clientSecret) return { ok: false, message: "OAuth Client ID/Secret saqlanmagan (Sozlamalar → YouTube)." };
+  const c = await clientOf(s);
+  if (!c) return { ok: false, message: s.client === "global" ? "Server umumiy OAuth client'i o'chirilgan — administratorga murojaat qiling." : "OAuth Client ID/Secret saqlanmagan (Sozlamalar → YouTube)." };
   let res: Response;
   try {
     res = await fetch("https://oauth2.googleapis.com/token", {

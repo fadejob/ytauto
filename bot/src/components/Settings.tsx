@@ -58,7 +58,7 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
   /** Gemini model zanjiri matni: har qatorga bitta model (birinchisi asosiy). */
   const [voiceInfo, setVoiceInfo] = useState<VoiceInfo[]>([]);
   const [saving, setSaving] = useState(false);
-  const [yt, setYt] = useState<{ connected: boolean; channelTitle: string; connectedAt: string | null; clientConfigured: boolean; redirectUri: string } | null>(null);
+  const [yt, setYt] = useState<{ connected: boolean; channelTitle: string; connectedAt: string | null; clientConfigured: boolean; redirectUri: string; globalClient: boolean } | null>(null);
   const [ytBusy, setYtBusy] = useState(false);
   const [ytCheck, setYtCheck] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -270,9 +270,6 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
 
             <div className="sect">YouTube</div>
             <div className="card formcard">
-              <div className="field"><label>OAuth Client ID</label><input className="input" value={cfg.youtube.clientId} autoComplete="off" onChange={(e) => Y({ clientId: e.target.value })} /></div>
-              <div className="field"><label>Client Secret {cfg.youtube.clientSecretSet ? "· saqlangan ✓" : "· kiritilmagan"}</label>
-                <input className="input" type="password" autoComplete="off" value={cfg.youtube.clientSecret ?? ""} placeholder={cfg.youtube.clientSecretSet ? "O'zgartirish uchun yangisini kiriting" : ""} onChange={(e) => Y({ clientSecret: e.target.value })} /></div>
               <div className="field">
                 <label>Kanal {yt?.connected ? `· ulangan ✓ ${yt.channelTitle}` : "· ulanmagan"}</label>
                 <div className="grid2">
@@ -282,8 +279,15 @@ export default function Settings({ catalog, toast, onSaved, onLogout, account }:
                 <button className="btn block" disabled={ytBusy || !yt?.connected} onClick={verifyYt}>Ulanishni tekshirish</button>
                 {ytCheck ? <div className={ytCheck.ok ? "hint" : "err"}>{ytCheck.ok ? "✓ " : "✗ "}{ytCheck.message}</div> : null}
                 {!yt?.clientConfigured ? <div className="hint">Avval Client ID va Secret&apos;ni kiritib, «Saqlash» ni bosing.</div> : dirty ? <div className="hint">Avval o&apos;zgarishlarni saqlang.</div> : null}
-                <div className="hint">Google Cloud → Credentials → <b>Web application</b> turidagi OAuth client yarating va «Authorized redirect URIs» ga shu manzilni qo&apos;shing:<br /><code style={{ wordBreak: "break-all" }}>{yt?.redirectUri ?? "…"}</code></div>
+                {yt?.globalClient ? <div className="hint">«YouTube&apos;ni ulash» ni bosing va o&apos;z kanalingiz Google hisobini tanlang — boshqa hech narsa kerak emas. Kanalingiz faqat sizning hisobingizda saqlanadi.</div> : null}
               </div>
+              <details open={yt ? !yt.globalClient : undefined}>
+                <summary className="hint">{yt?.globalClient ? "Kengaytirilgan: o'z Google OAuth client'im (ixtiyoriy)" : "Google OAuth client"}</summary>
+                <div className="field"><label>OAuth Client ID</label><input className="input" value={cfg.youtube.clientId} autoComplete="off" onChange={(e) => Y({ clientId: e.target.value })} /></div>
+                <div className="field"><label>Client Secret {cfg.youtube.clientSecretSet ? "· saqlangan ✓" : "· kiritilmagan"}</label>
+                <input className="input" type="password" autoComplete="off" value={cfg.youtube.clientSecret ?? ""} placeholder={cfg.youtube.clientSecretSet ? "O'zgartirish uchun yangisini kiriting" : ""} onChange={(e) => Y({ clientSecret: e.target.value })} /></div>
+                <div className="hint">Google Cloud → Credentials → <b>Web application</b> turidagi OAuth client yarating va «Authorized redirect URIs» ga shu manzilni qo&apos;shing:<br /><code style={{ wordBreak: "break-all" }}>{yt?.redirectUri ?? "…"}</code>{yt?.globalClient ? <><br />Bo&apos;sh qoldirilsa umumiy ilova ishlatiladi.</> : null}</div>
+              </details>
               <div className="grid2">
                 <div className="field"><label>Public soati (HH:mm)</label><input className="input" value={cfg.youtube.publishTime} onChange={(e) => Y({ publishTime: e.target.value })} /></div>
                 <div className="field"><label>Vaqt zonasi</label><input className="input" value={cfg.youtube.timeZoneId} onChange={(e) => Y({ timeZoneId: e.target.value })} /></div>

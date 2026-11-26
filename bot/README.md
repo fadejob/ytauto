@@ -64,6 +64,31 @@ Yoki `DB_AUTO_MIGRATE=1` — bot birinchi so'rovda o'zi migratsiya qiladi. Aks h
 - Token terish cheklangan (Telegram ID bo'yicha 15 daqiqada 10 urinish). Storage fayllari `acc/<hisob>/` papkalarida.
 - Bot tokeni, Gemini kalitlari va baza paroli faqat server muhitida (`.env.local` / Vercel); git'ga tushmaydi.
 
+## YouTube'ni ulash — hamma uchun bitta ilova
+
+Server **umumiy Google OAuth client** bilan ishlaydi (`YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`, Vercel env): har bir
+foydalanuvchi botda **Sozlamalar → YouTube → «YouTube'ni ulash»** ni bosib, o'z Google hisobini tanlaydi — Google Cloud loyihasi,
+Client ID yoki Secret kerak emas. Refresh token shu foydalanuvchi hisobida (`shared_settings.youtube.oauth`, RLS) saqlanadi:
+boshqa hisoblar uni ko'rmaydi va ularning kanaliga tegmaydi.
+
+- Umumiy client secret hech kimga berilmaydi: kompyuter (worker) access token'ni `POST /api/device/youtube-token` dan oladi
+  (kompyuter hisob tokeni bilan; mehmon vazifasida — aynan o'sha mehmon kanali).
+- Hisob o'z OAuth client'ini kiritsa (Sozlamalar → YouTube → Kengaytirilgan), yangi ulanishlar o'shanisi bilan bo'ladi.
+  Har token qaysi client bilan olingani saqlanadi (`client: "own" | "global"`), shu bilan yangilanadi.
+
+Google Cloud sozlamasi (bir marta, administrator):
+
+1. **Credentials → Create OAuth client → Web application**; *Authorized redirect URIs*: `https://<bot>/api/youtube/callback`.
+   Client ID va Secret'ni Vercel env'ga kiriting va qayta deploy qiling.
+2. **APIs & Services → Library**: *YouTube Data API v3* yoqilgan bo'lsin.
+3. **Google Auth Platform → Branding**: ilova nomi, support email, logo, bosh sahifa, **Privacy Policy** va **Terms** havolalari,
+   *Authorized domains* ga bot domeni.
+4. **Data Access**: `youtube.upload`, `youtube.readonly`, `youtube.force-ssl` scope'lari.
+5. **Audience → Publish app** («In production»). Shundan keyin istalgan Gmail ulana oladi va token 7 kunda tugamaydi.
+   Google tekshiruvi (verification) tugaguncha foydalanuvchilar «tekshirilmagan ilova» ogohlantirishini ko'radi
+   (*Advanced → Go to …*) va jami 100 ta foydalanuvchi chegarasi bor; chegarasiz va ogohlantirishsiz bo'lishi uchun
+   **Verification Center** orqali tekshiruvga yuboring (YouTube scope'lari uchun demo video va scope izohi so'raladi).
+
 ## Qo'shimcha tokenlar (sxema v3)
 
 Asosiy hisob egasi botda **Sozlamalar → Qo'shimcha tokenlar** bo'limida boshqalar uchun token yaratadi. Token egasi botga shu token
