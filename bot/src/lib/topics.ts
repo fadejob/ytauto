@@ -44,6 +44,8 @@ async function channelVoiceProfile(cat: Catalog): Promise<string> {
 }
 
 const MAX_TOPICS_PER_REQUEST = 5;
+/** Claude Code (MCP) bir chaqiruvda ko'proq mavzu qo'sha oladi: har birining hamma qismlarini Claude o'zi beradi. */
+export const MCP_MAX_TOPICS = 40;
 const GAP_DAYS = 2; // desktop ilovadagi PublishDateSuggester bilan bir xil
 const MIN_LEAD_MS = 30 * 60 * 1000;
 
@@ -189,7 +191,7 @@ function parsePublishAt(s: string | undefined, tz: string): Date | null | "inval
 const clean = (s: string | undefined | null) => (s ?? "").replace(/\s+\n/g, "\n").trim();
 
 // ------------------------------------------------------------------ amallar
-export async function applyAction(a: Action): Promise<ActionResult> {
+export async function applyAction(a: Action, opts: { maxTopics?: number } = {}): Promise<ActionResult> {
   if (isDemo()) {
     if (a.type === "update_prompt") { const p = await previewPrompt(a); if ("error" in p) return { ok: false, message: p.error }; }
     if (a.type === "update_topic" && a.music !== undefined) {
@@ -212,7 +214,8 @@ export async function applyAction(a: Action): Promise<ActionResult> {
         return { ...t, script, title, topic: clean(t.topic) || title, notes: clean(t.notes), audioPath: t.audioPath?.trim() || undefined };
       }).filter((t) => t.topic);
       if (items.length === 0) return { ok: false, message: "Mavzu kiritilmagan." };
-      if (items.length > MAX_TOPICS_PER_REQUEST) return { ok: false, message: `Bir vaqtda eng ko'pi ${MAX_TOPICS_PER_REQUEST} ta mavzu qo'shiladi.` };
+      const maxTopics = opts.maxTopics ?? MAX_TOPICS_PER_REQUEST;
+      if (items.length > maxTopics) return { ok: false, message: `Bir vaqtda eng ko'pi ${maxTopics} ta mavzu qo'shiladi.` };
       const badMusic = await checkTopicMusic(items.map((t) => (t as NewTopic).music));
       if (badMusic) return { ok: false, message: badMusic };
       const auto = await suggestDates(items.length, cat);
