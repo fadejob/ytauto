@@ -47,6 +47,8 @@ public sealed class VideoJob
     public string? ManualTitle { get; set; }
     /// <summary>Botdan yuklangan tayyor ovoz (Supabase Storage imzolangan havolasi). Berilgan bo'lsa VoiceStudio TTS o'tkazib yuboriladi.</summary>
     public string? ManualAudioUrl { get; set; }
+    /// <summary>Botda yuklangan muqova rasmi (imzolangan havola). Berilgan bo'lsa muqova yaratilmaydi - shu rasm YouTube thumbnail bo'ladi.</summary>
+    public string? ManualCoverUrl { get; set; }
 
     /// <summary>Vazifa turi: "" - oddiy mavzu, <see cref="DemoKind"/> - Claude Code MCP orqali yuborgan loyiha demo videosi.</summary>
     public string Kind { get; set; } = "";
@@ -57,8 +59,22 @@ public sealed class VideoJob
     public const string DemoKind = "demo";
     public bool IsDemo => Kind == DemoKind && !string.IsNullOrWhiteSpace(DemoSpecJson);
 
+    /// <summary>
+    /// Video qaysi YouTube kanaliga yuklanadi (bot: yaratilgan paytdagi faol kanal id'si). Bo'sh - kanal tanlanmagan: hisobning faol
+    /// kanali. Bot yozadi: Update() tegmaydi. Worker shu kanal tokeni va kanal kontekstini ishlatadi (ISettingsStore.UseChannel).
+    /// </summary>
+    public string ChannelId { get; set; } = "";
+
+    /// <summary>
+    /// Boshlang'ich savol (hook): foydalanuvchi botda kiritadi. Ssenariy aynan shu so'zlar bilan boshlanadi, montaj ochilishi shu savoldan
+    /// quriladi. Bo'sh - kiritilmagan (eski vazifa yoki o'z matni). Bot yozadi: Update() tegmaydi.
+    /// </summary>
+    public string? Hook { get; set; }
+    public bool HasHook => !string.IsNullOrWhiteSpace(Hook) && !HasManualScript && !IsDemo;
+
     public bool HasManualScript => !string.IsNullOrWhiteSpace(ManualScript) && !string.IsNullOrWhiteSpace(ManualTitle);
     public bool HasManualAudio => !string.IsNullOrWhiteSpace(ManualAudioUrl);
+    public bool HasManualCover => !string.IsNullOrWhiteSpace(ManualCoverUrl);
 
     public string? Title { get; set; }
     public string? Description { get; set; }

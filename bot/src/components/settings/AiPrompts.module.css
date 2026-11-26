@@ -1,0 +1,39 @@
+/* Sozlamalar → «AI va promptlar» (dizayn: jODCJH, «· pastroq» rZoqDA). */
+
+.cards { display: grid; gap: 16px; }
+@media (min-width: 1024px) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+}
+
+.errRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+
+/* Kalit yo'q (banner'dan kelingan): karta ko'zga tashlansin - urg'u ramkasi. */
+.missing { box-shadow: 0 0 0 2px var(--accent); }
+
+/* Saqlangan kalitlar: nuqta (birinchisi - ishlatilmoqda, urg'u), yashirilgan ko'rinish, yuqoriga/o'chirish. */
+.keys { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.key { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 4px 0 14px; border-radius: var(--r-md); background: var(--sunken); }
+.dot { width: 8px; height: 8px; border-radius: 999px; background: var(--faint); flex: none; }
+.dotOn { background: var(--accent); }
+.hint { flex: 1; min-width: 0; font: 600 15px/1.3 var(--font); letter-spacing: 0.2px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.iconBtn { width: 40px; height: 44px; display: grid; place-items: center; color: var(--muted); border-radius: var(--r-sm); flex: none; }
+.iconBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.addRow { display: flex; gap: 10px; align-items: flex-start; }
+/* Dizayndagidek bir qatorli maydon; bir nechta kalit yozilsa (har qatorga bittadan) o'zi kattalashadi. */
+.addRow textarea.keyInput { flex: 1; min-width: 0; resize: none; min-height: 48px; height: 48px; field-sizing: content; max-height: 160px;
+  font-family: var(--mono); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+@supports (field-sizing: content) { .addRow textarea.keyInput { height: auto; } }
+.addRow :global(.btn) { min-height: 48px; flex: none; }
+
+/* Claude modeli: ko'rinadigan qiymat (nom + «tavsiya» belgisi) ustida shaffof tizim select'i - tanlov oynasi tizimniki bo'lib qoladi. */
+.select { position: relative; display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 12px 0 14px; border-radius: var(--r-md);
+  background: var(--sunken); border: 1.5px solid transparent; }
+.select:focus-within { border-color: var(--accent); }
+.select select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.selVal { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
+.selVal b { font-size: 15px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.selIcon { color: var(--muted); flex: none; }
+.tag, .tagAccent { padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 650; white-space: nowrap; flex: none; }
+.tag { background: var(--card); color: var(--muted); }
+.tagAccent { background: var(--accent-soft); color: var(--accent-ink); }

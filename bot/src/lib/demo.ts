@@ -1,5 +1,6 @@
 import "server-only";
 import { addDays, parseLocal, utcToZoned, zonedToUtc } from "./time";
+import { checkHook } from "./video-rules";
 import { Status, type Action, type ActionResult, type Catalog, type JobLogs, type Prompts, type Topic, type WorkerRun } from "./types";
 
 /**
@@ -14,7 +15,7 @@ export const demoCatalog: Catalog = {
   youtube: { publishTime: "18:00", timeZone: TZ }, known: true,
 };
 
-type Row = { id: number; topic: string; notes: string; title: string | null; status: number; at: Date; yt: string | null; made: boolean; publishNow: boolean; claimed: boolean; error: string | null; archived?: boolean; uploadRequested?: boolean; template?: string; format?: number; voice?: string; script?: string; mtitle?: string; audio?: boolean };
+type Row = { id: number; topic: string; notes: string; title: string | null; status: number; at: Date; yt: string | null; made: boolean; publishNow: boolean; claimed: boolean; error: string | null; archived?: boolean; uploadRequested?: boolean; template?: string; format?: number; voice?: string; script?: string; mtitle?: string; audio?: boolean; hook?: string };
 
 function seed(): { rows: Row[]; prompts: Prompts; nextId: number } {
   const today = utcToZoned(new Date(), TZ).date;
@@ -50,7 +51,7 @@ export function demoTopics(): Topic[] {
     canUploadReady: !!r.archived && !r.yt && !r.claimed && !r.uploadRequested && !r.publishNow && ![11, 14].includes(r.status),
     uploadRequested: !!r.uploadRequested && !r.yt,
     template: r.template ?? "", format: r.format ?? 0, voice: r.voice ?? "MOSS ayol",
-    manualScript: r.script || null, manualTitle: r.mtitle || null, hasAudio: !!r.audio,
+    manualScript: r.script || null, manualTitle: r.mtitle || null, hasAudio: !!r.audio, hook: r.hook || null, hasVideo: r.status >= 7 && r.status !== 12, coverUrl: null,
     canRetry: !r.claimed && [12, 13].includes(r.status), canCancel: ![11, 14].includes(r.status),
     canReschedule: (r.made || r.claimed) && !r.claimed && ![11, 14].includes(r.status), canForceUpload: r.status === 13 && !r.yt && !!r.archived && !r.claimed,
   }));
@@ -124,11 +125,16 @@ export function demoApply(a: Action): ActionResult {
       if (items.some((t) => !!t.script?.trim() !== !!t.title?.trim() || (t.audioPath && !t.script?.trim())))
         return { ok: false, message: "Subtitr matni va title birga kiritilishi kerak (tayyor audio bilan majburiy). [demo]" };
       if (!items.length) return { ok: false, message: "Mavzu kiritilmagan." };
+      for (const t of items) {
+        if (t.script?.trim()) continue;
+        const h = checkHook(t.hook);
+        if ("error" in h) return { ok: false, message: `"${t.topic}": ${h.error} [demo]` };
+      }
       let last = d.rows.reduce((m, r) => (r.at > m ? r.at : m), new Date());
       const ids = items.map((t) => {
         last = when(t.publishAt) ?? new Date(last.getTime() + 2 * 86400000);
         const id = d.nextId++;
-        d.rows.push({ id, topic: t.topic.trim(), notes: t.notes?.trim() ?? "", title: null, status: Status.Queued, at: last, yt: null, made: false, publishNow: false, claimed: false, error: null, template: t.template ?? "", format: t.format ?? 0, voice: t.voice ?? "", script: t.script?.trim(), mtitle: t.title?.trim(), audio: !!t.audioPath });
+        d.rows.push({ id, topic: t.topic.trim(), notes: t.notes?.trim() ?? "", title: null, status: Status.Queued, at: last, yt: null, made: false, publishNow: false, claimed: false, error: null, template: t.template ?? "", format: t.format ?? 0, voice: t.voice ?? "", script: t.script?.trim(), mtitle: t.title?.trim(), audio: !!t.audioPath, hook: t.script?.trim() ? undefined : t.hook?.replace(/\s+/g, " ").trim() });
         return id;
       });
       return { ok: true, message: `${ids.length} ta mavzu qo'shildi (#${ids.join(", #")}). [demo]` };
@@ -143,6 +149,7 @@ export function demoApply(a: Action): ActionResult {
       if (a.voice !== undefined) r.voice = a.voice;
       if (a.script !== undefined) r.script = a.script.trim();
       if (a.title !== undefined) r.mtitle = a.title.trim();
+      if (a.hook !== undefined) { const h = checkHook(a.hook); if ("error" in h) return { ok: false, message: `#${a.id}: ${h.error} [demo]` }; r.hook = h.hook; }
       r.at = when(a.publishAt) ?? r.at; r.status = Status.Queued; r.error = null;
       return { ok: true, message: `#${a.id} yangilandi. [demo]` };
     }

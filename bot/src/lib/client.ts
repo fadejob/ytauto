@@ -17,6 +17,7 @@ type TgWebApp = {
   setBackgroundColor?(c: string): void;
   showConfirm(msg: string, cb: (ok: boolean) => void): void;
   HapticFeedback?: { impactOccurred(s: "light" | "medium"): void; notificationOccurred(t: "success" | "error" | "warning"): void };
+  BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
   isVersionAtLeast?(v: string): boolean;
   openLink?(url: string): void;
 };
@@ -37,7 +38,14 @@ export function initTelegram() {
   t.ready();
   t.expand();
   try { t.disableVerticalSwipes?.(); } catch {}
-  try { t.setHeaderColor?.("secondary_bg_color"); t.setBackgroundColor?.("secondary_bg_color"); } catch {}
+  // Ilova doim yorug' mavzuda (Telegram qorong'i bo'lsa ham): sarlavha, fon va pastki panel ham yorug'.
+  const applyTheme = () => {
+    document.documentElement.dataset.theme = "light";
+    const tt = t as TgWebApp & { setBottomBarColor?: (c: string) => void };
+    try { tt.setHeaderColor?.("#F5F1EA"); tt.setBackgroundColor?.("#F5F1EA"); tt.setBottomBarColor?.("#F5F1EA"); } catch {}
+  };
+  applyTheme();
+  try { t.onEvent?.("themeChanged", applyTheme); } catch {}
   // Kompyuter yoki planshetda kichik oyna o'rniga darhol to'liq ekran (telefonda odatdagidek - pastdan ochiladigan oyna).
   if (isLargeDevice(t) && t.isVersionAtLeast?.("8.0") && !t.isFullscreen) {
     try { t.onEvent?.("fullscreenFailed", () => {}); t.requestFullscreen?.(); } catch { /* eski Telegram — oddiy oyna qoladi */ }
@@ -49,6 +57,26 @@ function isLargeDevice(t: TgWebApp): boolean {
   const p = t.platform ?? "";
   if (["tdesktop", "macos", "weba", "webk", "web", "unigram"].includes(p)) return true;
   return Math.min(window.screen.width, window.screen.height) >= 600;
+}
+
+/** Brauzerda (Telegram'siz) tizim mavzusi o'zgarsa ham kuzatadi. */
+export function followSystemTheme(): () => void {
+  if (tg() || typeof window === "undefined") return () => {};
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  const on = () => { document.documentElement.dataset.theme = "light"; }; // ilova faqat yorug' mavzuda
+  on();
+  mq.addEventListener("change", on);
+  return () => mq.removeEventListener("change", on);
+}
+
+/** Telegram'ning tepadagi «orqaga» tugmasi (ichki sahifalarda). Qaytaradi: tozalash funksiyasi. */
+export function telegramBack(onBack: (() => void) | null): () => void {
+  const b = tg()?.BackButton;
+  if (!b) return () => {};
+  if (!onBack) { b.hide(); return () => {}; }
+  b.show();
+  b.onClick(onBack);
+  return () => { b.offClick(onBack); b.hide(); };
 }
 
 export const haptic = {
@@ -64,7 +92,12 @@ export function openExternal(url: string) {
   else window.open(url, "_blank", "noopener");
 }
 
+/** Ilova ichidagi tasdiq oynasi (ui.tsx ConfirmHost): ro'yxatdan o'tmagan bo'lsa Telegram/brauzer oynasi ishlatiladi. */
+let confirmHost: ((message: string) => Promise<boolean>) | null = null;
+export function setConfirmHost(h: ((message: string) => Promise<boolean>) | null) { confirmHost = h; }
+
 export function confirmBox(message: string): Promise<boolean> {
+  if (confirmHost) return confirmHost(message);
   const t = tg();
   if (t?.isVersionAtLeast?.("6.2")) return new Promise((res) => t.showConfirm(message, res));
   return Promise.resolve(window.confirm(message));

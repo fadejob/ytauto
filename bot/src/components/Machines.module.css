@@ -1,0 +1,72 @@
+/* Faoliyat → kompyuter kartalari (dizayn: ytauto.dsai, «Faoliyat · to'liq sahifa»). */
+.pair { display: contents; }
+
+.offline { background: transparent; border: 2px dashed var(--line); }
+
+.head { display: flex; align-items: center; gap: 12px; }
+.tile { width: 44px; height: 44px; border-radius: var(--r-md); background: var(--sunken); color: var(--ink); display: grid; place-items: center; flex: none; }
+.tile.dim { color: var(--muted); }
+.name { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.name h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dimText { color: var(--muted); }
+
+/* Holat belgisi: plitka burchagida (yashil - onlayn, urg'u - band, kulrang - oflayn). */
+.tile { position: relative; }
+.dot { position: absolute; right: -3px; bottom: -3px; width: 14px; height: 14px; border-radius: 999px; border: 3px solid var(--card); background: var(--faint); }
+.dotOn { background: var(--ok); }
+.dotBusy { background: var(--accent); }
+.dotOff { background: var(--faint); }
+
+/* «Real vaqt» belgisi (doimiy agent). */
+.live { display: inline-flex; align-items: center; gap: 4px; flex: none; height: 26px; padding: 0 10px; border-radius: 999px;
+  background: var(--ok-soft); color: var(--ok); font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+/* Uch ko'rsatkich: holat, aloqa, worker - bitta botiq panelda, ajratgich bilan. */
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; padding: 10px 4px; border-radius: var(--r-md); background: var(--sunken); }
+.stat { display: grid; gap: 4px; align-content: start; min-width: 0; padding: 0 10px; }
+@media (max-width: 400px) { .stat { padding: 0 8px; } }
+.stat + .stat { border-left: 1px solid var(--line); }
+.stat dt { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; color: var(--muted); }
+.stat dd { margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; min-width: 0; font-size: 14px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.stat dd small { font-size: 12px; font-weight: 600; opacity: 0.85; }
+.stat dd i { width: 8px; height: 8px; border-radius: 999px; flex: none; background: currentColor; }
+.vOk { color: var(--ok); }
+.vWarn { color: var(--accent-ink); }
+.vBusy { color: var(--accent-ink); }
+.vInk { color: var(--ink); }
+.vInk i { background: var(--ok) !important; }
+.vMuted { color: var(--muted); }
+.vMuted i { background: var(--faint) !important; }
+
+.note { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-radius: var(--r-sm); background: var(--sunken); color: var(--ink); font-size: 13px; line-height: 1.4; }
+.note svg { flex: none; color: var(--muted); margin-top: 1px; }
+
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* Tor telefonda yorliq kesilmasin («Hozir ishga tushirish»): ikki qatorga o'raladi, tugma balandlashadi. */
+.actions :global(.btn) { min-width: 0; height: auto; min-height: 44px; padding: 6px 10px; }
+.actions :global(.btn .lbl) { white-space: normal; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
+
+/* Kerakli dasturlar va tekshiruv natijalari */
+.tools, .results { list-style: none; margin: 0; padding: 0; display: grid; }
+/* Uzun nom/qiymat kesilmaydi (masalan ovoz modeli nomi) - qator o'raladi. */
+.tools li { display: flex; align-items: flex-start; gap: 12px; min-height: 32px; min-width: 0; padding: 5px 0; }
+.tools li .mark { margin-top: -1px; }
+.tools li b { font-size: 15px; font-weight: 600; line-height: 1.35; flex: 0 1 auto; max-width: 55%; overflow-wrap: anywhere; }
+.detail { margin-left: auto; padding-top: 1px; font-size: 13px; line-height: 1.4; color: var(--muted); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.detailBad { color: var(--bad); }
+
+.mark { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; flex: none; background: var(--sunken); color: var(--muted); }
+.mark.ok { background: var(--ok-soft); color: var(--ok); }
+.mark.warn { background: var(--accent-soft); color: var(--accent-ink); }
+.mark.bad { background: var(--bad-soft); color: var(--bad); }
+
+.divider { height: 1px; background: var(--line); }
+.checkTitle { font-size: 15px; font-weight: 700; }
+
+.results { gap: 12px; }
+.results li { display: flex; align-items: flex-start; gap: 12px; }
+.results li > div { display: grid; gap: 2px; min-width: 0; }
+.results li b { font-size: 15px; font-weight: 600; }
+.results li span { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.results.stale { opacity: 0.6; }
+.results.stale b { color: var(--muted); }

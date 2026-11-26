@@ -44,9 +44,9 @@ public sealed class YouTubeAuth
 
     /// <summary>
     /// Bot orqali umumiy OAuth client bilan ulangan kanal uchun access token beruvchi (bot so'rovi). Client secret serverda qoladi.
-    /// Natija: (token, necha soniya amal qiladi). Null - bot hisobi sozlanmagan.
+    /// Argument: kanal id (vazifa kanali; bo'sh - faol kanal). Natija: (token, necha soniya amal qiladi).
     /// </summary>
-    public Func<CancellationToken, Task<(string AccessToken, int ExpiresInSec)>>? Broker { get; set; }
+    public Func<string, CancellationToken, Task<(string AccessToken, int ExpiresInSec)>>? Broker { get; set; }
 
     private bool Brokered(OAuthTokens t)
     {
@@ -108,7 +108,11 @@ public sealed class YouTubeAuth
         try
         {
             var remoteOnly = RemoteOnly();
-            var t = Load() ?? throw PipelineException.Config("youtube_not_connected", remoteOnly
+            bool missing = false;
+            try { missing = _settings().MissingChannel; } catch { }
+            var t = Load() ?? throw PipelineException.Config("youtube_not_connected", missing
+                ? "Bu video bog'langan YouTube kanali botda uzilgan: shu kanalni botda Sozlamalar → YouTube kanallari'da qayta ulang (video arxivda saqlandi, boshqa kanalga yuklanmaydi)."
+                : remoteOnly
                 ? "YouTube kanali ulanmagan: botda Sozlamalar → YouTube'ni ulang (video arxivda saqlandi)."
                 : "YouTube kanali ulanmagan.");
             var memKey = remoteOnly ? t.RefreshToken : null;
@@ -117,7 +121,9 @@ public sealed class YouTubeAuth
             {
                 var broker = Broker ?? throw PipelineException.Config("youtube_broker_missing",
                     "Kanal bot orqali ulangan, lekin kompyuter botga ulanmagan (hisob tokeni yo'q) - ilovada hisobga qayta kiring.");
-                var (access, expiresIn) = await broker(ct).ConfigureAwait(false);
+                string channelId = "";
+                try { channelId = _settings().ChannelId ?? ""; } catch { }
+                var (access, expiresIn) = await broker(channelId, ct).ConfigureAwait(false);
                 t.AccessToken = access;
                 t.ExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn));
                 Save(t, memKey);

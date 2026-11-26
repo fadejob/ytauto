@@ -3,32 +3,36 @@ import crypto from "node:crypto";
 import { getYouTubeClient } from "./config";
 import { currentAccountId, sql } from "./db";
 import { isDemo } from "./demo";
-import { readProfile, resetChannelData } from "./channel/store";
+import { BLOCKS_KEY, blocksKey } from "./channel/keys";
+import { Status } from "./types";
 
 /**
- * YouTube kanalini bot orqali ulash (Google OAuth, "Web application" client, authorization code oqimi).
- * Refresh token online bazada (shared_settings.youtube.oauth) saqlanadi: desktop ilova va barcha kompyuterlar
- * o'sha tokendan foydalanadi (alohida kompyuterda qayta ulash shart emas).
+ * YouTube kanallarini bot orqali ulash (Google OAuth, "Web application" client, authorization code oqimi).
+ *
+ * Bir hisobga bir nechta kanal ulanadi; bittasi FAOL (Sozlamalar → YouTube'da almashtiriladi). Ro'yxat va refresh tokenlar online
+ * bazada (shared_settings['youtube.channels']): desktop ilova va barcha kompyuterlar shu tokenlardan foydalanadi.
+ *  - Yangi mavzu yaratilgan paytdagi faol kanalga bog'lanadi (jobs.channel_id): kanal keyin almashtirilsa ham video o'z kanaliga yuklanadi.
+ *  - Mavzular ro'yxati, kanal tahlili va tavsiyalar faol kanal bo'yicha ko'rsatiladi.
+ *  - shared_settings['youtube.oauth'] va ['channel.context'] - faol kanal nusxasi (eski desktop versiyalari shularni o'qiydi).
  *
  * OAuth client: hisob o'zinikini kiritgan bo'lsa - o'shanisi; aks holda serverning UMUMIY client'i (YOUTUBE_CLIENT_ID/SECRET env),
- * ya'ni har kim Google Cloud loyihasisiz o'z kanalini ulaydi. Token har hisobda alohida (RLS). Umumiy secret foydalanuvchiga
- * (brauzer yoki kompyuter) hech qachon berilmaydi: kompyuter access token'ni botdan oladi (/api/device/youtube-token).
+ * ya'ni har kim Google Cloud loyihasisiz o'z kanalini ulaydi. Har kanal qaysi client bilan ulanganini eslaydi (refresh token faqat
+ * o'sha client bilan ishlaydi). Umumiy secret foydalanuvchiga (brauzer yoki kompyuter) berilmaydi: kompyuter access token'ni
+ * botdan oladi (/api/device/youtube-token).
  */
 const KEY = "youtube.oauth";
+const LIST_KEY = "youtube.channels";
 // youtube.force-ssl: Claude Code (MCP) orqali video nomi/tavsifi/holatini tahrirlash va videoni o'chirish uchun.
 const MANAGE_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl";
 const SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly", MANAGE_SCOPE];
 const STATE_TTL_MS = 15 * 60 * 1000;
+export const MAX_CHANNELS = 10;
+/** Kanal id'si aniqlanmagan eski ulanish (token bekor qilingan bo'lsa): shu kanal qayta ulanganda haqiqiy id bilan almashtiriladi. */
+const LEGACY_ID = "legacy";
 
-export type YouTubeStatus = {
-  connected: boolean; channelTitle: string; connectedAt: string | null;
-  clientConfigured: boolean; redirectUri: string;
-  /** Server umumiy OAuth client'i bor: foydalanuvchi Client ID/Secret kiritmasdan ulay oladi. */
-  globalClient: boolean;
-};
-
-/** client: qaysi OAuth client bilan ulangan (refresh token faqat o'sha client bilan ishlaydi). Eski yozuvlarda yo'q = "own". */
-type Stored = { refreshToken: string; channelTitle: string; channelId?: string; scope: string; connectedAt: string; client?: ClientKind };
+/** client: qaysi OAuth client bilan ulangan; yo'q (eski yozuv) = "own". */
+export type YtChannel = { id: string; title: string; refreshToken: string; scope: string; connectedAt: string; /** Google ruxsatni bekor qilgan/muddati tugagan (tekshiruvda aniqlangan); qayta ulansa tozalanadi. */ expired?: boolean; client?: ClientKind };
+type ChannelList = { active: string; channels: YtChannel[] };
 type ClientKind = "own" | "global";
 type Client = { clientId: string; clientSecret: string; kind: ClientKind };
 
@@ -44,12 +48,21 @@ async function connectClient(): Promise<Client | null> {
   return own.clientId && own.clientSecret ? { ...own, kind: "own" } : globalClient();
 }
 
-/** Saqlangan token qaysi client bilan olingan bo'lsa - o'sha. */
-async function clientOf(s: Stored): Promise<Client | null> {
-  if (s.client === "global") return globalClient();
+/** Kanal qaysi client bilan ulangan bo'lsa - o'sha (token faqat u bilan yangilanadi). */
+async function clientOf(ch: Pick<YtChannel, "client">): Promise<Client | null> {
+  if (ch.client === "global") return globalClient();
   const own = await getYouTubeClient();
   return own.clientId && own.clientSecret ? { ...own, kind: "own" } : null;
 }
+
+export type YouTubeChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired: boolean };
+export type YouTubeStatus = {
+  connected: boolean; channelId: string; channelTitle: string; connectedAt: string | null;
+  channels: YouTubeChannelInfo[]; maxChannels: number;
+  clientConfigured: boolean; redirectUri: string;
+  /** Server umumiy OAuth client'i bor: foydalanuvchi Client ID/Secret kiritmasdan ulay oladi. */
+  globalClient: boolean;
+};
 
 /** So'rov kelgan manzil (Vercel/proxy ortida ham): redirect_uri shundan quriladi va Google konsolida ro'yxatdan o'tgan bo'lishi kerak. */
 export function originOf(req: Request): string {
@@ -81,18 +94,129 @@ export function checkState(state: string | null): string | null {
   return Number.isFinite(ts) && Date.now() - ts >= 0 && Date.now() - ts < STATE_TTL_MS && acc ? acc : null;
 }
 
-let demoStored: Stored | null = null;
+// ------------------------------------------------------------------ kanallar ro'yxati
+/** DEMO_MODE: kanal almashtirish dizaynini bazasiz ko'rish uchun ikkita namunaviy kanal (tokenlar soxta). */
+let demoList: ChannelList = {
+  active: "demo-tech",
+  channels: [
+    { id: "demo-tech", title: "Tech Explained Simply", refreshToken: "demo", scope: "", connectedAt: "2026-11-01T10:00:00.000Z" },
+    { id: "demo-history", title: "History in 60 Seconds", refreshToken: "demo", scope: "", connectedAt: "2026-11-15T10:00:00.000Z" },
+  ],
+};
 
-async function readStored(): Promise<Stored | null> {
-  if (isDemo()) return demoStored;
-  const [row] = await sql()`SELECT value FROM ytauto.shared_settings WHERE key = ${KEY}`;
-  try { return row ? (JSON.parse(row.value as string) as Stored) : null; } catch { return null; }
+async function getSetting(key: string): Promise<string | null> {
+  const [row] = await sql()`SELECT value FROM ytauto.shared_settings WHERE key = ${key}`;
+  return row ? (row.value as string) : null;
+}
+async function putSetting(key: string, value: string | null) {
+  if (value === null) { await sql()`DELETE FROM ytauto.shared_settings WHERE key = ${key}`; return; }
+  await sql()`
+    INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${key}, ${value}, now())
+    ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
+}
+
+function parseList(raw: string | null): ChannelList | null {
+  if (!raw) return null;
+  try {
+    const j = JSON.parse(raw) as Partial<ChannelList>;
+    const channels = (Array.isArray(j.channels) ? j.channels : [])
+      .filter((c): c is YtChannel => !!c && typeof c.id === "string" && !!c.id && typeof c.refreshToken === "string" && !!c.refreshToken)
+      .map((c) => ({ id: c.id, title: String(c.title ?? ""), refreshToken: c.refreshToken, scope: String(c.scope ?? ""), connectedAt: String(c.connectedAt ?? ""), ...(c.expired ? { expired: true } : {}), ...(c.client === "global" ? { client: "global" as const } : {}) }));
+    const active = channels.some((c) => c.id === j.active) ? String(j.active) : channels[0]?.id ?? "";
+    return { active, channels };
+  } catch { return null; }
+}
+
+/** Ro'yxatni o'zgartiruvchi amallar bir hisob ichida navbat bilan (ikki ulanish bir vaqtda kelsa biri yo'qolmaydi). */
+async function lockList() {
+  await sql()`SELECT pg_advisory_xact_lock(hashtext(${"ytauto.youtube.channels:" + currentAccountId()}))`;
+}
+
+/**
+ * Ro'yxatni yozadi va faol kanal nusxalarini yangilaydi: youtube.oauth (refresh token) va channel.context (kanal konteksti).
+ * Eski desktop versiyalari faqat shu nusxalarni o'qiydi.
+ */
+async function writeList(l: ChannelList) {
+  if (isDemo()) { demoList = l; return; }
+  await putSetting(LIST_KEY, JSON.stringify(l));
+  const a = l.channels.find((c) => c.id === l.active);
+  await putSetting(KEY, a ? JSON.stringify({ refreshToken: a.refreshToken, channelTitle: a.title, channelId: a.id, scope: a.scope, connectedAt: a.connectedAt, client: a.client ?? "own" }) : null);
+  await putSetting(BLOCKS_KEY, a ? await getSetting(blocksKey(a.id)) : null);
+}
+
+/** Kanal id'si va nomi (refresh token bilan). Token yaroqsiz bo'lsa null. */
+async function lookupChannel(refreshToken: string): Promise<{ id: string; title: string } | null> {
+  try {
+    const c = await clientOf({}); // eski (v6 dan oldingi) ulanish - hisobning o'z client'i
+    if (!c) return null;
+    const token = await youtubeAccessToken({ refreshToken, clientId: c.clientId, clientSecret: c.clientSecret });
+    const res = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) });
+    const j = (await res.json().catch(() => ({}))) as { items?: { id?: string; snippet?: { title?: string } }[] };
+    const it = j.items?.[0];
+    return it?.id ? { id: it.id, title: it.snippet?.title ?? "" } : null;
+  } catch { return null; }
+}
+
+/** Shu hisob vazifalari, tavsiyalari va kanal tahlilini (kanal tanlanmagan, '') berilgan kanalga bog'laydi. */
+async function bindUnassigned(id: string, from = "") {
+  await sql()`UPDATE ytauto.jobs SET channel_id = ${id} WHERE channel_id = ${from}`;
+  await sql()`UPDATE ytauto.topic_suggestions SET channel_id = ${id} WHERE channel_id = ${from}`;
+  const [taken] = await sql()`SELECT 1 FROM ytauto.channel_profile WHERE channel_id = ${id}`;
+  if (taken) await sql()`DELETE FROM ytauto.channel_profile WHERE channel_id = ${from}`;
+  else await sql()`UPDATE ytauto.channel_profile SET channel_id = ${id} WHERE channel_id = ${from}`;
+}
+
+/**
+ * Bitta ulanishli (v6 dan oldingi) hisobni ro'yxatga o'tkazadi: youtube.oauth dagi kanal birinchi (faol) kanal bo'ladi, mavjud
+ * vazifalar, tavsiyalar va kanal konteksti unga bog'lanadi. Bir marta.
+ */
+async function migrateLegacy(): Promise<ChannelList> {
+  await lockList();
+  const again = parseList(await getSetting(LIST_KEY));
+  if (again) return again;
+  let old: { refreshToken?: string; channelTitle?: string; scope?: string; connectedAt?: string } | null = null;
+  try { old = JSON.parse((await getSetting(KEY)) ?? "null"); } catch { old = null; }
+  if (!old?.refreshToken) return { active: "", channels: [] };
+  const [p] = await sql()`SELECT channel_id FROM ytauto.channel_profile WHERE channel_id <> '' ORDER BY updated_at_utc DESC LIMIT 1`;
+  const found = p ? { id: p.channel_id as string, title: "" } : await lookupChannel(old.refreshToken);
+  const id = found?.id || LEGACY_ID;
+  const l: ChannelList = { active: id, channels: [{ id, title: old.channelTitle || found?.title || "", refreshToken: old.refreshToken, scope: old.scope ?? "", connectedAt: old.connectedAt ?? "" }] };
+  await bindUnassigned(id);
+  const ctx = await getSetting(BLOCKS_KEY);
+  if (ctx && !(await getSetting(blocksKey(id)))) await putSetting(blocksKey(id), ctx);
+  await writeList(l);
+  return l;
+}
+
+/** Ulangan kanallar va faol kanal (hisob konteksti ichida). */
+export async function channelList(): Promise<ChannelList> {
+  if (isDemo()) return demoList;
+  return parseList(await getSetting(LIST_KEY)) ?? (await getSetting(KEY) ? migrateLegacy() : { active: "", channels: [] });
+}
+
+/** Faol kanal id'si ('' - kanal ulanmagan). Yangi mavzular shu kanalga bog'lanadi; ro'yxatlar shu kanal bo'yicha. */
+export async function activeChannelId(): Promise<string> {
+  return (await channelList()).active;
+}
+
+async function activeChannel(): Promise<YtChannel | null> {
+  const l = await channelList();
+  return l.channels.find((c) => c.id === l.active) ?? null;
 }
 
 export async function getYouTubeStatus(origin: string): Promise<YouTubeStatus> {
-  const [s, c] = await Promise.all([readStored(), connectClient()]);
+  const [l, c] = await Promise.all([channelList(), connectClient()]);
+  const pending = new Map<string, number>();
+  if (!isDemo() && l.channels.length) {
+    const rows = await sql()`SELECT channel_id, count(*)::int AS n FROM ytauto.jobs
+      WHERE youtube_video_id IS NULL AND status NOT IN ${sql()([Status.Published, Status.Cancelled])} GROUP BY channel_id`;
+    for (const r of rows) pending.set(r.channel_id as string, r.n as number);
+  }
+  const a = l.channels.find((x) => x.id === l.active);
   return {
-    connected: !!s?.refreshToken, channelTitle: s?.channelTitle ?? "", connectedAt: s?.connectedAt ?? null,
+    connected: !!a, channelId: a?.id ?? "", channelTitle: a?.title ?? "", connectedAt: a?.connectedAt || null,
+    channels: l.channels.map((x) => ({ id: x.id, title: x.title, connectedAt: x.connectedAt, active: x.id === l.active, pending: pending.get(x.id) ?? 0, expired: x.expired === true })),
+    maxChannels: MAX_CHANNELS,
     clientConfigured: !!c, redirectUri: redirectOf(origin), globalClient: !!globalClient(),
   };
 }
@@ -101,16 +225,18 @@ export async function startYouTube(origin: string): Promise<{ url: string }> {
   const c = await connectClient();
   if (!c) throw new Error("YouTube ulash hali sozlanmagan: server administratori YOUTUBE_CLIENT_ID/SECRET ni kiritishi kerak (yoki Sozlamalar → YouTube'da o'z Client ID va Secret'ingizni saqlang).");
   if (isDemo()) throw new Error("Demo rejimda YouTube ulanmaydi.");
+  // select_account: boshqa Google hisobi yoki brend kanalini tanlash oynasi har doim chiqadi (ikkinchi kanalni ulash uchun).
   const q = new URLSearchParams({
     response_type: "code", client_id: c.clientId, redirect_uri: redirectOf(origin), scope: SCOPES.join(" "),
-    // select_account: Google har safar akkaunt/kanal (Brand Account ham) tanlash oynasini ko'rsatadi - aks holda brauzerda
-    // kirilgan akkaunt jimgina olinadi va foydalanuvchi boshqa kanalini ulay olmaydi. consent: refresh_token har safar beriladi.
-    access_type: "offline", prompt: "select_account consent", include_granted_scopes: "true", state: makeState(currentAccountId()),
+    access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true", state: makeState(currentAccountId()),
   });
   return { url: `https://accounts.google.com/o/oauth2/v2/auth?${q}` };
 }
 
-/** Google qaytargan code'ni tokenga almashtiradi, kanal nomini oladi va bazaga yozadi. */
+/**
+ * Google qaytargan code'ni tokenga almashtiradi, kanal id/nomini oladi va ro'yxatga qo'shadi (yoki tokenini yangilaydi).
+ * Yangi ulangan kanal faol bo'ladi.
+ */
 export async function finishYouTube(code: string, origin: string): Promise<string> {
   const c = await connectClient();
   if (!c) throw new Error("YouTube OAuth client sozlanmagan.");
@@ -123,46 +249,119 @@ export async function finishYouTube(code: string, origin: string): Promise<strin
   if (!j.refresh_token) throw new Error("Google refresh_token bermadi. Google hisobida YtAuto ruxsatini olib tashlab, qayta ulang.");
   const ch = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", { headers: { Authorization: `Bearer ${j.access_token}` } });
   const cj = (await ch.json().catch(() => ({}))) as { items?: { id?: string; snippet?: { title?: string } }[] };
-  const title = cj.items?.[0]?.snippet?.title;
-  const channelId = cj.items?.[0]?.id ?? "";
-  if (!title) throw new Error("Bu Google hisobida YouTube kanali topilmadi.");
-  // Boshqa kanal ulandi: eski kanalning tahlili, promptlarga qo'shiladigan konteksti va tavsiyalari yangi kanalga o'tmasin.
-  const [prev, prof] = await Promise.all([readStored(), readProfile()]);
-  const prevId = prev?.channelId || prof?.channel_id || "";
-  const switched = prevId ? prevId !== channelId : !!prev?.channelTitle && prev.channelTitle !== title;
-  if (switched) await resetChannelData();
-  const stored: Stored = { refreshToken: j.refresh_token, channelTitle: title, channelId, scope: j.scope ?? "", connectedAt: new Date().toISOString(), client: c.kind };
-  await writeStored(stored);
+  const id = cj.items?.[0]?.id, title = cj.items?.[0]?.snippet?.title;
+  if (!id || !title) throw new Error("Bu Google hisobida YouTube kanali topilmadi.");
+  const entry: YtChannel = { id, title, refreshToken: j.refresh_token, scope: j.scope ?? "", connectedAt: new Date().toISOString(), ...(c.kind === "global" ? { client: "global" as const } : {}) };
+
+  await channelList(); // eski bitta ulanish bo'lsa avval ro'yxatga o'tkaziladi
+  await lockList();
+  const l = parseList(await getSetting(LIST_KEY)) ?? { active: "", channels: [] };
+  // Id'si aniqlanmagan eski ulanish shu kanal bo'lsa (nomi bir xil) - uning vazifalari shu kanalga o'tadi.
+  const legacy = l.channels.find((x) => x.id === LEGACY_ID && x.title === title);
+  if (legacy) { await bindUnassigned(id, LEGACY_ID); l.channels = l.channels.filter((x) => x !== legacy); }
+  const i = l.channels.findIndex((x) => x.id === id);
+  if (i >= 0) l.channels[i] = entry;
+  else {
+    if (l.channels.length >= MAX_CHANNELS) throw new Error(`Eng ko'pi ${MAX_CHANNELS} ta kanal ulanadi — avval keraksizini uzing.`);
+    l.channels.push(entry);
+  }
+  // Hali hech qaysi kanalga bog'lanmagan vazifalar (kanal ulanmasdan qo'shilgan) birinchi ulangan kanalga.
+  if (l.channels.length === 1) await bindUnassigned(id);
+  await writeList({ active: id, channels: l.channels });
   return title;
 }
 
-async function writeStored(s: Stored | null) {
-  if (isDemo()) { demoStored = s; return; }
-  if (!s) { await sql()`DELETE FROM ytauto.shared_settings WHERE key = ${KEY}`; return; }
-  const json = JSON.stringify(s);
-  await sql()`
-    INSERT INTO ytauto.shared_settings(key, value, updated_at_utc) VALUES (${KEY}, ${json}, now())
-    ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
+/** Faol kanalni almashtiradi: mavzular, kanal tahlili va yangi vazifalar endi shu kanal bo'yicha. */
+export async function switchChannel(id: string): Promise<string> {
+  if (isDemo()) {
+    const c = demoList.channels.find((x) => x.id === id);
+    if (!c) throw new Error("Kanal topilmadi.");
+    demoList = { ...demoList, active: id };
+    return c.title;
+  }
+  await channelList();
+  await lockList();
+  const l = parseList(await getSetting(LIST_KEY));
+  const c = l?.channels.find((x) => x.id === id);
+  if (!l || !c) throw new Error("Kanal topilmadi — ro'yxatni yangilang.");
+  if (l.active !== id) await writeList({ ...l, active: id });
+  return c.title;
 }
 
-/** Uzish: token va shu kanaldan olingan ma'lumotlar (tahlil, kontekst, tavsiyalar) o'chadi - keyingi kanal toza boshlanadi. */
+/**
+ * Kanalni uzadi. Shu kanalga bog'langan, hali yuklanmagan videolar yuklanmaydi ("E'tibor kerak") - kanal qayta ulansa davom etadi.
+ * Faol kanal uzilsa ro'yxatdagi keyingisi faol bo'ladi.
+ */
+export async function removeChannel(id: string): Promise<void> {
+  if (isDemo()) {
+    const channels = demoList.channels.filter((x) => x.id !== id);
+    demoList = { active: demoList.active === id ? channels[0]?.id ?? "" : demoList.active, channels };
+    return;
+  }
+  await channelList();
+  await lockList();
+  const l = parseList(await getSetting(LIST_KEY));
+  if (!l || !l.channels.some((x) => x.id === id)) return;
+  const channels = l.channels.filter((x) => x.id !== id);
+  await writeList({ active: l.active === id ? channels[0]?.id ?? "" : l.active, channels });
+}
+
+/** Faol kanalni uzadi (eski API). */
 export async function disconnectYouTube() {
-  await writeStored(null);
-  if (!isDemo()) await resetChannelData();
+  const a = await activeChannelId();
+  if (a) await removeChannel(a);
 }
 
-/** Faqat server ichida (hisob konteksti): fon ishi tranzaksiyadan tashqarida token olishi uchun. Ulanmagan bo'lsa null. */
-export async function youtubeCredentials(): Promise<{ refreshToken: string; clientId: string; clientSecret: string; channelTitle: string } | null> {
-  const s = await readStored();
-  const c = s?.refreshToken ? await clientOf(s) : null;
-  if (!s?.refreshToken || !c) return null;
-  return { refreshToken: s.refreshToken, clientId: c.clientId, clientSecret: c.clientSecret, channelTitle: s.channelTitle };
+type Creds = { refreshToken: string; clientId: string; clientSecret: string; channelTitle: string; channelId: string };
+
+/** Faqat server ichida (hisob konteksti): fon ishi tranzaksiyadan tashqarida token olishi uchun. Faol kanal ulanmagan bo'lsa null. */
+export async function youtubeCredentials(): Promise<Creds | null> {
+  return credsOf(await activeChannel());
 }
 
-/** Saqlangan ruxsat videolarni tahrirlash/o'chirishga yetadimi (eski ulanishlarda faqat upload+readonly bo'ladi). */
+/** Berilgan kanal (id; bo'sh - faol kanal) tokeni uchun: kompyuter vazifa qaysi kanalniki bo'lsa, o'shaning tokenini oladi. */
+export async function youtubeCredentialsFor(channelId: string): Promise<Creds | null> {
+  if (!channelId) return youtubeCredentials();
+  const l = await channelList();
+  return credsOf(l.channels.find((x) => x.id === channelId) ?? null);
+}
+
+async function credsOf(a: YtChannel | null): Promise<Creds | null> {
+  const c = a ? await clientOf(a) : null;
+  if (!a || !c) return null;
+  return { refreshToken: a.refreshToken, clientId: c.clientId, clientSecret: c.clientSecret, channelTitle: a.title, channelId: a.id };
+}
+
+/** Faol kanal ruxsati videolarni tahrirlash/o'chirishga yetadimi (eski ulanishlarda faqat upload+readonly bo'ladi). */
 export async function youtubeCanManage(): Promise<boolean> {
-  const s = await readStored();
-  return !!s?.refreshToken && (s.scope ?? "").split(/\s+/).some((x) => x === MANAGE_SCOPE || x === "https://www.googleapis.com/auth/youtube");
+  const a = await activeChannel();
+  return !!a && a.scope.split(/\s+/).some((x) => x === MANAGE_SCOPE || x === "https://www.googleapis.com/auth/youtube");
+}
+
+/**
+ * Faol kanal telefon raqami bilan tasdiqlanganmi: YouTube maxsus thumbnail'ni (muqova) faqat shunday kanalda qabul qiladi.
+ * channels.status.longUploadsStatus = "allowed" - tasdiqlangan kanal belgisi. Natija kanal bo'yicha 6 soat keshlanadi
+ * (shared_settings); YouTube javob bermasa oxirgi ma'lum qiymat (yo'q bo'lsa - false).
+ */
+export async function customThumbnails(): Promise<boolean> {
+  if (isDemo()) return true;
+  const a = await activeChannel();
+  if (!a) return false;
+  const key = `youtube.verified.${a.id}`;
+  let cached: { v: boolean; at: number } | null = null;
+  try { cached = JSON.parse((await getSetting(key)) ?? "null"); } catch { cached = null; }
+  if (cached && Date.now() - cached.at < 6 * 3600_000) return cached.v;
+  try {
+    const c = await youtubeCredentials();
+    if (!c) return cached?.v ?? false;
+    const token = await youtubeAccessToken(c);
+    const r = await fetch("https://www.googleapis.com/youtube/v3/channels?part=status&mine=true", { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) });
+    const j = (await r.json().catch(() => ({}))) as { items?: { status?: { longUploadsStatus?: string } }[] };
+    if (!r.ok) return cached?.v ?? false;
+    const v = j.items?.[0]?.status?.longUploadsStatus === "allowed";
+    await putSetting(key, JSON.stringify({ v, at: Date.now() }));
+    return v;
+  } catch { return cached?.v ?? false; }
 }
 
 /** Refresh token → access token (tarmoq; bazaga tegmaydi). */
@@ -178,12 +377,24 @@ export async function youtubeAccessToken(c: { refreshToken: string; clientId: st
   return j.access_token;
 }
 
+/** Kanalning «token eskirgan» belgisini yangilaydi (o'zgarmasa yozmaydi). */
+async function markExpired(id: string, expired: boolean) {
+  await lockList();
+  const l = await channelList();
+  const c = l.channels.find((x) => x.id === id);
+  if (!c || (c.expired === true) === expired) return;
+  if (expired) c.expired = true; else delete c.expired;
+  await writeList(l);
+}
+
 /**
  * Ulanishni HAQIQATAN tekshiradi (faqat bazadagi belgiga ishonmaydi): saqlangan refresh token bilan Google'dan access token oladi va
  * kanal nomini so'raydi. Token bekor qilingan/muddati o'tgan (masalan Google "Testing" rejimida 7 kundan keyin) bo'lsa sababini aytadi.
+ * id berilmasa - faol kanal.
  */
-export async function verifyYouTube(): Promise<{ ok: boolean; channelTitle?: string; message: string }> {
-  const s = await readStored();
+export async function verifyYouTube(id?: string): Promise<{ ok: boolean; channelTitle?: string; message: string }> {
+  const l = await channelList();
+  const s = l.channels.find((x) => x.id === (id || l.active));
   if (!s?.refreshToken) return { ok: false, message: "Kanal ulanmagan: «YouTube'ni ulash» ni bosing." };
   const c = await clientOf(s);
   if (!c) return { ok: false, message: s.client === "global" ? "Server umumiy OAuth client'i o'chirilgan — administratorga murojaat qiling." : "OAuth Client ID/Secret saqlanmagan (Sozlamalar → YouTube)." };
@@ -199,10 +410,12 @@ export async function verifyYouTube(): Promise<{ ok: boolean; channelTitle?: str
     const why = j.error === "invalid_grant"
       ? "ruxsat bekor qilingan yoki muddati tugagan (Google Cloud'da ilova «Testing» rejimida bo'lsa token 7 kunda tugaydi) — qayta ulang"
       : j.error === "invalid_client" ? "Client ID/Secret noto'g'ri" : (j.error_description ?? j.error ?? `HTTP ${res.status}`);
-    return { ok: false, message: `Token yangilanmadi: ${why}.` };
+    if (j.error === "invalid_grant") await markExpired(s.id, true);
+    return { ok: false, message: `«${s.title}»: token yangilanmadi: ${why}.` };
   }
+  await markExpired(s.id, false);
   const ch = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", { headers: { Authorization: `Bearer ${j.access_token}` } });
-  const cj = (await ch.json().catch(() => ({}))) as { items?: { snippet?: { title?: string } }[]; error?: { message?: string } };
+  const cj = (await ch.json().catch(() => ({}))) as { items?: { id?: string; snippet?: { title?: string } }[]; error?: { message?: string } };
   if (!ch.ok) return { ok: false, message: `YouTube API xatosi: ${cj.error?.message ?? ch.status}` };
   const title = cj.items?.[0]?.snippet?.title;
   return title ? { ok: true, channelTitle: title, message: `Ulangan va ishlayapti: ${title}` } : { ok: false, message: "Token ishlaydi, lekin bu Google hisobida YouTube kanali topilmadi." };

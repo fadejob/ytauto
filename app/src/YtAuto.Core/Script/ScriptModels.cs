@@ -24,6 +24,10 @@ public sealed class ScriptRequest
     public bool WriteDescription { get; init; } = true;
     /// <summary>5 ta tag yozsinmi: kanalda standart taglar bo'lsa false (standartlar ishlatiladi).</summary>
     public bool WriteTags { get; init; } = true;
+    /// <summary>Foydalanuvchi kiritgan boshlang'ich savol: ssenariy aynan shu so'zlar bilan boshlanadi. Bo'sh - Gemini o'zi tanlaydi.</summary>
+    public string Hook { get; init; } = "";
+    /// <summary>Format bo'yicha uzunlik oralig'i (<see cref="VideoLength"/>). null - eski qoida (TargetDurationSec yoki dinamik).</summary>
+    public VideoLength? Length { get; init; }
 }
 
 /// <summary>Foydalanuvchi o'z matni/audiosi bilan bergan video uchun faqat tavsif va/yoki taglar (matn o'zgartirilmaydi).</summary>
@@ -155,7 +159,13 @@ public static class ScriptValidator
         return list;
     }
 
-    public static List<string> Validate(VideoScript s, string language, int targetDurationSec)
+    public static List<string> Validate(VideoScript s, string language, int targetDurationSec) => Validate(s, language, targetDurationSec, null, null);
+
+    /// <summary>
+    /// <paramref name="length"/> berilsa so'zlar soni format oralig'ida bo'lishi kerak (TTS tezligi bilan; ovoz baribir worker'da o'lchanadi);
+    /// <paramref name="hook"/> berilsa matn aynan shu savol bilan boshlanishi kerak.
+    /// </summary>
+    public static List<string> Validate(VideoScript s, string language, int targetDurationSec, VideoLength? length, string? hook)
     {
         Canonicalize(s);
         var problems = new List<string>();
@@ -170,10 +180,20 @@ public static class ScriptValidator
             problems.Add($"Ovozga o'qilmasligi kerak bo'lgan texnik ko'rsatma/belgi bor: \"{Trim(m.Value)}\"");
         if (Emoji.IsMatch(s.SubtitleText)) problems.Add("subtitle_text ichida emoji bor.");
 
+        if (!string.IsNullOrWhiteSpace(hook) && !HookRule.StartsWithHook(s.SubtitleText, hook))
+            problems.Add($"subtitle_text kanal egasi bergan hook bilan boshlanmadi. Birinchi gap aynan shu bo'lsin: \"{HookRule.Normalize(hook)}\"");
+
         var words = CountWords(s.NarrationText ?? "");
         var wps = LanguageNames.WordsPerSecond(language);
         var expected = targetDurationSec * wps;
-        if (targetDurationSec > 0 && words > 0)
+        if (length is not null && words > 0)
+        {
+            // Format oralig'i: pastki chegara 10% yumshoq (qisqa mavzu), yuqorisi qat'iy - Shorts 55 soniyadan oshmasin.
+            int lo = (int)Math.Floor(length.MinWords(language) * 0.9), hi = (int)Math.Ceiling(length.MaxWords(language) * 1.03);
+            if (words < lo || words > hi)
+                problems.Add($"Matn uzunligi formatga mos emas: {words} so'z, kerak {length.MinWords(language)}-{length.MaxWords(language)} so'z (taxminan {length.MinSec}-{length.MaxSec} soniya, ideal ~{length.TargetWords(language)} so'z).");
+        }
+        else if (targetDurationSec > 0 && words > 0)
         {
             var ratio = words / expected;
             if (ratio < 0.65 || ratio > 1.45)

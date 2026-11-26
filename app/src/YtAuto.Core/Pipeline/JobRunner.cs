@@ -13,6 +13,8 @@ public sealed class PipelineServices
     public required ITtsService Tts { get; init; }
     /// <summary>Botdan yuklangan tayyor ovoz uchun (berilmasa bunday vazifalar "E'tibor kerak" bo'ladi).</summary>
     public IAudioImporter? AudioImporter { get; init; }
+    /// <summary>Botda yuklangan muqova rasmi uchun (berilmasa muqova odatdagidek yaratiladi).</summary>
+    public ICoverImporter? CoverImporter { get; init; }
     public required IAligner Aligner { get; init; }
     public required IEditorAgent Editor { get; init; }
     public required IFilmTool Film { get; init; }
@@ -102,6 +104,8 @@ public sealed partial class JobRunner
         var publishNow = job.PublishNow;
         summary.JobId = job.Id; summary.PublishNow = publishNow;
         var log = _x.JobLogFactory(job.Id);
+        // Butun ish davomida (snapshot, kanal konteksti, YouTube'ga yuklash) - vazifa bog'langan kanal.
+        using var channelScope = _x.Settings.UseChannel(job.ChannelId);
         _x.RunLog.Info($"Vazifa #{job.Id} band qilindi{(publishNow ? " (HOZIR CHIQARISH)" : "")}: \"{job.Topic}\" (holat {job.Status}, urinishlar {job.RunAttempts}).");
 
         using var cancelCts = CancellationTokenSource.CreateLinkedTokenSource(ct);

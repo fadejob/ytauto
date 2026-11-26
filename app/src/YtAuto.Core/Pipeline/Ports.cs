@@ -76,6 +76,19 @@ public interface ISettingsStore
 {
     AppSettings Load();
     void Save(AppSettings settings);
+
+    /// <summary>
+    /// Shu async oqimda Load() berilgan YouTube kanali (vazifaning kanali) tokeni va kontekstini qaytaradi; Dispose avvalgisini tiklaydi.
+    /// Bo'sh yoki null - hisobning faol kanali. Kanallar bo'lmagan saqlagichlarda hech narsa qilmaydi.
+    /// </summary>
+    IDisposable UseChannel(string? channelId) => NoScope.Instance;
+}
+
+/// <summary>Hech narsa qilmaydigan doira.</summary>
+public sealed class NoScope : IDisposable
+{
+    public static readonly NoScope Instance = new();
+    public void Dispose() { }
 }
 
 public interface ISecretStore
@@ -133,6 +146,12 @@ public interface ITtsSession : IAsyncDisposable
 }
 
 /// <summary>Botdan yuklangan tayyor ovozni (URL) yuklab olib, pipeline ishlatadigan WAV formatiga o'tkazadi.</summary>
+/// <summary>Botda mavzuga yuklangan muqova rasmini yuklab oladi (rasm keyin JPEG thumbnail'ga aylantiriladi).</summary>
+public interface ICoverImporter
+{
+    Task DownloadAsync(string url, string outFile, CancellationToken ct);
+}
+
 public interface IAudioImporter
 {
     Task ImportAsync(string url, string outWav, IJobLog log, CancellationToken ct);
@@ -224,6 +243,11 @@ public sealed class MediaInfo
 public interface IMediaProbe
 {
     Task<MediaInfo> ProbeAsync(string path, CancellationToken ct);
+    /// <summary>
+    /// Ovozni <paramref name="factor"/> marta tezlashtiradi (ovoz balandligi o'zgarmaydi, ffmpeg atempo): natija - 16-bit PCM WAV.
+    /// Video format chegarasiga (Shorts - 55 soniya) sig'dirish uchun.
+    /// </summary>
+    Task TempoAsync(string inWav, double factor, string outWav, CancellationToken ct);
     Task<(bool Ok, string Errors)> DecodeCheckAsync(string path, CancellationToken ct);
     Task<IReadOnlyList<BlackSegment>> BlackDetectAsync(string path, CancellationToken ct);
     Task<(double MaxVolumeDb, double? IntegratedLufs)> AudioLevelsAsync(string path, CancellationToken ct);

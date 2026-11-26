@@ -42,12 +42,13 @@ public class YouTubeBrokerTests
     public async Task Brokered_channel_gets_token_from_bot_not_google()
     {
         var guest = Guid.NewGuid();
-        var (auth, web) = Make(new YouTubeSettings { RemoteRefreshToken = "1//rt", RemoteBrokered = true }, guest);
+        var (auth, web) = Make(new YouTubeSettings { RemoteRefreshToken = "1//rt", RemoteBrokered = true, ChannelId = "UCjobchannel" }, guest);
         Assert.Equal("ya29.from-bot", await auth.GetAccessTokenAsync(CancellationToken.None));
         var call = Assert.Single(web.Calls);
         Assert.Equal("https://bot.test/api/device/youtube-token", call.Url);
         Assert.Equal("Bearer yt_devicetoken", call.Auth);
         Assert.Contains(guest.ToString(), call.Body);
+        Assert.Contains("UCjobchannel", call.Body); // vazifa kanali tokeni so'raladi, faol kanalniki emas
         // Keshdan: ikkinchi chaqiruv botga bormaydi.
         Assert.Equal("ya29.from-bot", await auth.GetAccessTokenAsync(CancellationToken.None));
         Assert.Single(web.Calls);

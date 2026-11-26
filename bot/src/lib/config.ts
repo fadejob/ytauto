@@ -133,7 +133,8 @@ export async function setCloneProfile(p: { name: string; model: string; voice: s
   const cur = await readStored();
   const old = (cur.voice?.profiles ?? []).find(isCloneProfile);
   const profiles = (cur.voice?.profiles ?? []).filter((x) => !isCloneProfile(x) && (!p || x.name !== p.name));
-  if (p) profiles.push({ name: p.name, model: p.model, voice: p.voice, language: "en", speed: 1 });
+  // Namuna almashtirilganda foydalanuvchi tanlagan tezlik va til saqlanadi.
+  if (p) profiles.push({ name: p.name, model: p.model, voice: p.voice, language: old?.language || "en", speed: old?.speed ?? 1 });
   const defaults = { ...(cur.defaults ?? {}) };
   if (p && makeDefault) defaults.voiceProfile = p.name;
   else if (!p && old && defaults.voiceProfile === old.name) defaults.voiceProfile = "";
@@ -207,8 +208,14 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
         name: String(p.name).trim().slice(0, 60), model: String(p.model).trim(), voice: String(p.voice ?? "").trim(),
         language: String(p.language || "en").trim(), speed: num(p.speed ?? 1, 0.5, 2, "Ovoz tezligi"),
       })).filter((p) => p.name && p.model && !isCloneProfile(p))
-        // «Mening ovozim» faqat namuna bo'limidan boshqariladi: oddiy saqlashda yo'qolib qolmaydi va qo'lda yasab bo'lmaydi.
-        .concat((cur.voice?.profiles ?? []).filter(isCloneProfile)),
+        // «Mening ovozim» namuna bo'limidan yaratiladi/o'chiriladi: oddiy saqlashda yo'qolib qolmaydi va qo'lda yasab bo'lmaydi
+        // (nomi, modeli, ovozi bazadagidek). Tezlik va tilni esa boshqa profillar kabi shu yerda o'zgartirish mumkin.
+        .concat((cur.voice?.profiles ?? []).filter(isCloneProfile).map((c) => {
+          const edited = (input.voice?.profiles ?? []).find((p) => isCloneProfile(p) && p.voice === c.voice);
+          return edited
+            ? { ...c, language: String(edited.language || "en").trim(), speed: num(edited.speed ?? 1, 0.5, 2, "Ovoz tezligi") }
+            : c;
+        })),
       settings: (() => {
         const v = input.voice?.settings ?? DEF.voice.settings;
         if (!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/i.test(v.baseUrl.trim())) throw new Error("VoiceStudio manzili faqat lokal bo'lsin (http://127.0.0.1:3900).");
@@ -253,11 +260,5 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
   };
   if (isDemo()) { demoStored = next; return view(next); }
   await writeStored(next);
-  // O'z OAuth client'i almashtirildi: eski refresh token faqat eski client bilan ishlaydi - uni o'chiramiz, foydalanuvchi
-  // kanalini yangi client bilan qayta ulaydi (aks holda "ulangan ✓" ko'rinib, yuklashda invalid_grant chiqadi).
-  const clientChanged = (cur.youtube?.clientId?.trim() ?? "") !== next.youtube!.clientId
-    || (cur.youtube?.clientSecret?.trim() ?? "") !== (next.youtube!.clientSecret?.trim() ?? "");
-  if (clientChanged)
-    await sql()`DELETE FROM ytauto.shared_settings WHERE key = 'youtube.oauth' AND coalesce(value::jsonb->>'client', 'own') = 'own'`;
   return view(next);
 }

@@ -299,6 +299,10 @@ public sealed class YouTubeSettings
     [JsonIgnore] public bool RemoteBrokered { get; set; }
     /// <summary>Mehmon hisobi vazifasi: faqat uning bot orqali ulagan kanali (egasining lokal tokeni bilan yuklanmaydi va u o'zgartirilmaydi).</summary>
     [JsonIgnore] public bool RemoteOnly { get; set; }
+    /// <summary>Bot ulagan kanal id'si (vazifa kanali yoki faol kanal). Saqlanmaydi.</summary>
+    [JsonIgnore] public string ChannelId { get; set; } = "";
+    /// <summary>Vazifa bog'langan kanal botda uzilgan: video yuklanmaydi (boshqa kanalga ketib qolmasligi uchun).</summary>
+    [JsonIgnore] public bool MissingChannel { get; set; }
     /// <summary>Standart public soati "HH:mm".</summary>
     public string PublishTime { get; set; } = "18:00";
     public string TimeZoneId { get; set; } = "Asia/Tashkent";

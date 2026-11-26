@@ -65,7 +65,7 @@
                     <StackPanel>
                         <TextBlock Text="Ish vaqti (video tayyorlash)" Style="{StaticResource H2}" Margin="0,0,0,4"/>
                         <TextBlock Style="{StaticResource Muted}" Margin="0,0,0,8"
-                                   Text="Worker har kuni shu oraliqda navbatdagi barcha mavzulardan video tayyorlaydi — chiqish vaqti yaqinlari birinchi (boshlangan video oxirigacha tugatiladi). Chiqish vaqti faqat YouTube uchun: video oldindan tayyorlanib, vaqti kelganda YouTube o'zi public qiladi. Kunduzi faqat har 2 daqiqada yengil tekshiruv botdagi «Hozir chiqarish» va buyruqlarni oladi. Jadvalni botda ham o'zgartirish mumkin."/>
+                                   Text="Worker har kuni shu oraliqda navbatdagi barcha mavzulardan video tayyorlaydi — chiqish vaqti yaqinlari birinchi (boshlangan video oxirigacha tugatiladi). Chiqish vaqti faqat YouTube uchun: video oldindan tayyorlanib, vaqti kelganda YouTube o'zi public qiladi. Kunduzi yengil doimiy agent (Cloudflare tunnel) botdagi «Hozir chiqarish» va buyruqlarni darhol oladi. Jadvalni botda ham o'zgartirish mumkin."/>
                         <CheckBox Content="Har kuni avtomatik ishlash" IsChecked="{Binding ScheduleEnabled}"/>
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <TextBlock Text="Boshlanish" VerticalAlignment="Center" Margin="0,0,6,0"/>

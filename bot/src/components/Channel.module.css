@@ -1,0 +1,124 @@
+/* «Kanal» ekrani (dizayn: ytauto.dsai → Kanal, Kanal · uslub, Kanal · qayta tahlil, Kanal · xato). */
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 16px 6px 8px; border-radius: 999px;
+  background: var(--card); color: var(--ink); font-size: 14px; font-weight: 650; min-width: 0; max-width: 100%;
+}
+.chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip svg { color: var(--muted); flex: none; width: 14px; height: 14px; }
+.avatar {
+  width: 28px; height: 28px; border-radius: 999px; background: var(--ink); color: var(--bg); display: grid; place-items: center;
+  font-size: 12px; font-weight: 800; flex: none; text-transform: uppercase;
+}
+.avatarLg { width: 44px; height: 44px; font-size: 18px; font-weight: 750; }
+
+.refresh { width: 44px; height: 44px; }
+
+/* fokus: «2 g'oya kutmoqda» va g'oyalar chizig'i */
+.summary { display: grid; gap: 10px; }
+.ideaStrip { display: flex; gap: 4px; }
+.ideaStrip i { flex: 1; height: 6px; border-radius: 999px; background: var(--line); }
+.ideaStrip i.ok { background: var(--ok); }
+.ideaStrip i.no { background: var(--faint); }
+
+/* ulanmagan holat: uzuq chiziqli karta (dizayn: Holatlar → Bo'sh · Kanal ulanmagan) */
+.emptyCard { display: grid; gap: 16px; padding: 20px; border-radius: var(--r-lg); border: 1.5px dashed var(--line); }
+.ghostChip { justify-self: start; display: inline-flex; align-items: center; gap: 10px; padding: 8px 16px 8px 8px; border-radius: 999px; border: 1.5px dashed var(--line); }
+.ghostAvatar { width: 26px; height: 26px; border-radius: 999px; background: var(--line); }
+.ghostName { width: 120px; height: 10px; border-radius: 999px; background: var(--line); }
+.emptyText { display: grid; gap: 4px; }
+.emptyText b { font-size: 17px; font-weight: 700; color: var(--ink); }
+.emptyText span { font-size: 14px; line-height: 1.4; color: var(--muted); }
+
+.title { margin: 0; font-size: 26px; font-weight: 750; letter-spacing: -0.6px; line-height: 1.2; }
+.explain { color: var(--muted); font-size: 15px; line-height: 1.45; margin: 0; }
+
+/* g'oya kartasi: savol - asosiy */
+.idea { gap: 12px; }
+.about { display: grid; gap: 4px; padding: 0 2px; }
+.topic { font-size: 15px; font-weight: 650; color: var(--ink); line-height: 1.35; overflow-wrap: anywhere; }
+.topicLg { font-size: 18px; font-weight: 700; letter-spacing: -0.2px; }
+.reason { display: flex; gap: 6px; align-items: flex-start; color: var(--muted); font-size: 13px; line-height: 1.4; }
+.reason svg { color: var(--faint); flex: none; margin-top: 1px; }
+.notes { color: var(--muted); font-size: 13px; line-height: 1.4; }
+.actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+
+/* ko'rib chiqilgan g'oyalar - qator */
+.handled { display: grid; gap: 8px; }
+.row {
+  display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 12px 10px 14px; border-radius: var(--r-md);
+  background: var(--card);
+}
+.row.dismissed { background: transparent; border: 1px solid var(--line); }
+.mark { width: 28px; height: 28px; border-radius: 999px; display: grid; place-items: center; flex: none; background: var(--ok); color: var(--card); }
+.dismissed .mark { background: var(--sunken); color: var(--muted); }
+.row .topic { flex: 1; min-width: 0; font-weight: 650; }
+.dismissed .topic { color: var(--muted); font-weight: 500; }
+
+/* tahlil kartasi */
+.head { display: flex; align-items: center; gap: 12px; }
+.head .name { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.head .name b { font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.open { background: var(--sunken); }
+.analysis { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+.videos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.video { display: grid; gap: 6px; min-width: 0; align-content: start; }
+.thumb {
+  position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; border-radius: var(--r-sm); background: var(--inverse);
+  color: var(--on-inverse); width: 100%; min-height: 44px;
+}
+.thumb.short { background: var(--sunken); }
+.shortShape { height: 100%; aspect-ratio: 9 / 16; border-radius: var(--r-sm); background: var(--inverse); display: grid; place-items: center; }
+.dur {
+  position: absolute; right: 6px; bottom: 6px; padding: 1px 6px; border-radius: 6px; background: var(--inverse); color: var(--on-inverse);
+  font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.vtext { display: grid; gap: 2px; text-align: left; min-width: 0; padding: 2px 0; border-radius: 6px; }
+.vtitle { font-size: 13px; font-weight: 650; line-height: 1.3; color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vmeta { font-size: 12px; color: var(--muted); }
+.source { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.source svg { color: var(--faint); flex: none; }
+.source.seen, .source.seen svg { color: var(--ok); }
+.video.selected .vtitle { color: var(--accent-ink); }
+
+.detail { display: grid; gap: 8px; background: var(--sunken); border-radius: var(--r-md); padding: 12px; font-size: 13px; line-height: 1.45; }
+.detailHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.detailHead b { font-size: 14px; }
+.detail dl { display: grid; gap: 6px; margin: 0; }
+.detail dt { font-size: 11px; font-weight: 650; letter-spacing: 0.4px; color: var(--muted); text-transform: uppercase; }
+.detail dd { margin: 0 0 4px; color: var(--ink); overflow-wrap: anywhere; }
+.detail :global(.pre) { background: var(--card); }
+.closeBtn { width: 36px; height: 36px; background: var(--card); }
+
+.summaryText { font-size: 15px; line-height: 1.5; color: var(--ink); margin: 0; }
+
+.facts { display: grid; gap: 10px; margin: 0; }
+.fact { display: grid; grid-template-columns: 96px 1fr; gap: 8px; align-items: baseline; }
+.fact dt { font-size: 12px; font-weight: 650; letter-spacing: 0.4px; color: var(--muted); text-transform: uppercase; }
+.fact dd { margin: 0; font-size: 15px; color: var(--ink); line-height: 1.4; overflow-wrap: anywhere; }
+.fact dd small { display: block; font-size: 13px; color: var(--muted); }
+
+.runningText { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0; }
+.skelTiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+/* promptlarga qo'shiladigan uslub */
+.snippet { display: grid; gap: 8px; background: var(--sunken); border-radius: var(--r-md); padding: 12px 14px; }
+.snippet ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.snippet li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.4; color: var(--ink); overflow-wrap: anywhere; }
+.snippet li::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--faint); flex: none; margin-top: 7px; }
+.more { justify-self: start; }
+
+.actionHint { font-size: 12px; color: var(--muted); text-align: left; }
+
+.sectionHead { display: grid; gap: 4px; padding-top: 8px; }
+
+@media (min-width: 1024px) {
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .col { display: grid; gap: 16px; min-width: 0; }
+}
+@media (max-width: 1023px) {
+  .cols, .col { display: grid; gap: 16px; min-width: 0; }
+}

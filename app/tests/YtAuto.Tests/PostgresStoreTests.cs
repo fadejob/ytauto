@@ -112,6 +112,87 @@ public class PostgresStoreTests
         }
     }
 
+    /// <summary>
+    /// Doimiy agent: tunnel manzili va sir bazaga yoziladi (o'z hisobi), kutayotgan so'rovlar bitta yengil so'rov bilan topiladi,
+    /// vazifaning jonli holati (bosqich, oxirgi hodisa) o'qiladi; boshqa hisob agent ma'lumotini ko'rmaydi.
+    /// </summary>
+    [Fact]
+    public async Task OnlineStore_AgentBeatPendingWorkAndJobLive()
+    {
+        if (string.IsNullOrEmpty(Cs)) return;
+        var schema = "ytauto_test_" + Guid.NewGuid().ToString("N")[..8];
+        try
+        {
+            _ = new PostgresJobStore(Cs, schema);
+            var s = new PostgresJobStore(Device(schema, "A"), schema);
+            var b = new PostgresJobStore(Device(schema, "B"), schema);
+
+            Assert.True(s.AgentBeat("PC1", "https://abc-def.trycloudflare.com", "secret-0123456789abcdefghijklmnopqrstuv", "1.2"));
+            Assert.True(s.AgentBeat("PC1", null, null, null)); // tunnel uzildi: manzil olib tashlanadi, sir qoladi
+            await using (var c = new NpgsqlConnection(Cs))
+            {
+                await c.OpenAsync();
+                await using var cmd = new NpgsqlCommand($"SELECT agent_url, agent_secret, agent_seen_utc IS NOT NULL, version FROM \"{schema}\".machines WHERE machine = 'PC1'", c);
+                await using var r = await cmd.ExecuteReaderAsync();
+                Assert.True(await r.ReadAsync());
+                Assert.True(r.IsDBNull(0));
+                Assert.Equal("secret-0123456789abcdefghijklmnopqrstuv", r.GetString(1));
+                Assert.True(r.GetBoolean(2));
+                Assert.Equal("1.2", r.GetString(3));
+            }
+            s.AgentBeat("PC1", "https://abc-def.trycloudflare.com", null, null);
+
+            // Kutayotgan so'rovlar: yo'q → hozir chiqarish → tekshiruv → buyruq
+            Assert.False(s.HasPendingRemoteWork("PC1"));
+            var j = J("Live", DateTimeOffset.UtcNow); s.Insert(j);
+            Assert.False(s.HasPendingRemoteWork("PC1")); // oddiy mavzu - jadvalda, uyg'otish shart emas
+            s.SetPublishNow(j.Id, true);
+            Assert.True(s.HasPendingRemoteWork("PC1"));
+            s.SetPublishNow(j.Id, false);
+            Assert.False(s.HasPendingRemoteWork("PC1"));
+            Assert.False(b.HasPendingRemoteWork("PC1")); // boshqa hisob A'ning so'rovini ko'rmaydi
+
+            // Jonli holat: bajarilayotgan bosqich va oxirgi hodisa
+            s.SaveStage(new StageRecord { JobId = j.Id, Stage = StageKind.Script, State = StageState.Done });
+            s.SaveStage(new StageRecord { JobId = j.Id, Stage = StageKind.Voice, State = StageState.Running });
+            s.AddEvent(j.Id, "INFO", "Voice", "ovoz yaratilmoqda");
+            var live = s.JobLive(j.Id)!;
+            Assert.Equal((int)StageKind.Voice, live.RunningStage);
+            Assert.Equal((int)StageKind.Script, live.DoneStage);
+            Assert.Equal("ovoz yaratilmoqda", live.LastMessage);
+            Assert.False(live.HasVideo);
+            Assert.Null(b.JobLive(j.Id)); // RLS
+
+            s.AgentStopped("PC1");
+            await using (var c = new NpgsqlConnection(Cs))
+            {
+                await c.OpenAsync();
+                await using var cmd = new NpgsqlCommand($"SELECT agent_url IS NULL AND agent_seen_utc IS NULL FROM \"{schema}\".machines WHERE machine = 'PC1'", c);
+                Assert.Equal(true, await cmd.ExecuteScalarAsync());
+            }
+        }
+        finally
+        {
+            await using var conn = new NpgsqlConnection(Cs);
+            await conn.OpenAsync();
+            var roles = new List<string>();
+            try
+            {
+                await using (var sel = new NpgsqlCommand($"SELECT role_name FROM \"{schema}\".account_roles", conn))
+                await using (var r = await sel.ExecuteReaderAsync()) while (await r.ReadAsync()) roles.Add(r.GetString(0));
+            }
+            catch { }
+            await using var drop = new NpgsqlCommand($"DROP SCHEMA IF EXISTS \"{schema}\" CASCADE", conn);
+            await drop.ExecuteNonQueryAsync();
+            NpgsqlConnection.ClearAllPools();
+            foreach (var role in roles)
+            {
+                await using var dr = new NpgsqlCommand($"DROP ROLE IF EXISTS \"{role}\"", conn);
+                await dr.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
     /// <summary>Hisob va qurilma rolini yaratadi; shu rol bilan ulanish satrini qaytaradi.</summary>
     private static string Device(string schema, string name)
     {

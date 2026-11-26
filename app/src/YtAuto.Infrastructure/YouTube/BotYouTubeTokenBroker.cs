@@ -25,13 +25,14 @@ public sealed class BotYouTubeTokenBroker
         [property: JsonPropertyName("expiresIn")] int? ExpiresIn,
         [property: JsonPropertyName("error")] string? Error);
 
-    public async Task<(string AccessToken, int ExpiresInSec)> GetAsync(CancellationToken ct)
+    /// <param name="channelId">Vazifa bog'langan kanal (bo'sh - hisobning faol kanali).</param>
+    public async Task<(string AccessToken, int ExpiresInSec)> GetAsync(string channelId, CancellationToken ct)
     {
         var acc = _account() ?? throw PipelineException.Config("youtube_broker_missing",
             "Kanal bot orqali ulangan, lekin kompyuter botga ulanmagan (hisob tokeni yo'q) - ilovada hisobga qayta kiring.");
         using var req = new HttpRequestMessage(HttpMethod.Post, acc.BotUrl.TrimEnd('/') + "/api/device/youtube-token")
         {
-            Content = JsonContent.Create(new { guest = _guest()?.ToString() }),
+            Content = JsonContent.Create(new { guest = _guest()?.ToString(), channelId }),
         };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", acc.Token);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);

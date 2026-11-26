@@ -112,6 +112,7 @@ public sealed partial class JobRunner
     /// </summary>
     public async Task<JobStatus> RefreshYouTubeStatusAsync(VideoJob job, IJobLog log, CancellationToken ct)
     {
+        using var channel = _x.Settings.UseChannel(job.ChannelId); // video yuklangan kanal tokeni bilan
         if (string.IsNullOrEmpty(job.YouTubeVideoId) || !_x.Uploader.IsConnected) return job.Status;
         var st = await _x.Uploader.GetStatusAsync(job.YouTubeVideoId!, ct).ConfigureAwait(false);
         // Chaqiruvchining obyekti joyida yangilanadi: keyingi Update() eskirgan qiymatlarni qayta yozmasligi uchun.

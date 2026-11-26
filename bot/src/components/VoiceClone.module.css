@@ -1,0 +1,58 @@
+/* «Mening ovozim» (dizayn: Ovoz · yozish vecihh, Ovoz · yuborish wGmITJ) va Ovoz sahifasidagi kirish kartasi. */
+
+.iconTile { width: 40px; height: 40px; border-radius: var(--r-sm); background: var(--sunken); color: var(--ink); display: grid; place-items: center; flex: none; }
+
+/* Joriy namuna kartasi: ikon, nom + holat, o'chirish */
+.head { display: flex; align-items: center; gap: 12px; }
+.nameCol { flex: 1; min-width: 0; display: grid; gap: 6px; justify-items: start; }
+.nameCol b { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+.err { font-size: 13px; line-height: 1.4; color: var(--bad); overflow-wrap: anywhere; }
+
+/* Yozish kartasi */
+.recHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+.recLabel { display: inline-flex; align-items: center; gap: 8px; color: var(--bad); font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; }
+.recDot { width: 8px; height: 8px; border-radius: 999px; background: var(--bad); animation: blink 1.2s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: 0.35; } }
+.timerBlock { display: grid; gap: 10px; }
+.timerBlock :global(.focal) { font-size: 48px; }
+.level { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.meter { flex: 1; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 999px; background: var(--ok); transition: width 80ms linear; }
+.meter i.loud { background: var(--bad); }
+
+/* O'qiladigan matn */
+.passage { background: var(--sunken); border-radius: var(--r-md); padding: 14px 16px; font-size: 15px; line-height: 1.55; color: var(--ink); border: 1.5px solid transparent; overflow-wrap: anywhere; }
+.passage.live { border-color: var(--bad); }
+.actions { display: grid; gap: 10px; }
+
+/* Yangi yozuv kartasi (urg'u chegarasi - asosiy amal shu yerda) */
+.takeCard { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.takeHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.takeLabel { font-size: 12px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; color: var(--ink); }
+.takeActions { display: flex; align-items: center; gap: 2px; }
+.takeActions :global(.btn.ghost) { color: var(--ink); }
+.iconBtn { width: 36px; height: 36px; border-radius: 999px; display: grid; place-items: center; color: var(--muted); }
+.iconBtn:disabled { color: var(--faint); }
+.toggles { display: grid; gap: 4px; }
+.toggleText { font-weight: 500; font-size: 15px; line-height: 1.35; }
+
+/* Pleyer: o'ynash, to'lqin, vaqt */
+.player { display: flex; align-items: center; gap: 12px; background: var(--sunken); border-radius: var(--r-md); padding: 10px 12px 10px 10px; min-height: 60px; }
+.playBtn { width: 40px; height: 40px; border-radius: 999px; background: var(--ink); color: var(--bg); display: grid; place-items: center; flex: none; }
+.wave { position: relative; flex: 1; min-width: 0; height: 28px; display: flex; align-items: center; justify-content: space-between; gap: 2px; }
+.wave i { flex: 1; max-width: 4px; min-height: 4px; border-radius: 999px; background: var(--faint); }
+.wave i.on { background: var(--ink); }
+.seek { position: absolute; inset: -8px 0; width: 100%; height: calc(100% + 16px); opacity: 0; cursor: pointer; margin: 0; }
+.time { font-size: 12px; color: var(--muted); white-space: nowrap; flex: none; }
+
+/* Maslahat */
+.tip { display: flex; align-items: flex-start; gap: 8px; color: var(--muted); font-size: 13px; line-height: 1.4; padding: 0 16px; }
+.tip svg { flex: none; margin-top: 1px; }
+
+/* Ovoz sahifasidagi «Mening ovozim» kartasi (butun karta - tugma) */
+:global(.card).entry { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; min-height: 72px; color: var(--ink); }
+.entryText { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.entryText b { font-size: 17px; font-weight: 700; letter-spacing: -0.2px; }
+.entryText span { font-size: 13px; color: var(--muted); line-height: 1.35; }
+.entryCta { color: var(--accent-ink); font-size: 13px; font-weight: 650; flex: none; }
+.chev { color: var(--faint); flex: none; }

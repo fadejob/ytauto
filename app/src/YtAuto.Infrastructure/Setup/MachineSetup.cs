@@ -20,7 +20,7 @@ public sealed record ToolItem(string Key, string Name, bool Ok, string Detail);
 /// <item>Kerakli dasturlar va modellar: OpenFilm, VoiceStudio, subtitr modeli (faster-whisper), ovoz modeli (MOSS-TTS-Nano) va
 /// ayol/erkak ovoz profillari, Claude Code. Kompyuterda bori qayta yuklanmaydi.</item>
 /// <item>Online hisob (DeviceAccount) - ilovada.</item>
-/// <item>Sozlamalar va katalog serverga, ish jadvali va Task Scheduler (kunlik ish + har 2 daqiqada yengil tekshiruv).</item>
+/// <item>Sozlamalar va katalog serverga, ish jadvali va Task Scheduler (kunlik ish + doimiy agent).</item>
 /// </list>
 /// Qadamlar bir-biriga bog'liq emas: biri o'xshamasa ham qolganlari bajariladi, holat ro'yxatda ko'rinadi.
 /// </summary>
@@ -126,7 +126,7 @@ public static class MachineSetup
 
     /// <summary>
     /// Hisob ulangandan keyin: lokal sozlamalar va katalog (ovoz profillari, shablonlar) serverga, ish jadvali serverga va
-    /// Task Scheduler'ga (kunlik ish + har 2 daqiqada yengil --poll), kompyuter holati.
+    /// Task Scheduler'ga (kunlik ish + doimiy agent: --agent), kompyuter holati.
     /// chosen - sozlash oynasida foydalanuvchi tanlagan ish vaqti; null bo'lsa hisobdagi jadval yoki standart (har kuni 01:00-04:00).
     /// </summary>
     public static void FinishOnline(AppServices online, string? workerExe, IProgress<SetupEvent> p, ScheduleSettings? chosen = null)
@@ -164,7 +164,7 @@ public static class MachineSetup
         var info = new TaskSchedulerService().Query();
         var sched = online.Settings.Load().Schedule;
         p.Report(new("schedule", StepState.Done, sched.Enabled
-            ? $"Har kuni {sched.StartTime}–{sched.EndTime} ({sched.TimeZoneId}); keyingi: {info.NextRunTime:yyyy-MM-dd HH:mm}. Har 2 daqiqada yengil tekshiruv."
-            : "Kunlik ish o'chiq; har 2 daqiqada yengil tekshiruv (bot buyruqlari) yoqilgan."));
+            ? $"Har kuni {sched.StartTime}–{sched.EndTime} ({sched.TimeZoneId}); keyingi: {info.NextRunTime:yyyy-MM-dd HH:mm}. Doimiy agent bot so'rovlarini darhol bajaradi."
+            : "Kunlik ish o'chiq; doimiy agent (bot so'rovlari darhol) yoqilgan."));
     }
 }

@@ -1,10 +1,12 @@
 import "server-only";
-import { sql } from "./db";
+import { sql, wakeAgents } from "./db";
 import { isDemo } from "./demo";
 import type { CheckItem, Machine } from "./types";
 
-/** Yurak urishi shu vaqtdan eski bo'lsa kompyuter offline: ilova ham, yengil poll ham har 2 daqiqada yozadi. */
-const ONLINE_MS = 6 * 60 * 1000; // har 2 daqiqada signal: 3 interval
+/** Yurak urishi shu vaqtdan eski bo'lsa kompyuter offline: agent har 30 soniyada, ochiq ilova har 2 daqiqada yozadi. */
+const ONLINE_MS = 6 * 60 * 1000;
+/** Doimiy agent (lokal server + Cloudflare tunnel) tirik: har 30 soniyada yozadi. */
+const AGENT_MS = 2 * 60 * 1000;
 const APP_MS = 90 * 1000;
 const BUSY_MAX_MS = 8 * 60 * 60 * 1000; // og'ir ish davomida signal yuborilmaydi: "band" holati shu muddatgacha ishonchli
 
@@ -12,6 +14,7 @@ type Row = {
   machine: string; last_seen_utc: Date; app_open: boolean; app_seen_utc: Date | null; worker_state: string | null; worker_job_id: number | null;
   worker_detail: string | null; worker_seen_utc: Date | null; version: string | null; check_requested: boolean; check_requested_at_utc: Date | null;
   check_result_json: string | null; check_finished_at_utc: Date | null; run_requested: boolean; run_requested_at_utc: Date | null;
+  agent_url?: string | null; agent_seen_utc?: Date | null;
 };
 
 const ago = (d: Date | null) => (d ? Date.now() - d.getTime() : Infinity);
@@ -24,8 +27,10 @@ export function toMachine(r: Row): Machine {
   // Og'ir ish paytida worker signal yubormaydi: "band" belgisi qo'yilgan bo'lsa, u boshlanganidan beri BUSY_MAX_MS ichida kompyuter online va band.
   const busyLive = r.worker_state === "busy" && ago(r.worker_seen_utc) < BUSY_MAX_MS;
   const idleLive = r.worker_state === "idle" && ago(r.worker_seen_utc) < ONLINE_MS;
+  const agentLive = !!r.agent_url && ago(r.agent_seen_utc ?? null) < AGENT_MS;
   return {
-    name: r.machine, lastSeen: r.last_seen_utc.toISOString(), online: ago(r.last_seen_utc) < ONLINE_MS || busyLive,
+    name: r.machine, lastSeen: r.last_seen_utc.toISOString(), online: agentLive || ago(r.last_seen_utc) < ONLINE_MS || busyLive,
+    agent: { live: agentLive, seen: r.agent_seen_utc?.toISOString() ?? null },
     app: { open: r.app_open && ago(r.app_seen_utc) < APP_MS, seen: r.app_seen_utc?.toISOString() ?? null },
     worker: {
       state: busyLive ? "busy" : idleLive ? "idle" : "unknown",
@@ -57,11 +62,12 @@ export async function getMachines(): Promise<Machine[]> {
   });
 }
 
-/** Tekshiruv so'rovi: kompyuter (~2 daqiqa ichida) oladi va natijani yozadi. */
+/** Tekshiruv so'rovi: agent darhol uyg'otiladi, kompyuter bajarib natijani yozadi. */
 export async function requestCheck(machine: string): Promise<{ ok: boolean; message: string }> {
   if (isDemo()) { demoCheck = { requestedAt: new Date() }; return { ok: true, message: "Tekshiruv so'rovi yuborildi. [demo]" }; }
   const n = await sql()`UPDATE ytauto.machines SET check_requested = TRUE, check_requested_at_utc = now() WHERE machine = ${machine}`;
-  return n.count ? { ok: true, message: "Tekshiruv so'rovi yuborildi — kompyuter ~2 daqiqada bajaradi." } : { ok: false, message: "Kompyuter topilmadi." };
+  if (n.count) wakeAgents("check");
+  return n.count ? { ok: true, message: "Tekshiruv so'rovi yuborildi — kompyuter darhol bajaradi (agent o'chiq bo'lsa, kompyuter yoqilganda)." } : { ok: false, message: "Kompyuter topilmadi." };
 }
 
 // ------------------------------------------------------------------ demo
@@ -77,14 +83,14 @@ function demoMachines(): Machine[] {
   ];
   return [
     {
-      name: "AIBA", lastSeen: iso(12_000), online: true, app: { open: true, seen: iso(12_000) }, run: { requested: false, requestedAt: null },
+      name: "AIBA", lastSeen: iso(12_000), online: true, agent: { live: true, seen: iso(12_000) }, app: { open: true, seen: iso(12_000) }, run: { requested: false, requestedAt: null },
       tools: [{ key: "openfilm", name: "OpenFilm", ok: true, detail: "" }, { key: "voicestudio", name: "VoiceStudio", ok: true, detail: "" }, { key: "whisper", name: "Subtitr modeli (Systran/faster-whisper-base)", ok: false, detail: "" }, { key: "tts", name: "Ovoz modeli (MOSS-TTS-Nano)", ok: true, detail: "MOSS ayol, MOSS erkak" }, { key: "claude", name: "Claude Code", ok: true, detail: "" }, { key: "youtube", name: "YouTube kanali", ok: true, detail: "Fadejob" }, { key: "gemini", name: "Gemini kaliti", ok: true, detail: "1 ta kalit · gemini-2.5-flash" }, { key: "schedule", name: "Windows jadvali", ok: true, detail: "har kuni 01:00 (Asia/Tashkent)" }], toolsUpdatedAt: iso(60_000),
       worker: { state: "busy", jobId: 104, detail: "render: How vaccines train the immune system", seen: iso(9_000) }, version: "1.0.0.0",
       check: done ? { requested: false, requestedAt: demoCheck!.requestedAt.toISOString(), finishedAt: iso(1000), durationSec: 6.2, results: items }
         : { requested: !!demoCheck, requestedAt: demoCheck?.requestedAt.toISOString() ?? null, finishedAt: null, durationSec: null, results: [] },
     },
     {
-      name: "STUDIO-PC", lastSeen: iso(25 * 60_000), online: false, app: { open: false, seen: iso(3 * 3600_000) }, run: { requested: false, requestedAt: null },
+      name: "STUDIO-PC", lastSeen: iso(25 * 60_000), online: false, agent: { live: false, seen: null }, app: { open: false, seen: iso(3 * 3600_000) }, run: { requested: false, requestedAt: null },
       tools: null, toolsUpdatedAt: null,
       worker: { state: "unknown", jobId: null, detail: null, seen: iso(25 * 60_000) }, version: "1.0.0.0",
       check: { requested: false, requestedAt: null, finishedAt: null, durationSec: null, results: [] },
@@ -94,7 +100,7 @@ function demoMachines(): Machine[] {
 
 /**
  * "Hozir ishga tushirish": kompyuterda worker jadvalni kutmasdan, navbatdagi barcha mavzulardan video tayyorlashni boshlaydi.
- * Kompyuter ~2 daqiqada olib boshlaydi. Band bo'lsa so'rov bekor (ikki marta ishlamaydi).
+ * Agent darhol uyg'otiladi va kompyuter boshlaydi. Band bo'lsa so'rov bekor (ikki marta ishlamaydi).
  */
 export async function requestRun(machine: string): Promise<{ ok: boolean; message: string }> {
   if (isDemo()) return { ok: true, message: "Ishga tushirish so'rovi yuborildi. [demo]" };
@@ -102,5 +108,6 @@ export async function requestRun(machine: string): Promise<{ ok: boolean; messag
   if (!m) return { ok: false, message: "Kompyuter topilmadi." };
   if (toMachine(m).worker.state === "busy") return { ok: false, message: "Worker hozir band — ish tugagach qayta urinib ko'ring." };
   await sql()`UPDATE ytauto.machines SET run_requested = TRUE, run_requested_at_utc = now() WHERE machine = ${machine}`;
-  return { ok: true, message: "So'rov yuborildi — kompyuter mavzular soniga qarab ishni boshlaydi (~2 daqiqada)." };
+  wakeAgents("run");
+  return { ok: true, message: "So'rov yuborildi — kompyuter mavzular soniga qarab ishni darhol boshlaydi." };
 }

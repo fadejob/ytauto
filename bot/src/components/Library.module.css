@@ -1,0 +1,46 @@
+/* Shablonlar plitkalari (dizayn: Shablonlar va musiqa Fk4Jp6). */
+
+.wrap { display: grid; gap: 12px; min-width: 0; }
+
+/* Telefonda 2 ustun, kengroq ekranda plitkalar 180px dan. */
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (min-width: 640px) { .grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); } }
+
+.tile { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 164px; padding: 16px; border-radius: var(--r-lg);
+  background: var(--card); color: var(--ink); overflow: hidden; text-align: left; }
+.dim { opacity: 0.6; }
+
+/* «Shablon yuklash» plitkasi: botiq fon, urg'u rangidagi + doira (asosiy amal). */
+.add { background: var(--sunken); justify-content: flex-end; }
+.plus { width: 44px; height: 44px; border-radius: 999px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; margin-bottom: 22px; flex: none; }
+
+/* Yuklanayotgan: urg'u chegarasi va pastda foiz chizig'i. */
+.busy { box-shadow: inset 0 0 0 2px var(--accent); padding-bottom: 22px; }
+.bad { background: var(--bad-soft); }
+
+.kind { width: 40px; height: 40px; border-radius: var(--r-sm); background: var(--sunken); color: var(--ink); display: grid; place-items: center; flex: none; margin-bottom: 6px; }
+.busy .kind { background: var(--accent-soft); }
+.bad .kind { background: var(--card); color: var(--bad); }
+
+.pct { position: absolute; top: 24px; right: 16px; font-size: 15px; font-weight: 750; color: var(--accent-ink); }
+.corner { position: absolute; top: 16px; left: 64px; display: flex; }
+.ok { color: var(--ok); }
+
+.del { position: absolute; top: 8px; right: 8px; width: 44px; height: 44px; border-radius: 999px; display: grid; place-items: center; color: var(--muted); }
+.del:hover:not(:disabled) { background: color-mix(in srgb, var(--sunken) 70%, transparent); color: var(--bad); }
+
+.name { font-size: 15px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.one { -webkit-line-clamp: 1; }
+.grow { flex: 1; min-height: 6px; }
+
+.stage { font-size: 13px; font-weight: 600; color: var(--accent-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stageOk { color: var(--ok); }
+.err { font-size: 13px; line-height: 1.3; color: var(--bad); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.note { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.src { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); min-width: 0; }
+.src svg { flex: none; }
+.src span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.meta { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; background: var(--line); }
+.bar i { display: block; height: 100%; background: var(--accent); transition: width 0.3s ease; }

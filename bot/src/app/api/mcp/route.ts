@@ -38,7 +38,7 @@ export async function POST(req: Request) {
   const messages = Array.isArray(body) ? body : [body];
   const out = [];
   for (const m of messages) {
-    const r = await handleRpc(m as never, run);
+    const r = await handleRpc(m as never, run, acc.id);
     if (r) out.push(r);
   }
   if (out.length === 0) return new Response(null, { status: 202 });
