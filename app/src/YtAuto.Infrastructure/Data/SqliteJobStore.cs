@@ -700,6 +700,7 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 if (!string.IsNullOrWhiteSpace(oauth) && System.Text.Json.Nodes.JsonNode.Parse(oauth)?["refreshToken"]?.GetValue<string>() is { Length: > 0 } rt)
                 {
                     s.YouTube.RemoteRefreshToken = rt.Trim();
+                    s.YouTube.RemoteBrokered = System.Text.Json.Nodes.JsonNode.Parse(oauth)?["client"]?.GetValue<string>() == "global";
                     if (System.Text.Json.Nodes.JsonNode.Parse(oauth)?["channelTitle"]?.GetValue<string>() is { Length: > 0 } ct) s.YouTube.ChannelTitle = ct; // bot ulagan kanal nomi
                 }
             }

@@ -292,6 +292,11 @@ public sealed class YouTubeSettings
     public string DefaultDescription { get; set; } = "";
     /// <summary>Bot orqali ulangan kanalning refresh token'i (online baza). Saqlanmaydi/snapshotga tushmaydi (JsonIgnore).</summary>
     [JsonIgnore] public string RemoteRefreshToken { get; set; } = "";
+    /// <summary>
+    /// Kanal botning UMUMIY OAuth client'i bilan ulangan: client secret kompyuterda yo'q, access token botdan olinadi
+    /// (/api/device/youtube-token). Saqlanmaydi (JsonIgnore).
+    /// </summary>
+    [JsonIgnore] public bool RemoteBrokered { get; set; }
     /// <summary>Mehmon hisobi vazifasi: faqat uning bot orqali ulagan kanali (egasining lokal tokeni bilan yuklanmaydi va u o'zgartirilmaydi).</summary>
     [JsonIgnore] public bool RemoteOnly { get; set; }
     /// <summary>Standart public soati "HH:mm".</summary>

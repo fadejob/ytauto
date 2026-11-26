@@ -42,6 +42,22 @@ public sealed class YouTubeAuth
 
     public bool HasTokens => Load() is { RefreshToken.Length: > 0 };
 
+    /// <summary>
+    /// Bot orqali umumiy OAuth client bilan ulangan kanal uchun access token beruvchi (bot so'rovi). Client secret serverda qoladi.
+    /// Natija: (token, necha soniya amal qiladi). Null - bot hisobi sozlanmagan.
+    /// </summary>
+    public Func<CancellationToken, Task<(string AccessToken, int ExpiresInSec)>>? Broker { get; set; }
+
+    private bool Brokered(OAuthTokens t)
+    {
+        try
+        {
+            var s = _settings();
+            return s.RemoteBrokered && s.RemoteRefreshToken.Trim().Length > 0 && t.RefreshToken == s.RemoteRefreshToken.Trim();
+        }
+        catch { return false; }
+    }
+
     /// <summary>Mehmon hisoblari kanallari tokenlari: faqat xotirada (kompyuter egasining lokal tokeni ustiga yozilmaydi).</summary>
     private readonly Dictionary<string, OAuthTokens> _remoteOnly = new();
 
@@ -97,6 +113,17 @@ public sealed class YouTubeAuth
                 : "YouTube kanali ulanmagan.");
             var memKey = remoteOnly ? t.RefreshToken : null;
             if (!forceRefresh && t.AccessToken.Length > 0 && t.ExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(2)) return t.AccessToken;
+            if (Brokered(t))
+            {
+                var broker = Broker ?? throw PipelineException.Config("youtube_broker_missing",
+                    "Kanal bot orqali ulangan, lekin kompyuter botga ulanmagan (hisob tokeni yo'q) - ilovada hisobga qayta kiring.");
+                var (access, expiresIn) = await broker(ct).ConfigureAwait(false);
+                t.AccessToken = access;
+                t.ExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn));
+                Save(t, memKey);
+                Redactor.Register(t.AccessToken);
+                return t.AccessToken;
+            }
             var (id, secret) = Client();
             var form = new FormUrlEncodedContent(new Dictionary<string, string>
             {

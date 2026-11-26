@@ -70,6 +70,9 @@ public sealed class AppServices
         Settings = new SqliteSettingsStore(LocalDb, DefaultSettings, Store is PostgresJobStore ? Store : null);
         Http = new HttpClient(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) }) { Timeout = TimeSpan.FromMinutes(10) };
         YouTubeAuth = new YouTubeAuth(Secrets, () => Settings.Load().YouTube, Http);
+        // Bot umumiy OAuth client'i bilan ulangan kanal: access token botdan (client secret kompyuterga berilmaydi).
+        var ytBroker = new BotYouTubeTokenBroker(Http, DemoAccount, () => (Store as PostgresJobStore)?.Scope);
+        YouTubeAuth.Broker = ytBroker.GetAsync;
         Uploader = new YouTubeUploader(YouTubeAuth, Http);
         Gemini = new GeminiScriptGenerator(Secrets) { RemoteKeys = () => Settings.Load().Gemini.RemoteApiKeys, LocalKeyAllowed = () => !Store.InGuestScope };
         // Model router: limit holati faylda (worker qayta ishga tushsa ham limiti tugagan modelni qayta urmaydi). Sarf botga - faqat
