@@ -168,7 +168,7 @@ public sealed class YouTubeAuth
             var state = B64Url(RandomNumberGenerator.GetBytes(16));
             var url = $"{AuthEndpoint}?response_type=code&client_id={Uri.EscapeDataString(id)}&redirect_uri={Uri.EscapeDataString(redirect)}" +
                       $"&scope={Uri.EscapeDataString(string.Join(' ', Scopes))}&code_challenge={challenge}&code_challenge_method=S256" +
-                      $"&state={state}&access_type=offline&prompt=consent";
+                      $"&state={state}&access_type=offline&prompt={Uri.EscapeDataString("select_account consent")}"; // akkaunt/kanal tanlash oynasi har safar
             Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct); timeout.CancelAfter(TimeSpan.FromMinutes(5));

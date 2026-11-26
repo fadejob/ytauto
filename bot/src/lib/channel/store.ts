@@ -44,6 +44,17 @@ export async function saveResult(ctx: ChannelContext, lastVideoId: string, block
   await writeBlocks({ ...blocks, enabled: p?.enabled !== false, updatedAt: new Date().toISOString() });
 }
 
+/**
+ * Kanal almashdi yoki uzildi: shu hisobdagi eski kanal ma'lumotlari o'chadi - tahlil (channel_profile), promptlarga qo'shiladigan
+ * kontekst bloklari va hali ishlatilmagan mavzu tavsiyalari. Mavzuga aylangan tavsiyalar (job_id) tarix sifatida qoladi.
+ * Hammasi hisob konteksti ichida (RLS): boshqa hisoblarga tegmaydi.
+ */
+export async function resetChannelData() {
+  await sql()`DELETE FROM ytauto.channel_profile`;
+  await sql()`DELETE FROM ytauto.shared_settings WHERE key IN (${BLOCKS_KEY}, ${STALE_KEY})`;
+  await sql()`DELETE FROM ytauto.topic_suggestions WHERE job_id IS NULL`;
+}
+
 /** Yangi video yo'q: faqat "tekshirildi" vaqti yangilanadi. */
 export async function markChecked() {
   await sql()`UPDATE ytauto.channel_profile SET status = 'idle', error = NULL, updated_at_utc = now()`;

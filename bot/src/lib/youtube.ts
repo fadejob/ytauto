@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { getYouTubeClient } from "./config";
 import { currentAccountId, sql } from "./db";
 import { isDemo } from "./demo";
+import { readProfile, resetChannelData } from "./channel/store";
 
 /**
  * YouTube kanalini bot orqali ulash (Google OAuth, "Web application" client, authorization code oqimi).
@@ -27,7 +28,7 @@ export type YouTubeStatus = {
 };
 
 /** client: qaysi OAuth client bilan ulangan (refresh token faqat o'sha client bilan ishlaydi). Eski yozuvlarda yo'q = "own". */
-type Stored = { refreshToken: string; channelTitle: string; scope: string; connectedAt: string; client?: ClientKind };
+type Stored = { refreshToken: string; channelTitle: string; channelId?: string; scope: string; connectedAt: string; client?: ClientKind };
 type ClientKind = "own" | "global";
 type Client = { clientId: string; clientSecret: string; kind: ClientKind };
 
@@ -102,7 +103,9 @@ export async function startYouTube(origin: string): Promise<{ url: string }> {
   if (isDemo()) throw new Error("Demo rejimda YouTube ulanmaydi.");
   const q = new URLSearchParams({
     response_type: "code", client_id: c.clientId, redirect_uri: redirectOf(origin), scope: SCOPES.join(" "),
-    access_type: "offline", prompt: "consent", include_granted_scopes: "true", state: makeState(currentAccountId()),
+    // select_account: Google har safar akkaunt/kanal (Brand Account ham) tanlash oynasini ko'rsatadi - aks holda brauzerda
+    // kirilgan akkaunt jimgina olinadi va foydalanuvchi boshqa kanalini ulay olmaydi. consent: refresh_token har safar beriladi.
+    access_type: "offline", prompt: "select_account consent", include_granted_scopes: "true", state: makeState(currentAccountId()),
   });
   return { url: `https://accounts.google.com/o/oauth2/v2/auth?${q}` };
 }
@@ -119,10 +122,16 @@ export async function finishYouTube(code: string, origin: string): Promise<strin
   if (!res.ok || !j.access_token) throw new Error(`Google token bermadi: ${j.error_description ?? j.error ?? res.status}`);
   if (!j.refresh_token) throw new Error("Google refresh_token bermadi. Google hisobida YtAuto ruxsatini olib tashlab, qayta ulang.");
   const ch = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", { headers: { Authorization: `Bearer ${j.access_token}` } });
-  const cj = (await ch.json().catch(() => ({}))) as { items?: { snippet?: { title?: string } }[] };
+  const cj = (await ch.json().catch(() => ({}))) as { items?: { id?: string; snippet?: { title?: string } }[] };
   const title = cj.items?.[0]?.snippet?.title;
+  const channelId = cj.items?.[0]?.id ?? "";
   if (!title) throw new Error("Bu Google hisobida YouTube kanali topilmadi.");
-  const stored: Stored = { refreshToken: j.refresh_token, channelTitle: title, scope: j.scope ?? "", connectedAt: new Date().toISOString(), client: c.kind };
+  // Boshqa kanal ulandi: eski kanalning tahlili, promptlarga qo'shiladigan konteksti va tavsiyalari yangi kanalga o'tmasin.
+  const [prev, prof] = await Promise.all([readStored(), readProfile()]);
+  const prevId = prev?.channelId || prof?.channel_id || "";
+  const switched = prevId ? prevId !== channelId : !!prev?.channelTitle && prev.channelTitle !== title;
+  if (switched) await resetChannelData();
+  const stored: Stored = { refreshToken: j.refresh_token, channelTitle: title, channelId, scope: j.scope ?? "", connectedAt: new Date().toISOString(), client: c.kind };
   await writeStored(stored);
   return title;
 }
@@ -136,7 +145,11 @@ async function writeStored(s: Stored | null) {
     ON CONFLICT (account_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at_utc = now()`;
 }
 
-export const disconnectYouTube = () => writeStored(null);
+/** Uzish: token va shu kanaldan olingan ma'lumotlar (tahlil, kontekst, tavsiyalar) o'chadi - keyingi kanal toza boshlanadi. */
+export async function disconnectYouTube() {
+  await writeStored(null);
+  if (!isDemo()) await resetChannelData();
+}
 
 /** Faqat server ichida (hisob konteksti): fon ishi tranzaksiyadan tashqarida token olishi uchun. Ulanmagan bo'lsa null. */
 export async function youtubeCredentials(): Promise<{ refreshToken: string; clientId: string; clientSecret: string; channelTitle: string } | null> {

@@ -253,5 +253,11 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
   };
   if (isDemo()) { demoStored = next; return view(next); }
   await writeStored(next);
+  // O'z OAuth client'i almashtirildi: eski refresh token faqat eski client bilan ishlaydi - uni o'chiramiz, foydalanuvchi
+  // kanalini yangi client bilan qayta ulaydi (aks holda "ulangan ✓" ko'rinib, yuklashda invalid_grant chiqadi).
+  const clientChanged = (cur.youtube?.clientId?.trim() ?? "") !== next.youtube!.clientId
+    || (cur.youtube?.clientSecret?.trim() ?? "") !== (next.youtube!.clientSecret?.trim() ?? "");
+  if (clientChanged)
+    await sql()`DELETE FROM ytauto.shared_settings WHERE key = 'youtube.oauth' AND coalesce(value::jsonb->>'client', 'own') = 'own'`;
   return view(next);
 }
