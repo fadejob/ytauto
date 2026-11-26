@@ -28,7 +28,7 @@ Topics (the regular video queue): each topic becomes one narrated video that YtA
 - add_topics adds up to ${MCP_MAX_TOPICS} topics in one call. You supply every part of each topic yourself: topic (the subject), notes (angle, key points, facts, audience, what to avoid), and optionally publish_at, template, format, voice, music; or a finished title + script (exact narration) to skip Gemini. The call is all-or-nothing: if one topic is invalid nothing is added.
 - list_topics / update_topics / delete_topics manage the queue. Only topics whose video is not made yet can be edited or deleted. Delete only when the user asked.
 
-YouTube channel (main account only; the ACTIVE channel — the user switches channels in the YtAuto bot): get_youtube_channel (name, logo, banner, stats), list_youtube_videos, get_youtube_video, update_youtube_video (title, description, tags, category, privacy, scheduled time, made for kids), delete_youtube_video. Edit or delete only when the user explicitly asks; deleting is permanent, so confirm the exact video with the user first.`;
+YouTube channel (main account only; the channel this connection is bound to — or, for the plain ytauto server without ?channel, the channel currently active in the YtAuto bot): get_youtube_channel (name, logo, banner, stats), list_youtube_videos, get_youtube_video, update_youtube_video (title, description, tags, category, privacy, scheduled time, made for kids), delete_youtube_video. Edit or delete only when the user explicitly asks; deleting is permanent, so confirm the exact video with the user first.`;
 
 type Json = Record<string, unknown>;
 const obj = (properties: Json, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -281,7 +281,8 @@ const err = (id: RpcRequest["id"], code: number, message: string): RpcResponse =
  * shunda model xabarni ko'radi va tuzatib qayta urinadi; protokol xatolari - JSON-RPC error.
  * run - tool'ni hisob kontekstida bajaradi (route.ts: withAccount).
  */
-export async function handleRpc(m: RpcRequest, run: Run, accountId: string): Promise<RpcResponse | null> {
+/** channel - kanal MCP'si (/api/mcp?channel=...): hamma tool'lar shu kanal bilan ishlaydi; Claude'ga shu aytiladi. */
+export async function handleRpc(m: RpcRequest, run: Run, accountId: string, channel?: { id: string; title: string } | null): Promise<RpcResponse | null> {
   if (!m || typeof m !== "object" || m.jsonrpc !== "2.0" || typeof m.method !== "string") return err(m?.id, -32600, "Invalid Request");
   const isNotification = m.id === undefined;
   switch (m.method) {
@@ -290,8 +291,8 @@ export async function handleRpc(m: RpcRequest, run: Run, accountId: string): Pro
       return ok(m.id, {
         protocolVersion: VERSIONS.includes(asked) ? asked : VERSIONS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: SERVER_INFO,
-        instructions: INSTRUCTIONS,
+        serverInfo: channel ? { ...SERVER_INFO, title: `YtAuto — ${channel.title}` } : SERVER_INFO,
+        instructions: channel ? channelNote(channel) + INSTRUCTIONS : INSTRUCTIONS,
       });
     }
     case "ping":
@@ -323,6 +324,24 @@ export async function handleRpc(m: RpcRequest, run: Run, accountId: string): Pro
 }
 
 /** Botdagi «Claude Code ulash»: nusxalanadigan bitta buyruq (terminalda yoki Claude Code'ning o'zida bajariladi). */
-export function setupCommand(url: string, token: string): string {
-  return `claude mcp add --transport http --scope user ytauto ${url} --header "Authorization: Bearer ${token}"`;
+export function setupCommand(url: string, token: string, channel?: { id: string; name: string }): string {
+  const name = channel ? channel.name : "ytauto";
+  const target = channel ? `${url}?channel=${encodeURIComponent(channel.id)}` : url;
+  return `claude mcp add --transport http --scope user ${name} ${target} --header "Authorization: Bearer ${token}"`;
+}
+
+/** Kanal MCP'sining Claude Code'dagi nomi: ytauto-<kanal nomi>; nomlar takrorlansa kanal id oxiri qo'shiladi. */
+export function channelServerNames(channels: { id: string; title: string }[]): Map<string, string> {
+  const slug = (t: string) => t.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32).replace(/-+$/, "");
+  const base = channels.map((c) => slug(c.title) || c.id.slice(-6).toLowerCase());
+  return new Map(channels.map((c, i) => {
+    const dup = base.filter((b) => b === base[i]).length > 1;
+    return [c.id, `ytauto-${base[i]}${dup ? "-" + c.id.slice(-4).toLowerCase() : ""}`];
+  }));
+}
+
+function channelNote(c: { id: string; title: string }) {
+  return `THIS CONNECTION IS BOUND TO ONE YOUTUBE CHANNEL: "${c.title}" (${c.id}). Every tool here works only with this channel: topics are added to and listed from this channel's queue, YouTube tools read/edit/delete this channel's videos, demo videos are published to this channel. The user may have other channels with their own ytauto-* MCP servers; use the server of the channel the user means.
+
+`;
 }

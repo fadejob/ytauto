@@ -88,7 +88,8 @@ export function ownerSql(): Sql {
   return g.__ytautoSql;
 }
 
-type Ctx = { tx: Sql; accountId: string; guest: boolean; wake: Set<string> };
+/** channel - so'rov shu YouTube kanaliga bog'langan (kanal MCP'si): "faol kanal" o'rniga shu ishlatiladi, botdagi faol kanal o'zgarmaydi. */
+type Ctx = { tx: Sql; accountId: string; guest: boolean; wake: Set<string>; channel?: string };
 const als = new AsyncLocalStorage<Ctx>();
 
 /**
@@ -112,6 +113,11 @@ export function isGuest(): boolean {
   return als.getStore()?.guest === true;
 }
 
+/** So'rov bog'langan kanal (kanal MCP'si) yoki undefined - unda hisobning faol kanali ishlatiladi. */
+export function scopedChannel(): string | undefined {
+  return als.getStore()?.channel || undefined;
+}
+
 export function currentAccountId(): string {
   const c = als.getStore();
   if (!c) throw new Error("Ichki xato: hisob konteksti yo'q (withAccount).");
@@ -121,14 +127,14 @@ export function currentAccountId(): string {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** fn ni shu hisob kontekstida, bitta tranzaksiyada bajaradi (xato bo'lsa hammasi bekor qilinadi). */
-export async function withAccount<T>(accountId: string, fn: () => Promise<T>, opts?: { guest?: boolean }): Promise<T> {
+export async function withAccount<T>(accountId: string, fn: () => Promise<T>, opts?: { guest?: boolean; channel?: string }): Promise<T> {
   if (!UUID.test(accountId)) throw new Error("Hisob aniqlanmadi.");
   await ensureSchema();
   const wake = new Set<string>();
   const result = await ownerSql().begin(async (tx) => {
     await tx.unsafe("SET LOCAL ROLE ytauto_bot");
     await tx`SELECT set_config('ytauto_ctx.account', ${accountId}, true)`;
-    return { v: await als.run({ tx: tx as unknown as Sql, accountId, guest: opts?.guest === true, wake }, fn) };
+    return { v: await als.run({ tx: tx as unknown as Sql, accountId, guest: opts?.guest === true, wake, channel: opts?.channel || undefined }, fn) };
   });
   if (wake.size) {
     // COMMIT'dan keyin: agent bazadan o'qiganda so'rov allaqachon ko'rinadi. So'rov ichida - javob yuborilgach (after, Vercel

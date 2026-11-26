@@ -1,5 +1,7 @@
 import "server-only";
+import { sql } from "./db";
 import { applyAction, getCatalog, listTopics, MCP_MAX_TOPICS } from "./topics";
+import { activeChannelId, findChannel } from "./youtube";
 import { McpToolError } from "./demo-video";
 import { FormatText, StatusText, type NewTopic, type Topic } from "./types";
 
@@ -38,6 +40,18 @@ function toNewTopic(t: Json, i: number): NewTopic {
   };
 }
 
+/**
+ * Mavzu shu ulanish kanaliniki (kanal MCP'sida - o'sha kanal, aks holda faol kanal) yoki hali kanalga bog'lanmagan bo'lsa null,
+ * aks holda sababi: boshqa kanal mavzusini raqam bo'yicha o'zgartirib/o'chirib bo'lmaydi.
+ */
+async function otherChannel(id: number): Promise<string | null> {
+  const [r] = await sql()`SELECT channel_id FROM ytauto.jobs WHERE id = ${id}`;
+  if (!r) return null; // topilmadi - applyAction o'zi aytadi
+  const ch = await activeChannelId();
+  const own = r.channel_id as string;
+  return own === "" || own === ch ? null : `#${id} boshqa YouTube kanalining mavzusi — uni o'sha kanalning ytauto MCP'si orqali o'zgartiring.`;
+}
+
 function view(t: Topic) {
   return {
     id: t.id, topic: t.topic, notes: t.notes || undefined,
@@ -51,9 +65,16 @@ function view(t: Topic) {
   };
 }
 
+/** Ulanish ishlayotgan kanal (Claude qaysi kanal navbatini boshqarayotganini bilsin). */
+async function channelInfo() {
+  const id = await activeChannelId();
+  return id ? (await findChannel(id)) ?? { id, title: "" } : null;
+}
+
 export async function topicOptions() {
   const cat = await getCatalog();
   return {
+    channel: await channelInfo(),
     time_zone: cat.youtube.timeZone,
     default_publish_time: cat.youtube.publishTime,
     templates: cat.templates.map((t) => t.name),
@@ -74,7 +95,7 @@ export async function listTopicsTool(args: Json) {
     : filter === "published" ? all.filter((t) => t.youtubeUrl)
     : filter === "problems" ? all.filter((t) => t.error)
     : all;
-  return { time_zone: cat.youtube.timeZone, count: pick.length, topics: pick.map(view) };
+  return { channel: await channelInfo(), time_zone: cat.youtube.timeZone, count: pick.length, topics: pick.map(view) };
 }
 
 export async function addTopics(args: Json) {
@@ -95,6 +116,8 @@ export async function updateTopics(args: Json) {
   for (const u of raw as Json[]) {
     const id = Number(u?.id);
     if (!Number.isInteger(id) || id <= 0) { results.push({ id: u?.id, ok: false, message: "id butun son bo'lsin." }); continue; }
+    const foreign = await otherChannel(id);
+    if (foreign) { results.push({ id, ok: false, message: foreign }); continue; }
     const t = toNewTopic(u, 0);
     // Faqat berilgan maydonlar o'zgaradi (topic bo'sh satr bo'lsa ham "berilgan" hisoblanadi - applyAction rad etadi).
     const r = await applyAction({
@@ -116,6 +139,8 @@ export async function deleteTopics(args: Json) {
   for (const v of ids as unknown[]) {
     const id = Number(v);
     if (!Number.isInteger(id) || id <= 0) { results.push({ id: v, ok: false, message: "id butun son bo'lsin." }); continue; }
+    const foreign = await otherChannel(id);
+    if (foreign) { results.push({ id, ok: false, message: foreign }); continue; }
     results.push({ id, ...(await applyAction({ type: "delete_topic", id })) });
   }
   return {

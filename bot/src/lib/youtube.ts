@@ -1,7 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { getYouTubeClient } from "./config";
-import { currentAccountId, sql } from "./db";
+import { currentAccountId, scopedChannel, sql } from "./db";
 import { isDemo } from "./demo";
 import { BLOCKS_KEY, blocksKey } from "./channel/keys";
 import { Status } from "./types";
@@ -196,12 +196,20 @@ export async function channelList(): Promise<ChannelList> {
 
 /** Faol kanal id'si ('' - kanal ulanmagan). Yangi mavzular shu kanalga bog'lanadi; ro'yxatlar shu kanal bo'yicha. */
 export async function activeChannelId(): Promise<string> {
-  return (await channelList()).active;
+  const ch = scopedChannel(); // kanal MCP'si: so'rov shu kanalga bog'langan
+  return ch ?? (await channelList()).active;
 }
 
 async function activeChannel(): Promise<YtChannel | null> {
   const l = await channelList();
-  return l.channels.find((c) => c.id === l.active) ?? null;
+  const id = scopedChannel() ?? l.active;
+  return l.channels.find((c) => c.id === id) ?? null;
+}
+
+/** Kanal MCP'si uchun: kanal shu hisobga ulanganmi (id va nomi) - yo'q bo'lsa null. */
+export async function findChannel(id: string): Promise<{ id: string; title: string } | null> {
+  const c = (await channelList()).channels.find((x) => x.id === id);
+  return c ? { id: c.id, title: c.title } : null;
 }
 
 export async function getYouTubeStatus(origin: string): Promise<YouTubeStatus> {
@@ -394,7 +402,7 @@ async function markExpired(id: string, expired: boolean) {
  */
 export async function verifyYouTube(id?: string): Promise<{ ok: boolean; channelTitle?: string; message: string }> {
   const l = await channelList();
-  const s = l.channels.find((x) => x.id === (id || l.active));
+  const s = l.channels.find((x) => x.id === (id || scopedChannel() || l.active));
   if (!s?.refreshToken) return { ok: false, message: "Kanal ulanmagan: «YouTube'ni ulash» ni bosing." };
   const c = await clientOf(s);
   if (!c) return { ok: false, message: s.client === "global" ? "Server umumiy OAuth client'i o'chirilgan — administratorga murojaat qiling." : "OAuth Client ID/Secret saqlanmagan (Sozlamalar → YouTube)." };

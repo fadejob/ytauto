@@ -37,3 +37,9 @@
 .infoRow > span:first-child { color: var(--muted); flex: none; }
 .infoRow > span:last-child { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .select { user-select: all; -webkit-user-select: all; }
+
+/* Claude Code: har bir kanal uchun alohida MCP buyrug'i (McpConnect). */
+.channelCmd { display: grid; gap: 6px; padding: 10px 0; border-top: 1px solid var(--line); }
+.channelCmdHead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.channelCmdHead b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channelCmd > button { justify-self: start; }

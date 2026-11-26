@@ -3,10 +3,15 @@ import { accountForToken, clientIp, LimitError } from "@/lib/accounts";
 import { withAccount } from "@/lib/db";
 import { isDemo } from "@/lib/demo";
 import { handleRpc } from "@/lib/mcp";
+import { findChannel } from "@/lib/youtube";
 
 /**
  * MCP endpoint (Streamable HTTP, holatsiz). Autentifikatsiya: "Authorization: Bearer <YtAuto token>" - botga kirishdagi token
  * (asosiy yoki qo'shimcha). Har tool chaqiruvi shu token hisobi kontekstida (RLS): boshqa foydalanuvchi ma'lumotiga yo'l yo'q.
+ *
+ * Kanal MCP'si: /api/mcp?channel=<YouTube kanal id> - shu ulanishdagi hamma tool'lar faqat shu kanal bilan ishlaydi (mavzular,
+ * YouTube videolari, demo videolar), botda qaysi kanal faol bo'lishidan qat'i nazar. Kanal hisobga ulanmagan bo'lsa - xato.
+ * channel bo'lmasa - hisobning faol kanali (eski ulanishlar uchun).
  */
 export const maxDuration = 60;
 
@@ -34,11 +39,18 @@ export async function POST(req: Request) {
   try { body = await req.json(); }
   catch { return json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, 400); }
 
-  const run = <T,>(fn: () => Promise<T>) => withAccount(acc.id, fn, { guest: acc.guest });
+  const channelId = (new URL(req.url).searchParams.get("channel") ?? "").trim();
+  let channel: { id: string; title: string } | null = null;
+  if (channelId) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(channelId)) return json({ jsonrpc: "2.0", id: null, error: { code: -32602, message: "channel noto'g'ri." } }, 400);
+    channel = await withAccount(acc.id, () => findChannel(channelId), { guest: acc.guest });
+    if (!channel) return json({ jsonrpc: "2.0", id: null, error: { code: -32001, message: `Kanal ${channelId} bu hisobga ulanmagan (yoki uzilgan): botda Sozlamalar → YouTube kanallari'da qayta ulang.` } }, 404);
+  }
+  const run = <T,>(fn: () => Promise<T>) => withAccount(acc.id, fn, { guest: acc.guest, channel: channel?.id });
   const messages = Array.isArray(body) ? body : [body];
   const out = [];
   for (const m of messages) {
-    const r = await handleRpc(m as never, run, acc.id);
+    const r = await handleRpc(m as never, run, acc.id, channel);
     if (r) out.push(r);
   }
   if (out.length === 0) return new Response(null, { status: 202 });
