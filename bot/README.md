@@ -84,6 +84,9 @@ Google Cloud sozlamasi (bir marta, administrator):
 3. **Google Auth Platform → Branding**: ilova nomi, support email, logo (`public/logo-120.png`), bosh sahifa
    `https://<bot>/about`, Privacy Policy `https://<bot>/privacy`, Terms `https://<bot>/terms`, *Authorized domains* ga bot
    domeni. Sahifalardagi aloqa emaili — `CONTACT_EMAIL` env.
+   Bosh sahifa sifatida ildiz `https://<bot>` ham bo'ladi: oddiy brauzerda (va Google robotida) ochiq bosh sahifa, Telegram ichida
+   ilova ochiladi. Domen egaligi: Search Console → *URL prefix* `https://<bot>/` → *HTML tag* → `content` kodini
+   `GOOGLE_SITE_VERIFICATION` env'ga yozib deploy qiling → **Verify**; so'ng Google Cloud'da shu Google hisobi loyiha egasi bo'lsin.
 4. **Data Access**: `youtube.upload`, `youtube.readonly`, `youtube.force-ssl` scope'lari.
 5. **Audience → Publish app** («In production»). Shundan keyin istalgan Gmail ulana oladi va token 7 kunda tugamaydi.
    Google tekshiruvi (verification) tugaguncha foydalanuvchilar «tekshirilmagan ilova» ogohlantirishini ko'radi

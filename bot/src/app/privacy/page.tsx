@@ -25,6 +25,26 @@ export default function Privacy() {
         <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.
       </p>
 
+      <h2>Google user data at a glance</h2>
+      <p>This section summarizes how YtAuto handles data it receives from Google APIs (&quot;Google user data&quot;). Sections 1–6 give the details.</p>
+      <ul>
+        <li><b>Data accessed:</b> with your permission, YtAuto accesses your YouTube channel information (ID, title, description, logo,
+          banner, statistics) and your uploaded videos&apos; metadata (ID, title, description, tags, category, privacy status, schedule,
+          statistics, thumbnail), and receives an OAuth token for your channel. YtAuto does not access your Gmail, contacts, Drive or any
+          other Google service.</li>
+        <li><b>Data usage:</b> only to provide the features you use — uploading the videos you queued, showing your channel and videos in
+          YtAuto, tailoring new scripts to your channel&apos;s style, and editing or deleting a video when you ask. Not for advertising, not
+          sold, and not used to train general AI/ML models.</li>
+        <li><b>Data sharing:</b> not shared with other users or third parties, except the service providers that run YtAuto for you
+          (Google itself, Supabase for storage, Vercel for hosting) and when required by law.</li>
+        <li><b>Data storage &amp; protection:</b> stored in our database in your account only, isolated from other accounts with row-level
+          security; transferred only over HTTPS (TLS); OAuth tokens never leave our server — your computers receive only short-lived
+          access tokens; only the service operator can administer the database.</li>
+        <li><b>Retention &amp; deletion:</b> kept while your channel is connected. Disconnecting a channel in YtAuto deletes its token
+          immediately; you can also revoke access in your Google Account. Ask us to delete your account and all its data at any time —
+          we do so within 30 days.</li>
+      </ul>
+
       <h2>1. Data we collect</h2>
       <h3>Account data</h3>
       <ul>

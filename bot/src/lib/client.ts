@@ -34,7 +34,7 @@ export function tg(): TgWebApp | null {
 export function initTelegram() {
   const t = tg();
   if (!t) return;
-  document.documentElement.classList.add("tg");
+  document.documentElement.classList.add("tg", "in-app"); // in-app: "/" da bosh sahifa emas, ilova (layout skripti ham qo'yadi)
   t.ready();
   t.expand();
   try { t.disableVerticalSwipes?.(); } catch {}
