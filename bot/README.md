@@ -154,3 +154,24 @@ Xavfsizlik: har MCP chaqiruvi token hisobi kontekstida (RLS); noto'g'ri token IP
 server tomonida, hisob papkasida quriladi. Worker natijani o'z tokeni bilan `/api/device/demo-result` orqali yuklaydi.
 
 Yangilash: `npm run db:migrate` (v4 → v5), botni deploy qiling, kompyuterlardagi YtAuto'ni yangilang.
+
+### Mavzular va YouTube videolari — MCP orqali
+
+Claude Code oddiy video navbatini ham boshqaradi (bot UI bilan bir xil `applyAction` tekshiruvlari) va asosiy kanaldagi videolarni
+tahrirlaydi/o'chiradi. Masalan: *«Kanalim uchun kiberxavfsizlik haqida 30 ta mavzu qo'sh, har biriga batafsil izoh yoz»*.
+
+| Tool | Vazifasi |
+|---|---|
+| `get_topic_options` | Vaqt zonasi, standart chiqish vaqti, shablonlar, ovozlar, formatlar, fon musiqasi, standartlar. |
+| `list_topics` | Navbat: chiqmaganlar + oxirgi 30 ta chiqqan (`filter`: pending / published / problems). |
+| `add_topics` | **Bir chaqiruvda 40 tagacha** mavzu; har birining qismlarini Claude beradi: `topic`, `notes`, `publish_at`, `template`, `format`, `voice`, `music`, ixtiyoriy `title` + `script` (Gemini o'tkazib yuboriladi). Hammasi yoki hech biri: bitta xato bo'lsa hech narsa qo'shilmaydi. |
+| `update_topics` | 40 tagacha mavzuni o'zgartiradi (faqat berilgan maydonlar); video hali tayyorlanmagan mavzular. |
+| `delete_topics` | 40 tagacha mavzuni o'chiradi (`confirm: true`); tayyorlangan video bo'lsa o'chirilmaydi. |
+| `get_youtube_channel` | Kanal nomi, havolasi, **logotipi (YouTube'dan)**, banner, obunachi/video/ko'rish soni. |
+| `list_youtube_videos` | Kanal videolari (yangi → eski, sahifalab), kanal logotipi bilan; YtAuto mavzusi raqami bog'lanadi. |
+| `get_youtube_video` | Bitta video: to'liq tavsif, teglar, kategoriya, holat, reja vaqti. |
+| `update_youtube_video` | Title, tavsif, teglar, kategoriya, privacy, `publish_at` (reja), made for kids — faqat berilganlari o'zgaradi. |
+| `delete_youtube_video` | Videoni **butunlay** o'chiradi (`confirm: true`, qaytarib bo'lmaydi); faqat ulangan kanalning videosi. |
+
+YouTube tool'lari faqat asosiy hisob tokeni bilan ishlaydi. Tahrirlash/o'chirish uchun `youtube.force-ssl` ruxsati kerak — bu
+o'zgarishdan oldin ulangan kanallar uchun botda **Sozlamalar → YouTube → kanalni qayta ulang** (aks holda tool shuni aytadi).

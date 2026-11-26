@@ -10,7 +10,9 @@ import { isDemo } from "./demo";
  * o'sha tokendan foydalanadi (alohida kompyuterda qayta ulash shart emas).
  */
 const KEY = "youtube.oauth";
-const SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"];
+// youtube.force-ssl: Claude Code (MCP) orqali video nomi/tavsifi/holatini tahrirlash va videoni o'chirish uchun.
+const MANAGE_SCOPE = "https://www.googleapis.com/auth/youtube.force-ssl";
+const SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly", MANAGE_SCOPE];
 const STATE_TTL_MS = 15 * 60 * 1000;
 
 export type YouTubeStatus = {
@@ -112,6 +114,12 @@ export async function youtubeCredentials(): Promise<{ refreshToken: string; clie
   const [s, c] = await Promise.all([readStored(), getYouTubeClient()]);
   if (!s?.refreshToken || !c.clientId || !c.clientSecret) return null;
   return { refreshToken: s.refreshToken, clientId: c.clientId, clientSecret: c.clientSecret, channelTitle: s.channelTitle };
+}
+
+/** Saqlangan ruxsat videolarni tahrirlash/o'chirishga yetadimi (eski ulanishlarda faqat upload+readonly bo'ladi). */
+export async function youtubeCanManage(): Promise<boolean> {
+  const s = await readStored();
+  return !!s?.refreshToken && (s.scope ?? "").split(/\s+/).some((x) => x === MANAGE_SCOPE || x === "https://www.googleapis.com/auth/youtube");
 }
 
 /** Refresh token → access token (tarmoq; bazaga tegmaydi). */

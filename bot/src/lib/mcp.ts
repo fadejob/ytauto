@@ -1,12 +1,15 @@
 import "server-only";
 import { createDemoVideo, DEMO_EFFECTS, McpToolError, MEDIA_LIMIT, publishVideo, requestMediaUpload, videoResult, videoStatus } from "./demo-video";
+import { addTopics, deleteTopics, listTopicsTool, topicOptions, updateTopics } from "./mcp-topics";
+import { deleteYouTubeVideo, getYouTubeVideo, listYouTubeVideos, updateYouTubeVideo, youtubeChannel } from "./mcp-youtube";
+import { MCP_MAX_TOPICS } from "./topics";
 
 /**
  * YtAuto MCP server (Model Context Protocol, Streamable HTTP, holatsiz: har POST - mustaqil JSON-RPC so'rov, SSE yo'q).
  * Claude Code ulanadi: claude mcp add --transport http ytauto https://<bot>/api/mcp --header "Authorization: Bearer <token>".
  * Auth va hisob konteksti route.ts da; bu yerda - protokol va tool'lar.
  */
-export const SERVER_INFO = { name: "ytauto", title: "YtAuto demo video", version: "1.0.0" };
+export const SERVER_INFO = { name: "ytauto", title: "YtAuto", version: "1.1.0" };
 const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 export const INSTRUCTIONS = `YtAuto turns a software project into a narrated product demo / intro video. You (Claude Code) only study the project and capture visuals; YtAuto writes the script (Gemini), generates the voice (VoiceStudio, the user's chosen voice), edits (OpenFilm: camera moves, cuts, transitions, highlights, kinetic text, subtitles, music, SFX; only the product's own screenshots and recordings are shown, never decorative backgrounds), renders and optionally publishes to the user's main YouTube channel.
@@ -18,7 +21,14 @@ Workflow:
 4. request_media_upload with the list of files → upload each file with the returned curl line (HTTP PUT of the raw bytes).
 5. create_demo_video with: the project context (name, summary, features), every media_id with a precise title + description of what is visible/what happens, and a highlight (the UI area to zoom into); plus requirements (language, duration, audience, tone, format, effects, notes from the user). The video shows only your captures, so capture clean full-window views of the app without browser chrome, dev tools or the desktop around it. Set publish.requested only if the user explicitly asked to publish.
 6. Video production is asynchronous and runs on the user's PC (minutes to an hour). Poll get_video_status every few minutes; when status is "ready" call get_video_result and give the user the download link / local path.
-7. publish_video only when the user explicitly tells you to publish; it goes to the user's main YouTube channel only.`;
+7. publish_video only when the user explicitly tells you to publish; it goes to the user's main YouTube channel only.
+
+Topics (the regular video queue): each topic becomes one narrated video that YtAuto makes on the user's PC and publishes on its date.
+- get_topic_options first: time zone, templates, voices, formats, music tracks and defaults.
+- add_topics adds up to ${MCP_MAX_TOPICS} topics in one call. You supply every part of each topic yourself: topic (the subject), notes (angle, key points, facts, audience, what to avoid), and optionally publish_at, template, format, voice, music; or a finished title + script (exact narration) to skip Gemini. The call is all-or-nothing: if one topic is invalid nothing is added.
+- list_topics / update_topics / delete_topics manage the queue. Only topics whose video is not made yet can be edited or deleted. Delete only when the user asked.
+
+YouTube channel (main account only): get_youtube_channel (name, logo, banner, stats), list_youtube_videos, get_youtube_video, update_youtube_video (title, description, tags, category, privacy, scheduled time, made for kids), delete_youtube_video. Edit or delete only when the user explicitly asks; deleting is permanent, so confirm the exact video with the user first.`;
 
 type Json = Record<string, unknown>;
 const obj = (properties: Json, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -113,14 +123,148 @@ export const TOOLS = [
     }, ["job_id", "confirm"]),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
+  {
+    name: "get_topic_options",
+    title: "Options for new topics",
+    description: "Channel time zone, default publish time, available templates, voices, formats, background music tracks and defaults. Call before add_topics/update_topics so every value you send is valid.",
+    inputSchema: obj({}),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: "list_topics",
+    title: "List video topics",
+    description: "The user's topic queue: all not-yet-published topics plus the 30 latest published, with id, status, publish time (channel time zone), template/format/voice/music, YouTube link, error and whether it can still be edited/deleted.",
+    inputSchema: obj({ filter: { type: "string", enum: ["all", "pending", "published", "problems"], description: "pending = video not made yet (editable); default all" } }),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: "add_topics",
+    title: "Add video topics (up to 40)",
+    description: `Adds 1-${MCP_MAX_TOPICS} topics to the queue in ONE call; YtAuto makes and publishes one video per topic on the user's PC. Provide all parts of each topic yourself. All-or-nothing: if any topic is invalid, nothing is added and the error says which. Without title+script, Gemini writes the script from topic + notes, so make notes rich (angle, key points, facts, examples, audience, call to action, what to avoid). Videos are always in English.`,
+    inputSchema: obj({
+      topics: {
+        type: "array", minItems: 1, maxItems: MCP_MAX_TOPICS, description: "Topics in publishing order",
+        items: obj({
+          topic: s("The subject of the video, e.g. 'How HTTPS keeps your password safe'", { maxLength: 500 }),
+          notes: s("Everything the script writer should know: angle, structure, key points, facts, examples, audience, tone, call to action, what to avoid", { maxLength: 4000 }),
+          publish_at: s("Local time in the channel time zone, \"YYYY-MM-DD HH:mm\", at least 30 min ahead. Omit = next free slot"),
+          template: s("Template name from get_topic_options (omit = default)"),
+          format: { type: "string", enum: ["16:9", "9:16", "1:1"], description: "16:9 regular, 9:16 Shorts, 1:1 square (omit = default)" },
+          voice: s("Voice profile from get_topic_options (omit = default)"),
+          music: s("Background music: omit = automatic, \"none\" = no music, or a track id from get_topic_options"),
+          title: s("Optional finished YouTube title (max 100 chars, no < >). Must be given together with script", { maxLength: 100 }),
+          script: s("Optional exact narration / subtitle text. Must be given together with title; then Gemini is skipped", { maxLength: 30000 }),
+        }, ["topic"]),
+      },
+    }, ["topics"]),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+  },
+  {
+    name: "update_topics",
+    title: "Update video topics",
+    description: `Changes 1-${MCP_MAX_TOPICS} topics whose video is not made yet. Only the fields you send change. Changing content (topic, notes, template, format, voice, music, title/script) puts the topic back in the queue; changing only publish_at keeps it. Each update is applied separately; the result lists ok/failed per id.`,
+    inputSchema: obj({
+      updates: {
+        type: "array", minItems: 1, maxItems: MCP_MAX_TOPICS,
+        items: obj({
+          id: { type: "integer", minimum: 1, description: "Topic id from list_topics" },
+          topic: s("New subject", { maxLength: 500 }),
+          notes: s("New notes", { maxLength: 4000 }),
+          publish_at: s("Local time \"YYYY-MM-DD HH:mm\" in the channel time zone"),
+          template: s("Template name"),
+          format: { type: "string", enum: ["16:9", "9:16", "1:1"] },
+          voice: s("Voice profile"),
+          music: s("\"\" = automatic, \"none\" or a track id"),
+          title: s("Manual title (with script); send \"\" for both title and script to let Gemini write again", { maxLength: 100 }),
+          script: s("Manual narration (with title)", { maxLength: 30000 }),
+        }, ["id"]),
+      },
+    }, ["updates"]),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: "delete_topics",
+    title: "Delete video topics",
+    description: `Deletes 1-${MCP_MAX_TOPICS} topics whose video is not made yet (queued, failed, needs attention or cancelled). Call only when the user asked to delete them. Does not touch YouTube; use delete_youtube_video for a published video.`,
+    inputSchema: obj({
+      ids: { type: "array", minItems: 1, maxItems: MCP_MAX_TOPICS, items: { type: "integer", minimum: 1 } },
+      confirm: { type: "boolean", const: true, description: "Must be true: the user asked to delete these topics" },
+    }, ["ids", "confirm"]),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  },
+  {
+    name: "get_youtube_channel",
+    title: "YouTube channel info and logo",
+    description: "The user's connected main YouTube channel: name, URL, logo (avatar) image URL taken from YouTube, banner URL, subscriber/video/view counts, and whether the connection allows editing/deleting videos.",
+    inputSchema: obj({}),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  {
+    name: "list_youtube_videos",
+    title: "List YouTube videos",
+    description: "Videos of the connected main channel, newest first (title, privacy, schedule, stats, thumbnail, linked YtAuto topic id), plus the channel name and logo. Paginate with page_token.",
+    inputSchema: obj({
+      max_results: { type: "integer", minimum: 1, maximum: 50, description: "Default 25" },
+      page_token: s("next_page_token from the previous call"),
+    }),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  {
+    name: "get_youtube_video",
+    title: "Get a YouTube video",
+    description: "Full details of one video: title, full description, tags, category, privacy, scheduled time, made-for-kids, stats.",
+    inputSchema: obj({ video_id: s("11-character YouTube video id") }, ["video_id"]),
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  },
+  {
+    name: "update_youtube_video",
+    title: "Edit a YouTube video",
+    description: "Edits a video on the connected main channel. Only fields you send change; the rest is kept. Call only when the user asked for the change. Scheduling (publish_at) makes the video private until that time.",
+    inputSchema: obj({
+      video_id: s("11-character YouTube video id"),
+      title: s("New title (max 100 chars, no < >)", { maxLength: 100 }),
+      description: s("New full description (max 5000 chars, no < >)", { maxLength: 5000 }),
+      tags: { type: "array", items: { type: "string" }, description: "Replaces all tags (max 500 chars total)" },
+      category_id: s("YouTube category id, e.g. 22 People & Blogs, 27 Education, 28 Science & Technology"),
+      privacy: { type: "string", enum: ["public", "unlisted", "private"] },
+      publish_at: s("ISO 8601 time to go public (video stays private until then); \"\" removes the schedule"),
+      made_for_kids: { type: "boolean" },
+    }, ["video_id"]),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+  },
+  {
+    name: "delete_youtube_video",
+    title: "Delete a YouTube video",
+    description: "PERMANENTLY deletes a video from the connected main channel (views, comments and likes are lost; cannot be undone). Call only when the user explicitly asked to delete this exact video; confirm title and id with the user first.",
+    inputSchema: obj({
+      video_id: s("11-character YouTube video id"),
+      confirm: { type: "boolean", const: true, description: "Must be true: the user explicitly asked to delete this video" },
+    }, ["video_id", "confirm"]),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
+  },
 ] as const;
 
-const HANDLERS: Record<string, (a: Json) => Promise<unknown>> = {
-  request_media_upload: requestMediaUpload,
-  create_demo_video: createDemoVideo,
-  get_video_status: videoStatus,
-  get_video_result: videoResult,
-  publish_video: publishVideo,
+type Run = <T>(fn: () => Promise<T>) => Promise<T>;
+/** Faqat bazaga tegadigan tool: butunlay bitta hisob tranzaksiyasida. */
+const db = (f: (a: Json) => Promise<unknown>) => (a: Json, run: Run) => run(() => f(a));
+
+/** YouTube tool'lari tarmoq so'rovlarini tranzaksiyadan tashqarida qiladi va run()ni o'zi chaqiradi. */
+const HANDLERS: Record<string, (a: Json, run: Run) => Promise<unknown>> = {
+  request_media_upload: db(requestMediaUpload),
+  create_demo_video: db(createDemoVideo),
+  get_video_status: db(videoStatus),
+  get_video_result: db(videoResult),
+  publish_video: db(publishVideo),
+  get_topic_options: db(topicOptions),
+  list_topics: db(listTopicsTool),
+  add_topics: db(addTopics),
+  update_topics: db(updateTopics),
+  delete_topics: db(deleteTopics),
+  get_youtube_channel: youtubeChannel,
+  list_youtube_videos: listYouTubeVideos,
+  get_youtube_video: getYouTubeVideo,
+  update_youtube_video: updateYouTubeVideo,
+  delete_youtube_video: deleteYouTubeVideo,
 };
 
 type RpcRequest = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Json };
@@ -134,7 +278,7 @@ const err = (id: RpcRequest["id"], code: number, message: string): RpcResponse =
  * shunda model xabarni ko'radi va tuzatib qayta urinadi; protokol xatolari - JSON-RPC error.
  * run - tool'ni hisob kontekstida bajaradi (route.ts: withAccount).
  */
-export async function handleRpc(m: RpcRequest, run: <T>(fn: () => Promise<T>) => Promise<T>): Promise<RpcResponse | null> {
+export async function handleRpc(m: RpcRequest, run: Run): Promise<RpcResponse | null> {
   if (!m || typeof m !== "object" || m.jsonrpc !== "2.0" || typeof m.method !== "string") return err(m?.id, -32600, "Invalid Request");
   const isNotification = m.id === undefined;
   switch (m.method) {
@@ -157,7 +301,7 @@ export async function handleRpc(m: RpcRequest, run: <T>(fn: () => Promise<T>) =>
       if (!fn) return err(m.id, -32602, `Unknown tool: ${name}`);
       const args = (m.params?.arguments ?? {}) as Json;
       try {
-        const result = await run(() => fn(args));
+        const result = await fn(args, run);
         return ok(m.id, { content: [{ type: "text", text: JSON.stringify(result, null, 2) }], isError: false });
       } catch (e) {
         const known = e instanceof McpToolError;
