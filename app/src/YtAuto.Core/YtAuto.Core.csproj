@@ -7,8 +7,7 @@
     <InternalsVisibleTo Include="YtAuto.Tests" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Kit\kit.js" LogicalName="YtAuto.Kit.kit.js" />
-    <EmbeddedResource Include="Kit\kit.css" LogicalName="YtAuto.Kit.kit.css" />
-    <EmbeddedResource Include="Kit\README.md" LogicalName="YtAuto.Kit.README.md" />
+    <!-- film/kit: harakat to'plami, 3D (three.js, MIT) - nomi papka yo'li bilan: YtAuto.Kit.three\addons\loaders\GLTFLoader.js -->
+    <EmbeddedResource Include="Kit\**\*" LogicalName="YtAuto.Kit.%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

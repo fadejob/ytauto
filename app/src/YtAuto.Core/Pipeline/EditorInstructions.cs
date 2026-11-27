@@ -154,7 +154,7 @@ internal static class EditorInstructions
         }
         if (demo is not null)
             sb.AppendLine("   Sound effects: `assets/sfx/*.wav` on a THIRD audio track, each clip at its moment, volume 0.15–0.3, never on the voice or music track.");
-        sb.AppendLine("4. No subtitles drawn in pages (they are burned in from voice.vtt). Keep the lower 22% of the frame free of key text.");
+        sb.AppendLine("4. No subtitles drawn in pages: at render the worker adds its own animated caption track on top (`captions.html`, from voice.vtt) - do not create, edit or remove it. Keep the lower 22% of the frame free of key text.");
         sb.AppendLine("5. Every page follows \"the picture depends only on t\". No external network resources (no CDN fonts or images); everything local" +
             (media is { Assets.Count: > 0 } || stock is { Total: > 0 } ? " (the real images and clips are already in `film/assets/media/` and `film/assets/stock/`; do not download others)."
              : demo is not null ? " (the product screenshots and recordings are already in `film/assets/demo/`; do not download or invent other product images)." : "."));
@@ -235,7 +235,8 @@ internal static class EditorInstructions
         sb.AppendLine(lib
             ? $"Each scene below has several candidates: up to {maxImg} pictures (I1, I2, ...) and up to {maxClip} short video clips (V1, V2, ...). " +
               "Library pictures are licence-checked and high-resolution: `photo` = real photograph, `PNG` on the contact sheet = a cut-out object or 3D render on a TRANSPARENT background " +
-              "(made for collages and layered depth - never put it on a flat box), `diagram` = an explanatory drawing."
+              "(made for collages and layered depth - never put it on a flat box), `icon3d` = a transparent 3D icon, `model` (M1, M2) = a real 3D model that turns in the page " +
+              "(its contact-sheet tile is only a preview; use the `.glb`/`.gltf` file with kit/model3d.js), `diagram` = an explanatory drawing."
             : $"OpenFilm searched the web for the scenes below and downloaded several candidates for each: up to {maxImg} photos (I1, I2, ...) and up to {maxClip} short video clips (V1, V2, ...).");
         sb.AppendLine("They are NOT all good. You are the art director: review every candidate, choose the best ones, and only then design with them.");
         sb.AppendLine();
@@ -250,8 +251,10 @@ internal static class EditorInstructions
             {
                 var len = x.Type == StockTypes.Video ? $", {x.Duration.ToString("0.0", inv)} s" : "";
                 var mb = x.Bytes > 0 ? $", {(x.Bytes / 1048576.0).ToString("0.0", inv)} MB" : "";
-                var kind = x.Kind.Length > 0 ? (x.HasAlpha ? $"{x.Kind}, transparent PNG" : x.Kind) : x.Type;
-                sb.AppendLine($"- {x.Label} `film/{x.File}` ({kind}, {x.Width}x{x.Height}{len}{mb}, {x.Provider})");
+                var kind = x.Type == StockTypes.Model ? $"3D model{(x.Title.Length > 0 ? $" \"{OneLine(x.Title, 60)}\"" : "")}, turn it with kit/model3d.js"
+                    : x.Kind.Length > 0 ? (x.HasAlpha ? $"{x.Kind}, transparent PNG" : x.Kind) : x.Type;
+                var size = x.Type == StockTypes.Model ? "" : $", {x.Width}x{x.Height}";
+                sb.AppendLine($"- {x.Label} `film/{x.File}` ({kind}{size}{len}{mb}, {x.Provider})");
             }
             sb.AppendLine();
         }
@@ -416,7 +419,9 @@ internal static class EditorInstructions
         sb.AppendLine("- comparison: two or more `.k-card`/cut-outs side by side with `.k-label` pills and `countUp` numbers;");
         sb.AppendLine("- explainer: photo or diagram in a `.k-card`, SVG arrows drawn with `drawPath`, `.k-label` pills that `stagger` in;");
         sb.AppendLine("- mockup: the picture inside `.k-phone` > `.k-screen` (or a notes/search UI built in HTML with `typeOn`);");
-        sb.AppendLine("- typography: `wordWallBuild`/`wordWall`, `.k-outline` + `.k-accent` words, `countUp` for numbers.");
+        sb.AppendLine("- typography: `wordWallBuild`/`wordWall`, `.k-outline` + `.k-accent` words, `countUp` for numbers;");
+        sb.AppendLine("- 3D: a candidate of type `model` is a real 3D object - show it turning with `kit/model3d.js` (see the README: import map + `ready: () => obj.load()`), as a hero or the centre of a collage. `icon3d` candidates are transparent 3D icons: use them like cut-outs.");
+        sb.AppendLine("Use 3D where the scene shows a physical object: a video mixes real photos, cut-outs/3D icons and 1-4 turning 3D objects, so neighbouring scenes never look alike.");
         sb.AppendLine($"Finish every page with `.k-vignette` and `.k-grain`. Load `kit/kit.css` first and `style.css` after it, and set the kit's colour/font variables in `style.css` from the template or the default design. Size everything for the {w}x{h} stage.");
         sb.AppendLine();
     }

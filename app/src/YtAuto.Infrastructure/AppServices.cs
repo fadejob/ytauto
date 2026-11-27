@@ -177,6 +177,8 @@ public sealed class AppServices
             // Umumiy rasm kutubxonasi (online bazadagi ytauto.assets): faqat online rejimda.
             Library = Store is PostgresJobStore lib ? new Media.LibraryStockSource(lib) : null,
             AssetCatalog = Store as PostgresJobStore,
+            // Jonli ko'p manbali qidiruv: video paytida, bazasiz (Objaverse indeksi shu papkada bir marta keshlanadi).
+            Live = new Media.LiveAssetSource(Path.Combine(Paths.ToolsDir, "asset-cache")),
             // Fon musiqasi: botda tanlangan treklar kompyuterda bir marta yuklab olinib keshlanadi.
             Music = new Media.MusicCache(Http, Path.Combine(Paths.DataRoot, "music")),
             // Demo video (Claude Code MCP): ssenariy Gemini'da 2 bosqich, materiallar Storage'dan, natija bot orqali Storage'ga.

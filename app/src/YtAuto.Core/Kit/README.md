@@ -46,6 +46,30 @@ K.page(D, (t) => {
 | `wall = wordWallBuild(el, phrase, rows, {hot})` + `wordWall(wall, t)` | the repeated-phrase kinetic wall, painted on a canvas (rows may run off the frame on purpose); style it with `.k-wall` + `font-size` |
 | `whipOut(el, t, total)` | fast blur/slide out in the last 0.25 s: an edited cut instead of a fade |
 
+## 3D: real objects that turn (`kit/model3d.js`, three.js bundled in `kit/three/`)
+
+Scene candidates of type **model** (`M1`, `M2` on the contact sheet) are real 3D models (`.glb` or `.gltf` with its files in the
+same folder). Show them big and alive - a turning hero object, or one 3D object in the middle of a collage:
+
+```html
+<script type="importmap">{"imports":{"three":"./kit/three/three.module.min.js","three/addons/":"./kit/three/addons/"}}</script>
+...
+<div id="m" style="position:absolute;left:40px;top:420px;width:1000px;height:1000px"></div>
+<script type="module">
+import * as K from "./kit/kit.js"; import { model3d } from "./kit/model3d.js";
+const D = 3.5;
+const obj = model3d(document.getElementById("m"), "assets/stock/s02/model1/model.glb", { spin: 45, tilt: 15, push: .12, duration: D, float: 1 });
+K.page(D, (t) => { obj.draw(t); /* ...other layers... */ }, { ready: () => obj.load() });
+</script>
+```
+
+Options: `spin` (deg/s), `tilt` (camera height, deg), `start` (deg), `zoom`, `push` (camera push over the clip), `float`, `exposure`.
+The import map must come before the module script. Pass `ready: () => obj.load()` (a function), never load the model yourself.
+At most 2 models in one page (each is a WebGL canvas). The background stays transparent: put the page's own background behind it.
+
+**3D icons** (`icon3d`: 3dicons, Icons8 3D Fluency) are transparent PNG/WebP renders of objects - use them like cut-outs
+(`.k-cutout`, `collage`, `float`), several at once, in different sizes; never inside a white box.
+
 ## kit.css
 
 `.k-stage` `.k-layer` `.k-photo` `.k-photo-bg` (blurred fill behind a photo of another shape) `.k-scrim` (top/bottom darkening for text)

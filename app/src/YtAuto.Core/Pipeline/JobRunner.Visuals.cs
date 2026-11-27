@@ -188,6 +188,9 @@ public sealed partial class JobRunner
     /// <summary>Umumiy kutubxona yoqilgan va ulangan (online baza).</summary>
     private bool LibraryEnabled(JobContext c) => c.S.Visuals.AssetLibrary && _x.Library is { IsConfigured: true };
 
+    /// <summary>Jonli ko'p manbali qidiruv (Wikimedia, NASA, 3D ikonlar, 3D modellar) - video paytida, bazasiz.</summary>
+    private bool LiveEnabled(JobContext c) => c.S.Visuals.LiveAssets && _x.Live is { IsConfigured: true };
+
     /// <summary>
     /// Real rasmlar: Gemini ssenariydan rasm rejasini tuzadi. "photo" bandlari (sahnalar) uchun - OpenFilm stok qidiruvi (har biriga bir nechta
     /// rasm va video nomzod; tanlovni Claude qiladi). Ikon/logolar va OpenFilm hech narsa topmagan fotolar - ochiq manbalardan (MediaLibrary).
@@ -200,7 +203,8 @@ public sealed partial class JobRunner
         if (!v.RealMedia || v.MaxMedia <= 0 || _x.Visuals is null) return new(null, null, pace);
         var useOpenFilm = StockEnabled(c);
         var useLibrary = LibraryEnabled(c);
-        var useStock = useOpenFilm || useLibrary;
+        var useLive = LiveEnabled(c);
+        var useStock = useOpenFilm || useLibrary || useLive;
         if (v.OpenFilmStock && !useOpenFilm && _x.Stock is not null)
             c.Log.Info("Stok video/rasm nomzodlari o'chiq: botda (Sozlamalar → Video sifati) Pexels yoki Pixabay kalitini kiriting - OpenFilm ular orqali qidiradi.", "Media");
         if (_x.MediaLibrary is null && !useStock) return new(null, null, pace);
@@ -208,8 +212,8 @@ public sealed partial class JobRunner
         var cacheDir = MediaCacheDir(c);
         var stockDir = StockCacheDir(c);
         var audioSec = c.Job.AudioDurationSec ?? (cues.Count > 0 ? cues[^1].End : 0);
-        var planHash = Hashing.Sha256Text("media-v3", script.SubtitleText, v.MaxMedia.ToString(inv), pace.ToString("0.00", inv),
-            useStock ? $"stock:{useOpenFilm}:{useLibrary}:{v.StockImagesPerScene}:{v.StockClipsPerScene}:{StageOrientation(c)}" : "no-stock");
+        var planHash = Hashing.Sha256Text("media-v4", script.SubtitleText, v.MaxMedia.ToString(inv), pace.ToString("0.00", inv),
+            useStock ? $"stock:{useOpenFilm}:{useLibrary}:{useLive}:{v.Max3dModels}:{v.StockImagesPerScene}:{v.StockClipsPerScene}:{StageOrientation(c)}" : "no-stock");
         MediaManifest? m = null;
         StockCandidates? stock = null;
         if (File.Exists(MediaManifestPath(c)))
@@ -240,7 +244,7 @@ public sealed partial class JobRunner
                     if (Directory.Exists(d)) PathGuard.SafeDeleteDirectory(c.WorkRoot, d, s => c.Log.Debug(s));
                 Directory.CreateDirectory(cacheDir);
                 // Sahnalar va rasmlar soni oldindan belgilanmaydi: ovoz uzunligi va temp (shablon kesimlari yoki format standarti) dan chiqadi.
-                var plan = useLibrary
+                var plan = useLibrary || useLive
                     ? await _x.Visuals.PlanShotsAsync(script.SubtitleText, cues, c.S.ChannelContext?.MontageBlock ?? "", audioSec, pace, c.Log, c.Ct).ConfigureAwait(false)
                     : await _x.Visuals.PlanMediaAsync(script.SubtitleText, cues, c.S.ChannelContext?.MontageBlock ?? "", v.MaxMedia, c.Log, c.Ct).ConfigureAwait(false);
                 var photos = plan.Items.Where(i => i.Kind == MediaKinds.Photo).ToList();
@@ -251,7 +255,7 @@ public sealed partial class JobRunner
                 var libPlan = plan;
                 if (useStock)
                 {
-                    stock = await FetchStockAsync(c, plan, stockDir, useLibrary, useOpenFilm).ConfigureAwait(false) ?? new StockCandidates();
+                    stock = await FetchStockAsync(c, plan, stockDir, useLibrary, useOpenFilm, useLive).ConfigureAwait(false) ?? new StockCandidates();
                     // Bo'sh natija ham keshlanadi: tuzatish sikllarida qayta qidirilmaydi.
                     stock.PlanHash = planHash;
                     Directory.CreateDirectory(stockDir);
@@ -289,7 +293,7 @@ public sealed partial class JobRunner
     /// (o'qib bo'lmaydigani tashlanadi, haqiqiy o'lcham/davomiylik yoziladi), sahna papkasiga img1.jpg / clip1.mp4 nomi bilan qo'yiladi va
     /// har sahnaga kontakt varaq yasaladi. Xato videoni to'xtatmaydi: null - fotolar MediaLibrary'dan olinadi.
     /// </summary>
-    private async Task<StockCandidates?> FetchStockAsync(JobContext c, MediaPlan plan, string stockDir, bool useLibrary = false, bool useOpenFilm = true)
+    private async Task<StockCandidates?> FetchStockAsync(JobContext c, MediaPlan plan, string stockDir, bool useLibrary = false, bool useOpenFilm = true, bool useLive = false)
     {
         var v = c.S.Visuals;
         var reqs = plan.Items.Where(i => i.Kind == MediaKinds.Photo)
@@ -312,6 +316,22 @@ public sealed partial class JobRunner
             foreach (var r in reqs)
                 if (raw.Scenes.All(s => s.Id != r.Id)) raw.Scenes.Add(new StockScene { Id = r.Id, Query = r.Query, Purpose = r.Purpose, At = r.At, SceneType = SceneTypes.Normalize(r.SceneType), Elements = r.Elements });
             raw.Scenes = raw.Scenes.OrderBy(s => s.Id, StringComparer.Ordinal).ToList();
+            // 1b) Jonli manbalar (bazasiz, video paytida): fotolar, 3D ikonlar va aylanadigan 3D modellar - har sahnaga turiga qarab.
+            if (useLive)
+            {
+                try
+                {
+                    if (_x.Live is IMaxModels mm) mm.MaxModels = Math.Max(0, v.Max3dModels);
+                    var live = await _x.Live!.FetchAsync(reqs, Path.Combine(stockDir, "live"), options, c.Log, c.Ct).ConfigureAwait(false);
+                    foreach (var s in live.Scenes)
+                    {
+                        var target = raw.Scenes.First(x => x.Id == s.Id);
+                        target.Candidates.AddRange(s.Candidates);
+                        target.Notes.AddRange(s.Notes);
+                    }
+                }
+                catch (Exception e) when (e is not OperationCanceledException) { c.Log.Warn($"Jonli manbalar ishlamadi, stok qidiruvga o'tildi: {e.Message}", "Media"); }
+            }
             // 2) Kutubxonada yetarli bo'lmagan sahnalar (kerakli elementdan kam nomzod) - OpenFilm stok (Pexels/Pixabay, video parchalar ham).
             var gaps = reqs.Where(r => raw.Scenes.First(s => s.Id == r.Id).Candidates.Count < Math.Max(1, r.Elements)).ToList();
             if (useOpenFilm && gaps.Count > 0)
@@ -330,8 +350,20 @@ public sealed partial class JobRunner
                 var dir = Path.Combine(stockDir, scene.Id);
                 Directory.CreateDirectory(dir);
                 var kept = new List<StockCandidate>();
-                int ni = 0, nv = 0;
-                foreach (var x in scene.Candidates.OrderBy(x => x.Type == StockTypes.Video ? 1 : 0))
+                int ni = 0, nv = 0, nm = 0;
+                foreach (var x in scene.Candidates.Where(x => x.Type == StockTypes.Model))
+                {
+                    // 3D model: papkasi bilan (glTF yonidagi .bin va teksturalar) ko'chiriladi; ffprobe kerak emas.
+                    var src = Path.GetDirectoryName(x.File)!;
+                    var mdir = Path.Combine(dir, $"model{++nm}");
+                    if (Directory.Exists(mdir)) PathGuard.SafeDeleteDirectory(c.WorkRoot, mdir, s => c.Log.Debug(s));
+                    CopyDir(src, mdir);
+                    x.Label = $"M{nm}";
+                    x.File = $"{scene.Id}/model{nm}/{Path.GetFileName(x.File)}";
+                    if (x.Preview.Length > 0) x.Preview = $"{scene.Id}/model{nm}/{Path.GetFileName(x.Preview)}";
+                    kept.Add(x);
+                }
+                foreach (var x in scene.Candidates.Where(x => x.Type != StockTypes.Model).OrderBy(x => x.Type == StockTypes.Video ? 1 : 0))
                 {
                     var video = x.Type == StockTypes.Video;
                     MediaInfo info;
@@ -339,6 +371,8 @@ public sealed partial class JobRunner
                     catch (Exception e) when (e is not OperationCanceledException) { scene.Notes.Add($"{Path.GetFileName(x.File)} o'qilmadi: {e.Message}"); continue; }
                     if (!info.HasVideo || (video && info.Duration < 1)) { scene.Notes.Add($"{Path.GetFileName(x.File)}: rasm/video oqimi yo'q"); continue; }
                     if (info.Width > 0) { x.Width = info.Width; x.Height = info.Height; }
+                    // Fotosurat kadrning katta qismini egallaydi: kichigi (ikon/cutout emas) olinmaydi.
+                    if (!video && x.Kind == "photo" && x.Provider.StartsWith("live:") && Math.Max(x.Width, x.Height) < 900) { scene.Notes.Add($"{Path.GetFileName(x.File)}: kichik ({x.Width}x{x.Height})"); continue; }
                     if (video) x.Duration = Math.Round(info.Duration, 2);
                     var ext = video ? ".mp4" : (Path.GetExtension(x.File) is { Length: > 1 } e2 ? e2.ToLowerInvariant() : ".jpg");
                     var name = video ? $"clip{++nv}{ext}" : $"img{++ni}{ext}";
@@ -357,7 +391,7 @@ public sealed partial class JobRunner
                 }
             }
             // Asl yuklamalar endi sahna papkalarida: ikki nusxa disk egallamasin (loglar qoladi).
-            foreach (var sub in new[] { Path.Combine(stockDir, "openfilm", "assets"), Path.Combine(stockDir, "library") })
+            foreach (var sub in new[] { Path.Combine(stockDir, "openfilm", "assets"), Path.Combine(stockDir, "library"), Path.Combine(stockDir, "live") })
                 try { if (Directory.Exists(sub)) PathGuard.SafeDeleteDirectory(c.WorkRoot, sub, s => c.Log.Debug(s)); } catch { }
             c.Log.Info($"Stok nomzodlar tayyor: {raw.Scenes.Count(s => s.Candidates.Count > 0)}/{raw.Scenes.Count} sahna, {raw.Scenes.Sum(s => s.Images)} rasm, {raw.Scenes.Sum(s => s.Clips)} video " +
                        $"({raw.Scenes.SelectMany(s => s.Candidates).Sum(x => x.Bytes) / 1048576.0:0} MB). Tanlovni Claude qiladi.", "Media");
@@ -385,6 +419,11 @@ public sealed partial class JobRunner
         {
             var mark = x.HasAlpha ? " PNG" : x.Kind is { Length: > 0 } kind && kind != "photo" ? " " + kind : "";
             tiles.Add(new SheetTile(Path.Combine(stockDir, x.File), $"{x.Label} {x.Width}x{x.Height}{mark}", k / 6, k % 6));
+            k++;
+        }
+        foreach (var x in scene.Candidates.Where(x => x.Type == StockTypes.Model && x.Preview.Length > 0))
+        {
+            tiles.Add(new SheetTile(Path.Combine(stockDir, x.Preview), $"{x.Label} 3D MODEL", k / 6, k % 6));
             k++;
         }
         var row = (k + 5) / 6;
@@ -419,6 +458,15 @@ public sealed partial class JobRunner
         {
             foreach (var x in s.Candidates)
             {
+                if (x.Type == StockTypes.Model)
+                {
+                    var mdir = Path.GetDirectoryName(Path.Combine(StockCacheDir(c), x.File))!;
+                    var fdir = Path.GetDirectoryName(Path.Combine(c.FilmDir, "assets", "stock", x.File))!;
+                    CopyDir(mdir, fdir, skip: f => f.EndsWith("preview.jpg", StringComparison.OrdinalIgnoreCase));
+                    x.File = "assets/stock/" + x.File;
+                    x.Preview = "";
+                    continue;
+                }
                 var src = Path.Combine(StockCacheDir(c), x.File);
                 var dst = Path.Combine(c.FilmDir, "assets", "stock", x.File);
                 Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
@@ -468,7 +516,19 @@ public sealed partial class JobRunner
         if (unchecked_.Count > 0) c.Log.Warn($"Stok fayl tanlov ro'yxatisiz ishlatilgan: {string.Join(", ", unchecked_)}.", "Edit");
     }
 
-    private static readonly System.Text.RegularExpressions.Regex StockRef = new(@"assets/stock/[A-Za-z0-9_\-]+/[A-Za-z0-9_\-]+\.[A-Za-z0-9]+", System.Text.RegularExpressions.RegexOptions.Compiled);
+    private static readonly System.Text.RegularExpressions.Regex StockRef = new(@"assets/stock/[A-Za-z0-9_\-]+/(?:model\d+/)?[A-Za-z0-9_\-]+\.[A-Za-z0-9]+", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>Papkani (ichidagi papkalar bilan) nusxalaydi; o'zgarmagan katta fayllar qayta yozilmaydi.</summary>
+    private static void CopyDir(string src, string dst, Func<string, bool>? skip = null)
+    {
+        foreach (var f in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+        {
+            if (skip?.Invoke(f) == true) continue;
+            var to = Path.Combine(dst, Path.GetRelativePath(src, f));
+            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+            if (!File.Exists(to) || new FileInfo(to).Length != new FileInfo(f).Length) File.Copy(f, to, true);
+        }
+    }
 
     /// <summary>film/ ichidagi HTML/CSS/JS fayllarda tilga olingan stok fayllar (assets/stock/sNN/...).</summary>
     internal static IReadOnlyCollection<string> StockReferences(string filmDir)
@@ -495,11 +555,15 @@ public sealed partial class JobRunner
     internal async Task RecordLibraryUsageAsync(JobContext c, StockCandidates stock)
     {
         var used = StockReferences(c.FilmDir);
-        var lib = stock.Scenes.SelectMany(s => s.Candidates).Where(x => x.AssetId > 0 && used.Contains(x.File)).ToList();
+        var usedAll = stock.Scenes.SelectMany(s => s.Candidates).Where(x => used.Contains(x.File)).ToList();
+        var lib = usedAll.Where(x => x.AssetId > 0).ToList();
         c.StageMetrics["library_used"] = lib.Count;
+        c.StageMetrics["live_used"] = usedAll.Count(x => x.Provider.StartsWith("live:"));
+        c.StageMetrics["models_used"] = usedAll.Count(x => x.Type == StockTypes.Model);
         try
         {
-            var lines = lib.Where(x => x.Credit.Length > 0).Select(x => x.Credit).Distinct().ToList();
+            // Muallif ko'rsatilishi shart bo'lganlar (CC BY, Icons8 havola) - kutubxona va jonli manbalardan.
+            var lines = usedAll.Where(x => x.Credit.Length > 0 && (x.AssetId > 0 || x.Provider.StartsWith("live:"))).Select(x => x.Credit).Distinct().ToList();
             Directory.CreateDirectory(StockCacheDir(c));
             File.WriteAllText(LibraryCreditsPath(c), string.Join("\n", lines), new UTF8Encoding(false));
         }

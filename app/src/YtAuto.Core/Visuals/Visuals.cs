@@ -167,6 +167,8 @@ public static class StockTypes
 {
     public const string Image = "image";
     public const string Video = "video";
+    /// <summary>Haqiqiy 3D model (.glb/.gltf, sahnada kit/model3d.js bilan aylanadi). File - asosiy fayl, yonidagi fayllar bilan papkada.</summary>
+    public const string Model = "model";
 }
 
 /// <summary>
@@ -208,6 +210,10 @@ public sealed class StockCandidate
     /// <summary>Shaffof fon (PNG): kollaj va qatlamlar uchun.</summary>
     public bool HasAlpha { get; set; }
     public string License { get; set; } = "";
+    /// <summary>Nomzod nomi (3D model, ikon) - Claude'ga ko'rsatiladi.</summary>
+    public string Title { get; set; } = "";
+    /// <summary>3D model uchun ko'rib chiqish rasmi (kontakt varaqqa; videoda ishlatilmaydi). Bo'lmasa "".</summary>
+    public string Preview { get; set; } = "";
 }
 
 /// <summary>Bitta sahna: so'rov va unga topilgan nomzodlar.</summary>
@@ -298,6 +304,9 @@ public interface IStockMediaSource
     /// </summary>
     Task<StockCandidates> FetchAsync(IReadOnlyList<StockRequest> scenes, string workDir, StockOptions options, IJobLog log, CancellationToken ct);
 }
+
+/// <summary>Bitta videoga 3D modellar chegarasini qabul qiladigan manba.</summary>
+public interface IMaxModels { int MaxModels { get; set; } }
 
 /// <summary>Kontakt varaqdagi bitta katak: rasm fayli, ustidagi yozuv va o'rni (qator, ustun).</summary>
 public sealed record SheetTile(string Path, string Label, int Row, int Col);

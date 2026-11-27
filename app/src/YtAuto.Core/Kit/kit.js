@@ -171,7 +171,12 @@ export function whipOut(el, t, total, { dur = 0.25, dir = -1 } = {}) {
   el.style.translate = `${dir * p * 220}px 0`;
 }
 
-/** Helper: declare the page for OpenFilm. draw(t) is called for every frame. */
+/** Helper: declare the page for OpenFilm. draw(t) is called for every frame. `ready`: promise(s) or functions returning one
+ *  (functions run only when the host waits for the page, e.g. () => model.load()). */
 export function page(duration, draw, { ready } = {}) {
-  window.film = { duration, frame: (t) => draw(t), ready: ready ?? imagesReady() };
+  let p = null;
+  window.film = {
+    duration, frame: (t) => draw(t),
+    get ready() { return p ??= Promise.all([imagesReady(), ...[].concat(ready ?? []).map((r) => (typeof r === "function" ? r() : r))]); },
+  };
 }

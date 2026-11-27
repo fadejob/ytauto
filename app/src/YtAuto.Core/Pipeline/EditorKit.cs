@@ -10,21 +10,33 @@ namespace YtAuto.Core.Pipeline;
 public static class EditorKit
 {
     public const string Dir = "kit";
-    private static readonly string[] Files = { "kit.js", "kit.css", "README.md" };
+    private const string Prefix = "YtAuto.Kit.";
 
-    public static string Read(string name)
+    /// <summary>Kit fayllari (kit/ ga nisbiy yo'l, "/" bilan): kit.js, kit.css, model3d.js, three/... .</summary>
+    public static IReadOnlyList<string> Files =>
+        typeof(EditorKit).Assembly.GetManifestResourceNames().Where(n => n.StartsWith(Prefix, StringComparison.Ordinal))
+            .Select(n => n[Prefix.Length..].Replace('\\', '/')).OrderBy(n => n, StringComparer.Ordinal).ToList();
+
+    private static Stream Open(string rel) =>
+        typeof(EditorKit).Assembly.GetManifestResourceStream(Prefix + rel.Replace('/', '\\'))
+        ?? typeof(EditorKit).Assembly.GetManifestResourceStream(Prefix + rel)
+        ?? throw new InvalidOperationException("Kit fayli exe ichida topilmadi: " + rel);
+
+    public static string Read(string rel)
     {
-        var asm = typeof(EditorKit).Assembly;
-        using var s = asm.GetManifestResourceStream("YtAuto.Kit." + name)
-            ?? throw new InvalidOperationException("Kit fayli exe ichida topilmadi: " + name);
-        using var r = new StreamReader(s, Encoding.UTF8);
+        using var r = new StreamReader(Open(rel), Encoding.UTF8);
         return r.ReadToEnd();
     }
 
     public static void WriteTo(string filmDir)
     {
-        var dir = Path.Combine(filmDir, Dir);
-        Directory.CreateDirectory(dir);
-        foreach (var f in Files) File.WriteAllText(Path.Combine(dir, f), Read(f), new UTF8Encoding(false));
+        foreach (var rel in Files)
+        {
+            var path = Path.Combine(filmDir, Dir, rel.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            using var src = Open(rel);
+            using var dst = File.Create(path);
+            src.CopyTo(dst);
+        }
     }
 }

@@ -32,6 +32,11 @@ public sealed class PipelineServices
     public Visuals.IStockMediaSource? Library { get; init; }
     /// <summary>Kutubxona katalogi: videoda ishlatilgan rasmlarni yozish (shu kanalda takrorlanmasin).</summary>
     public Visuals.IAssetCatalog? AssetCatalog { get; init; }
+    /// <summary>
+    /// Jonli ko'p manbali qidiruv (bazasiz): Wikimedia/NASA fotolari, 3D ikonlar (3dicons, Icons8 3D), aylanadigan 3D modellar
+    /// (Poly Haven, Objaverse). Kutubxonadan keyin, OpenFilm stokdan oldin ishlaydi.
+    /// </summary>
+    public Visuals.IStockMediaSource? Live { get; init; }
     /// <summary>Fon musiqasi fayllarini (bot serveridan) yuklab, lokal keshda saqlaydi (berilmasa - musiqasiz).</summary>
     public IMusicCache? Music { get; init; }
     /// <summary>Demo video (MCP): ssenariy yozuvchi (Gemini, 2 bosqich), materiallarni yuklab oluvchi va natijani serverga yuboruvchi.</summary>
