@@ -4,6 +4,7 @@
 |---|---|
 | [`app/`](app/) | **YtAuto** — Windows desktop ilova va worker (C# / .NET 10): mavzudan YouTube videogacha. Batafsil: [app/README.md](app/README.md) |
 | [`bot/`](bot/) | **Telegram web app** (Next.js): mavzular, "Hozir chiqarish", promptlar va Groq AI yordamchi — Supabase orqali. Batafsil: [bot/README.md](bot/README.md) |
+| [`library/`](library/) | **Rasm kutubxonasi zavodi** (Python): Wikimedia/NASA tanlangan fotolari, fondan ajratilgan PNG'lar, Poly Haven 3D renderlari — litsenziyasi tekshirilgan holda `ytauto.assets` ga. Worker har sahnaga shu yerdan qidiradi. Batafsil: [library/README.md](library/README.md) |
 | [`bot/` → `/api/mcp`](bot/README.md#claude-code-orqali-demo-video--mcp-sxema-v5) | **MCP server**: Claude Code loyihani o'rganib, screenshot/action videolarni yuboradi — YtAuto ulardan demo video yaratadi (ssenariy, ovoz, montaj, render) va so'ralsa asosiy YouTube kanaliga chiqaradi. |
 
 Ikkalasi bitta online bazadan (Supabase PostgreSQL, `ytauto` sxemasi) foydalanadi. Baza **ko'p foydalanuvchili**: sxema —

@@ -1,0 +1,7 @@
+requests>=2.31
+Pillow>=10
+numpy>=1.26
+scipy>=1.11
+psycopg[binary]>=3.1
+# Ixtiyoriy: fotolardan fondan ajratilgan PNG (--cutouts). CPU'da ishlaydi.
+# rembg>=2.0

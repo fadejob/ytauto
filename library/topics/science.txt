@@ -1,0 +1,91 @@
+# Ilm-fan mavzulari: har qator - Wikimedia/NASA qidiruv so'rovi (inglizcha). Kerakli mavzularni qo'shing.
+# Biologiya
+cell biology
+mitochondria
+neuron
+brain
+DNA
+chromosome
+bacteria
+virus
+microscope
+red blood cell
+heart anatomy
+human skeleton
+lungs
+eye anatomy
+honey bee
+butterfly
+ant
+spider
+octopus
+jellyfish
+coral reef
+shark
+whale
+dolphin
+bird flight
+eagle
+owl
+frog
+chameleon
+snake
+tiger
+elephant
+lion
+wolf
+mushroom fungus
+moss
+leaf
+flower pollination
+seed germination
+tree rings
+rainforest
+desert
+# Kimyo va fizika
+chemistry laboratory
+test tube
+crystal
+mineral
+quartz
+salt crystal
+magnet
+lightning
+rainbow
+prism light
+laser
+electric circuit
+battery
+solar panel
+wind turbine
+nuclear power plant
+particle accelerator
+# Yer va iqlim
+volcano
+lava
+earthquake damage
+glacier
+iceberg
+canyon
+waterfall
+cave stalactite
+aurora
+tornado
+hurricane satellite
+clouds
+snowflake
+ocean waves
+sand dunes
+fossil
+dinosaur skeleton
+amber insect
+# Texnika
+microchip
+circuit board
+robot
+engine
+gears
+telescope
+satellite
+3D printer
+drone

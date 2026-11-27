@@ -18,3 +18,7 @@ next-env.d.ts
 
 # Claude Code lokal sozlamalari
 .claude/
+
+# library (Python)
+__pycache__/
+library/.cache/
