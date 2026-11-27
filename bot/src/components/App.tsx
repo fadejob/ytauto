@@ -76,7 +76,7 @@ export default function App() {
     window.setTimeout(() => setToast((t) => (t?.text === text ? null : t)), bad || action ? 5000 : 2800);
   }, []);
 
-  const refresh = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const s = await api<State>("/api/state");
@@ -92,6 +92,9 @@ export default function App() {
       setLoading(false);
     }
   }, [show]);
+  /** Bir vaqtda faqat bitta /api/state: polling, sahifaga qaytish va hodisalar ustma-ust tushsa - davom etayotgan so'rov kutiladi. */
+  const inflight = useRef<Promise<void> | null>(null);
+  const refresh = useCallback(() => (inflight.current ??= load().finally(() => { inflight.current = null; })), [load]);
 
   /** Server javobida kelgan yangi holat (kanal almashtirish, uzish): alohida /api/state so'rovi kerak emas. */
   const applyState = useCallback((s: State) => { setState(s); cache.set("state", s); }, []);

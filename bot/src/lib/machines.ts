@@ -46,14 +46,15 @@ export function toMachine(r: Row): Machine {
 
 export async function getMachines(): Promise<Machine[]> {
   if (isDemo()) return demoMachines();
-  const rows = await sql()<Row[]>`SELECT * FROM ytauto.machines ORDER BY last_seen_utc DESC`;
-  // Kerakli dasturlar holati (har kompyuter yozadi).
-  const st = await sql()`SELECT key, value FROM ytauto.shared_settings WHERE key LIKE 'tools.status.%'`;
+  // Uchala o'qish bir-biriga bog'liq emas - birga (pipelining): kompyuterlar, dasturlar holati, sozlama o'zgargan vaqt.
+  const [rows, st, [chg]] = await Promise.all([
+    sql()<Row[]>`SELECT * FROM ytauto.machines ORDER BY last_seen_utc DESC`,
+    sql()`SELECT key, value FROM ytauto.shared_settings WHERE key LIKE 'tools.status.%'`,
+    sql()<{ at: Date | null }[]>`SELECT max(updated_at_utc) AS at FROM ytauto.shared_settings WHERE key IN ('config', 'schedule', 'youtube.oauth')`,
+  ]);
   const byMachine = new Map<string, { items?: { key?: string; name: string; ok: boolean; detail: string }[]; updatedAtUtc?: string }>();
   for (const s of st) { try { byMachine.set((s.key as string).slice("tools.status.".length), JSON.parse(s.value as string)); } catch { /* buzilgan */ } }
   // Tekshiruv natijasidan keyin bot sozlamalari o'zgargan bo'lsa (masalan Gemini kaliti qo'shilgan) natija eskirgan deb belgilanadi.
-  const [chg] = await sql()<{ at: Date | null }[]>`
-    SELECT max(updated_at_utc) AS at FROM ytauto.shared_settings WHERE key IN ('config', 'schedule', 'youtube.oauth')`;
   return rows.map((r) => {
     const m = toMachine(r);
     if (chg?.at && r.check_finished_at_utc && chg.at > r.check_finished_at_utc) m.check.stale = true;

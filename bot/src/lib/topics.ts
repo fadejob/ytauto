@@ -20,12 +20,19 @@ export const GUEST_NO_PUBLISH_NOW =
   "Qo'shimcha tokenda «Hozir chiqarish» yo'q: video token bergan hisob kompyuterida ish vaqtida tayyorlanadi va chiqish vaqtida YouTube'ga chiqadi.";
 
 /** Shablon va format: berilmasa bot sozlamasidagi (yoki katalogdagi) standart; berilsa katalogda borligi tekshiriladi. */
-export async function pickTemplateFormat(cat: Catalog, template?: string, format?: number, voice?: string): Promise<{ template: string; format: number; voice: string } | { error: string }> {
-  const cfg = await getConfig();
+type PickCtx = { cfg: Awaited<ReturnType<typeof getConfig>>; channelVoice: string };
+
+/** Shablon/ovoz tanlovi uchun kerakli sozlamalar - bir so'rovda bir marta (40 ta mavzu bo'lsa ham). */
+export async function pickContext(cat: Catalog): Promise<PickCtx> {
+  const [cfg, channelVoice] = await Promise.all([getConfig(), isDemo() ? Promise.resolve("") : channelVoiceProfile(cat)]);
+  return { cfg, channelVoice };
+}
+
+export async function pickTemplateFormat(cat: Catalog, template?: string, format?: number, voice?: string, ctx?: PickCtx): Promise<{ template: string; format: number; voice: string } | { error: string }> {
+  const { cfg, channelVoice } = ctx ?? (await pickContext(cat));
   const tpl = template !== undefined ? template : cfg.defaults.template || cat.defaults.template;
   const fmt = format !== undefined ? format : cfg.defaults.format ?? cat.defaults.format;
   // Ovoz: aniq berilgan → bot sozlamasidagi standart → kanal tahlili tavsiyasi (kanal ovoziga mos) → katalog standarti.
-  const channelVoice = isDemo() ? "" : await channelVoiceProfile(cat);
   const vc = voice !== undefined && voice !== "" ? voice : cfg.defaults.voiceProfile || channelVoice || cat.defaults.voiceProfile || cat.voiceProfiles[0] || "";
   if (![0, 1, 2].includes(fmt)) return { error: "Format noto'g'ri (0 = 16:9, 1 = Shorts 9:16, 2 = 1:1)." };
   if (tpl && cat.pendingTemplates.some((p) => p.name === tpl))
@@ -228,8 +235,10 @@ export async function applyAction(a: Action, opts: { maxTopics?: number } = {}):
     }
     return demoApply(a);
   }
-  const cat = await getCatalog();
-  const tz = cat.youtube.timeZone;
+  // Katalog (shablon/ovoz/vaqt zonasi) faqat yaratish, o'zgartirish va vaqtni ko'chirishda kerak - o'chirish, bekor qilish,
+  // hozir chiqarish va h.k. uni yuklamaydi.
+  const cat = a.type === "create_topics" || a.type === "update_topic" || a.type === "reschedule" ? await getCatalog() : (null as unknown as Catalog);
+  const tz = cat?.youtube.timeZone ?? "";
   switch (a.type) {
     case "create_topics": {
       if (!(await geminiReady())) return { ok: false, message: GEMINI_REQUIRED };
@@ -241,10 +250,11 @@ export async function applyAction(a: Action, opts: { maxTopics?: number } = {}):
       if (items.length === 0) return { ok: false, message: "Mavzu kiritilmagan." };
       const maxTopics = opts.maxTopics ?? MAX_TOPICS_PER_REQUEST;
       if (items.length > maxTopics) return { ok: false, message: `Bir vaqtda eng ko'pi ${maxTopics} ta mavzu qo'shiladi.` };
-      const badMusic = await checkTopicMusic(items.map((t) => (t as NewTopic).music));
+      // Mustaqil tekshiruvlar birga (pipelining). Mavzu hozirgi faol kanalga bog'lanadi: keyin kanal almashtirilsa ham video shu kanalga yuklanadi.
+      const [badMusic, channelId, pickCtx] = await Promise.all([
+        checkTopicMusic(items.map((t) => (t as NewTopic).music)), activeChannelId(), pickContext(cat),
+      ]);
       if (badMusic) return { ok: false, message: badMusic };
-      // Mavzu hozirgi faol kanalga bog'lanadi: keyin kanal almashtirilsa ham video shu kanalga yuklanadi.
-      const channelId = await activeChannelId();
       const auto = await suggestDates(items.length, cat, channelId);
       const rows = [];
       for (let i = 0; i < items.length; i++) {
@@ -253,7 +263,7 @@ export async function applyAction(a: Action, opts: { maxTopics?: number } = {}):
         if (given === "invalid") return { ok: false, message: `Sana formati noto'g'ri: ${t.publishAt} (YYYY-MM-DD HH:mm).` };
         const at = given ?? auto[i];
         if (at.getTime() <= Date.now() + MIN_LEAD_MS) return { ok: false, message: `"${t.topic}": chiqish vaqti kamida 30 daqiqa kelajakda bo'lsin.` };
-        const tf = await pickTemplateFormat(cat, t.template, t.format, t.voice);
+        const tf = await pickTemplateFormat(cat, t.template, t.format, t.voice, pickCtx);
         if ("error" in tf) return { ok: false, message: tf.error };
         const manualErr = checkManual(items[i].script, items[i].title, !!items[i].audioPath);
         if (manualErr) return { ok: false, message: `"${t.topic}": ${manualErr}` };

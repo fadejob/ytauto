@@ -7,27 +7,19 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, cache } from "./client";
-import type { BotConfig, BotConfigInput } from "./types";
+import { diffDraft, toDraft, type ConfigDraft } from "./config-draft";
+import type { BotConfig } from "./types";
 
-export type ConfigDraft = BotConfigInput;
-
-export const toDraft = (c: BotConfig): ConfigDraft => ({
-  gemini: { ...c.gemini, apiKeys: c.gemini.apiKeys.map((k) => ({ ...k })) },
-  limits: { ...c.limits },
-  defaults: { ...c.defaults },
-  youtube: { ...c.youtube, clientSecret: "" },
-  openFilm: { ...c.openFilm },
-  visuals: { ...c.visuals, pexelsApiKey: "", pixabayApiKey: "" },
-  claude: { ...c.claude },
-  voice: { profiles: c.voice.profiles.map((p) => ({ ...p })), settings: { ...c.voice.settings } },
-});
+export { toDraft, type ConfigDraft };
 
 /** Bot config: avval keshdan (darhol ko'rinadi), keyin serverdan. error - yuklab bo'lmadi (shu sahifada ko'rsatiladi). */
 export function useBotConfig() {
   const [config, setConfig] = useState<BotConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Serverdan kelgan eng so'nggi config (saqlash shu asosda farq hisoblaydi). */
+  const latest = useRef<BotConfig | null>(null);
   const reload = useCallback(async () => {
-    try { const c = await api<BotConfig>("/api/config"); setConfig(c); cache.set("config", c); setError(null); }
+    try { const c = await api<BotConfig>("/api/config"); latest.current = c; setConfig(c); cache.set("config", c); setError(null); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   }, []);
   useEffect(() => {
@@ -38,15 +30,18 @@ export function useBotConfig() {
   }, [reload]);
   /**
    * Faqat shu kartaning o'zgarishi bilan saqlaydi. Xato bo'lsa throw (useBusy toast qiladi).
-   * Asos har safar serverdan yangi olinadi: ko'rsatilgan config keshdan (localStorage) bo'lishi yoki boshqa qurilma/kompyuterda
-   * o'zgargan bo'lishi mumkin - eski asos bilan saqlansa boshqa qismlar (masalan boshqa joyda qo'shilgan Gemini kalitlari) qaytib qolardi.
+   * Bitta so'rov: faqat O'ZGARGAN maydonlar yuboriladi ({patch}), server ularni bazadagi eng so'nggi config ustiga qo'yadi - ko'rsatilgan
+   * config keshdan yoki eski bo'lsa ham boshqa qismlar (masalan boshqa qurilmada qo'shilgan Gemini kalitlari) qaytib qolmaydi.
    * Saqlashlar navbat bilan bajariladi: ikki karta birdan saqlansa, ikkinchisi birinchisining natijasi ustiga yoziladi.
    */
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const saveConfig = useCallback((patch: (d: ConfigDraft) => ConfigDraft): Promise<BotConfig> => {
     const job = queue.current.catch(() => {}).then(async () => {
-      const base = await api<BotConfig>("/api/config");
-      const next = await api<BotConfig>("/api/config", patch(toDraft(base)));
+      // Asos - eng so'nggi ma'lum config (oldingi saqlash natijasi yoki ko'rsatilgani); yo'q bo'lsa serverdan.
+      const base = latest.current ?? (await api<BotConfig>("/api/config"));
+      const before = toDraft(base);
+      const next = await api<BotConfig>("/api/config", { patch: diffDraft(before, patch(toDraft(base))) });
+      latest.current = next;
       setConfig(next); cache.set("config", next); setError(null);
       return next;
     });
