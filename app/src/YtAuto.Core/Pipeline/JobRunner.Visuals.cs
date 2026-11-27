@@ -16,7 +16,7 @@ namespace YtAuto.Core.Pipeline;
 public sealed partial class JobRunner
 {
     /// <summary>Uslub to'plami: shablon kadrlari (edit/ ga nisbiy), STYLE_GUIDE.md va MOTION_GUIDE.md matni (bo'lmasa "").</summary>
-    internal sealed record TemplateStyle(IReadOnlyList<string> Frames, IReadOnlyList<string> FrameFiles, string Guide, string Motion = "");
+    internal sealed record TemplateStyle(IReadOnlyList<string> Frames, IReadOnlyList<string> FrameFiles, string Guide, string Motion = "", double? CutSec = null);
 
     private static readonly double[] StyleFractions = { 0.03, 0.1, 0.18, 0.26, 0.34, 0.42, 0.5, 0.58, 0.66, 0.74, 0.84, 0.95 };
 
@@ -82,6 +82,7 @@ public sealed partial class JobRunner
         }
 
         var motion = await PrepareMotionGuideAsync(c, tpl!, refMp4, info.Duration, cacheDir).ConfigureAwait(false);
+        var cutSec = await MeasureTemplatePaceAsync(c, tpl!, refMp4, info.Duration, cacheDir).ConfigureAwait(false);
 
         // Claude o'z papkasi ichidagilarni o'qiydi: kadrlar va qo'llanma edit/reference/ ga nusxalanadi.
         var refDir = Path.Combine(c.EditDir, "reference");
@@ -95,7 +96,32 @@ public sealed partial class JobRunner
         }
         if (guide.Length > 0) File.WriteAllText(Path.Combine(refDir, "STYLE_GUIDE.md"), guide, new UTF8Encoding(false));
         if (motion.Length > 0) File.WriteAllText(Path.Combine(refDir, "MOTION_GUIDE.md"), motion, new UTF8Encoding(false));
-        return new(rel, cached, guide, motion);
+        return new(rel, cached, guide, motion, cutSec);
+    }
+
+    /// <summary>
+    /// Shablon tempi: kesimlar orasidagi o'rtacha vaqt (ffmpeg scene detection), shablon bo'yicha keshlanadi (pace.txt; "0" - o'lchab
+    /// bo'lmadi). Video rasmlari soni va kadr almashish tezligi shundan olinadi.
+    /// </summary>
+    private async Task<double?> MeasureTemplatePaceAsync(JobContext c, TemplateDefinition tpl, string refMp4, double duration, string cacheDir)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        var path = Path.Combine(cacheDir, "pace.txt");
+        if (File.Exists(path) && double.TryParse(File.ReadAllText(path).Trim(), NumberStyles.Float, inv, out var cached))
+            return cached > 0 ? cached : null;
+        try
+        {
+            var cuts = await _x.Media.SceneCutsAsync(refMp4, 0.3, c.Ct).ConfigureAwait(false);
+            var pace = Pacing.FromCuts(cuts, duration);
+            File.WriteAllText(path, (pace ?? 0).ToString("0.00", inv));
+            if (pace is double p) c.Log.Info($"Shablon «{tpl.Name}» tempi: {cuts.Count} kesim, o'rtacha kadr {p:0.0} s.", "Edit");
+            return pace;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            c.Log.Debug($"Shablon tempi o'lchanmadi: {e.Message}", "Edit");
+            return null;
+        }
     }
 
     /// <summary>
@@ -149,7 +175,7 @@ public sealed partial class JobRunner
     internal const string StockSelectionFile = "media_selection.json";
 
     /// <summary>Tayyorlangan real media: ikon/logo/fotolar (MediaLibrary) va stok nomzodlar (OpenFilm). Ikkalasi ham ixtiyoriy.</summary>
-    internal sealed record PreparedMedia(MediaManifest? Media, StockCandidates? Stock);
+    internal sealed record PreparedMedia(MediaManifest? Media, StockCandidates? Stock, double Pace = Pacing.VerticalDefault);
 
     private static string StageOrientation(JobContext c) { var (w, h) = c.StageSize; return h > w ? "portrait" : "landscape"; }
 
@@ -159,24 +185,31 @@ public sealed partial class JobRunner
         return v.OpenFilmStock && (v.StockImagesPerScene > 0 || v.StockClipsPerScene > 0) && _x.Stock is { IsConfigured: true };
     }
 
+    /// <summary>Umumiy kutubxona yoqilgan va ulangan (online baza).</summary>
+    private bool LibraryEnabled(JobContext c) => c.S.Visuals.AssetLibrary && _x.Library is { IsConfigured: true };
+
     /// <summary>
     /// Real rasmlar: Gemini ssenariydan rasm rejasini tuzadi. "photo" bandlari (sahnalar) uchun - OpenFilm stok qidiruvi (har biriga bir nechta
     /// rasm va video nomzod; tanlovni Claude qiladi). Ikon/logolar va OpenFilm hech narsa topmagan fotolar - ochiq manbalardan (MediaLibrary).
     /// Natija ssenariy matni va sozlama bo'yicha keshlanadi (tuzatish sikllarida qayta yuklanmaydi).
     /// </summary>
-    private async Task<PreparedMedia> PrepareMediaAsync(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues)
+    private async Task<PreparedMedia> PrepareMediaAsync(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues, double? templateCutSec = null)
     {
         var v = c.S.Visuals;
-        if (!v.RealMedia || v.MaxMedia <= 0 || _x.Visuals is null) return new(null, null);
-        var useStock = StockEnabled(c);
-        if (v.OpenFilmStock && !useStock && _x.Stock is not null)
+        var pace = Pacing.SecondsPerShot(c.Job.Format, templateCutSec);
+        if (!v.RealMedia || v.MaxMedia <= 0 || _x.Visuals is null) return new(null, null, pace);
+        var useOpenFilm = StockEnabled(c);
+        var useLibrary = LibraryEnabled(c);
+        var useStock = useOpenFilm || useLibrary;
+        if (v.OpenFilmStock && !useOpenFilm && _x.Stock is not null)
             c.Log.Info("Stok video/rasm nomzodlari o'chiq: botda (Sozlamalar → Video sifati) Pexels yoki Pixabay kalitini kiriting - OpenFilm ular orqali qidiradi.", "Media");
-        if (_x.MediaLibrary is null && !useStock) return new(null, null);
+        if (_x.MediaLibrary is null && !useStock) return new(null, null, pace);
         var inv = CultureInfo.InvariantCulture;
         var cacheDir = MediaCacheDir(c);
         var stockDir = StockCacheDir(c);
-        var planHash = Hashing.Sha256Text("media-v2", script.SubtitleText, v.MaxMedia.ToString(inv),
-            useStock ? $"stock:{v.StockImagesPerScene}:{v.StockClipsPerScene}:{StageOrientation(c)}" : "no-stock");
+        var audioSec = c.Job.AudioDurationSec ?? (cues.Count > 0 ? cues[^1].End : 0);
+        var planHash = Hashing.Sha256Text("media-v3", script.SubtitleText, v.MaxMedia.ToString(inv), pace.ToString("0.00", inv),
+            useStock ? $"stock:{useOpenFilm}:{useLibrary}:{v.StockImagesPerScene}:{v.StockClipsPerScene}:{StageOrientation(c)}" : "no-stock");
         MediaManifest? m = null;
         StockCandidates? stock = null;
         if (File.Exists(MediaManifestPath(c)))
@@ -206,12 +239,19 @@ public sealed partial class JobRunner
                 foreach (var d in new[] { cacheDir, stockDir })
                     if (Directory.Exists(d)) PathGuard.SafeDeleteDirectory(c.WorkRoot, d, s => c.Log.Debug(s));
                 Directory.CreateDirectory(cacheDir);
-                var plan = await _x.Visuals.PlanMediaAsync(script.SubtitleText, cues, c.S.ChannelContext?.MontageBlock ?? "", v.MaxMedia, c.Log, c.Ct).ConfigureAwait(false);
-                c.Log.Info($"Rasm rejasi: {plan.Items.Count} ta ({string.Join(", ", plan.Items.Select(i => $"{i.Kind}:{i.Query}"))}).", "Media");
+                // Sahnalar va rasmlar soni oldindan belgilanmaydi: ovoz uzunligi va temp (shablon kesimlari yoki format standarti) dan chiqadi.
+                var plan = useLibrary
+                    ? await _x.Visuals.PlanShotsAsync(script.SubtitleText, cues, c.S.ChannelContext?.MontageBlock ?? "", audioSec, pace, c.Log, c.Ct).ConfigureAwait(false)
+                    : await _x.Visuals.PlanMediaAsync(script.SubtitleText, cues, c.S.ChannelContext?.MontageBlock ?? "", v.MaxMedia, c.Log, c.Ct).ConfigureAwait(false);
+                var photos = plan.Items.Where(i => i.Kind == MediaKinds.Photo).ToList();
+                c.Log.Info($"Rasm rejasi (temp {pace:0.0} s/kadr, ~{Pacing.ShotBudget(audioSec, pace)} kadr): {photos.Count} sahna, " +
+                           $"{photos.Sum(i => Math.Max(1, i.Elements))} element, {plan.Items.Count - photos.Count} ikon/logo " +
+                           $"({string.Join(", ", plan.Items.Select(i => i.Kind == MediaKinds.Photo && i.SceneType.Length > 0 ? $"{i.SceneType}x{i.Elements}:{i.Query}" : $"{i.Kind}:{i.Query}"))}).", "Media");
+                c.StageMetrics["pace_sec"] = pace;
                 var libPlan = plan;
                 if (useStock)
                 {
-                    stock = await FetchStockAsync(c, plan, stockDir).ConfigureAwait(false) ?? new StockCandidates();
+                    stock = await FetchStockAsync(c, plan, stockDir, useLibrary, useOpenFilm).ConfigureAwait(false) ?? new StockCandidates();
                     // Bo'sh natija ham keshlanadi: tuzatish sikllarida qayta qidirilmaydi.
                     stock.PlanHash = planHash;
                     Directory.CreateDirectory(stockDir);
@@ -226,7 +266,7 @@ public sealed partial class JobRunner
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 c.Log.Warn($"Real rasmlarni tayyorlab bo'lmadi, video chizilgan grafika bilan davom etadi: {e.Message}", "Media");
-                return new(null, null);
+                return new(null, null, pace);
             }
         }
         var dst = Path.Combine(c.FilmDir, "assets", "media");
@@ -240,7 +280,7 @@ public sealed partial class JobRunner
         c.StageMetrics["media_assets"] = m.Assets.Count;
         c.StageMetrics["media_credits"] = m.Assets.Count(a => a.NeedsCredit);
         var filmStock = stock is { Total: > 0 } ? PlaceStockInFilm(c, stock) : null;
-        return new(m, filmStock);
+        return new(m, filmStock, pace);
     }
 
     /// <summary>
@@ -249,19 +289,42 @@ public sealed partial class JobRunner
     /// (o'qib bo'lmaydigani tashlanadi, haqiqiy o'lcham/davomiylik yoziladi), sahna papkasiga img1.jpg / clip1.mp4 nomi bilan qo'yiladi va
     /// har sahnaga kontakt varaq yasaladi. Xato videoni to'xtatmaydi: null - fotolar MediaLibrary'dan olinadi.
     /// </summary>
-    private async Task<StockCandidates?> FetchStockAsync(JobContext c, MediaPlan plan, string stockDir)
+    private async Task<StockCandidates?> FetchStockAsync(JobContext c, MediaPlan plan, string stockDir, bool useLibrary = false, bool useOpenFilm = true)
     {
         var v = c.S.Visuals;
         var reqs = plan.Items.Where(i => i.Kind == MediaKinds.Photo)
-            .Select((i, k) => new StockRequest($"s{k + 1:00}", i.Query, i.Purpose, i.At)).ToList();
+            .Select((i, k) => new StockRequest($"s{k + 1:00}", i.Query, i.Purpose, i.At, i.SceneType, Math.Max(i.Elements, 1), i.Keywords)).ToList();
         if (reqs.Count == 0) return null;
         var images = Math.Clamp(v.StockImagesPerScene, 0, 8);
         var clips = Math.Clamp(v.StockClipsPerScene, 0, 4);
         try
         {
             Directory.CreateDirectory(stockDir);
-            c.Log.Info($"Stok: OpenFilm {reqs.Count} sahna uchun internetdan qidiradi (har biriga {images} rasm va {clips} video parcha nomzodi).", "Media");
-            var raw = await _x.Stock!.FetchAsync(reqs, Path.Combine(stockDir, "openfilm"), new StockOptions(images, clips, StageOrientation(c)), c.Log, c.Ct).ConfigureAwait(false);
+            var options = new StockOptions(images, clips, StageOrientation(c), c.Job.ChannelId ?? "");
+            // 1) Umumiy kutubxona: tiniq, litsenziyasi tekshirilgan fotolar, shaffof cutout/renderlar (sahna turiga qarab).
+            var raw = new StockCandidates();
+            if (useLibrary)
+            {
+                try { raw = await _x.Library!.FetchAsync(reqs, Path.Combine(stockDir, "library"), options, c.Log, c.Ct).ConfigureAwait(false); }
+                catch (AssetLibraryUnavailableException e) { c.Log.Warn(e.Message + " Sahnalar stok qidiruvdan olinadi.", "Media"); raw = new StockCandidates(); }
+                catch (Exception e) when (e is not OperationCanceledException) { c.Log.Warn($"Kutubxona ishlamadi, stok qidiruvga o'tildi: {e.Message}", "Media"); raw = new StockCandidates(); }
+            }
+            foreach (var r in reqs)
+                if (raw.Scenes.All(s => s.Id != r.Id)) raw.Scenes.Add(new StockScene { Id = r.Id, Query = r.Query, Purpose = r.Purpose, At = r.At, SceneType = SceneTypes.Normalize(r.SceneType), Elements = r.Elements });
+            raw.Scenes = raw.Scenes.OrderBy(s => s.Id, StringComparer.Ordinal).ToList();
+            // 2) Kutubxonada yetarli bo'lmagan sahnalar (kerakli elementdan kam nomzod) - OpenFilm stok (Pexels/Pixabay, video parchalar ham).
+            var gaps = reqs.Where(r => raw.Scenes.First(s => s.Id == r.Id).Candidates.Count < Math.Max(1, r.Elements)).ToList();
+            if (useOpenFilm && gaps.Count > 0)
+            {
+                c.Log.Info($"Stok: OpenFilm {gaps.Count} sahna uchun internetdan qidiradi (har biriga {images} rasm va {clips} video parcha nomzodi).", "Media");
+                var of = await _x.Stock!.FetchAsync(gaps, Path.Combine(stockDir, "openfilm"), options, c.Log, c.Ct).ConfigureAwait(false);
+                foreach (var s in of.Scenes)
+                {
+                    var target = raw.Scenes.First(x => x.Id == s.Id);
+                    target.Candidates.AddRange(s.Candidates);
+                    target.Notes.AddRange(s.Notes);
+                }
+            }
             foreach (var scene in raw.Scenes)
             {
                 var dir = Path.Combine(stockDir, scene.Id);
@@ -294,7 +357,8 @@ public sealed partial class JobRunner
                 }
             }
             // Asl yuklamalar endi sahna papkalarida: ikki nusxa disk egallamasin (loglar qoladi).
-            try { var dl = Path.Combine(stockDir, "openfilm", "assets"); if (Directory.Exists(dl)) PathGuard.SafeDeleteDirectory(c.WorkRoot, dl, s => c.Log.Debug(s)); } catch { }
+            foreach (var sub in new[] { Path.Combine(stockDir, "openfilm", "assets"), Path.Combine(stockDir, "library") })
+                try { if (Directory.Exists(sub)) PathGuard.SafeDeleteDirectory(c.WorkRoot, sub, s => c.Log.Debug(s)); } catch { }
             c.Log.Info($"Stok nomzodlar tayyor: {raw.Scenes.Count(s => s.Candidates.Count > 0)}/{raw.Scenes.Count} sahna, {raw.Scenes.Sum(s => s.Images)} rasm, {raw.Scenes.Sum(s => s.Clips)} video " +
                        $"({raw.Scenes.SelectMany(s => s.Candidates).Sum(x => x.Bytes) / 1048576.0:0} MB). Tanlovni Claude qiladi.", "Media");
             return raw;
@@ -315,10 +379,15 @@ public sealed partial class JobRunner
         var (w, h) = c.StageSize;
         var (tw, th) = h > w ? (216, 384) : (384, 216);
         var tiles = new List<SheetTile>();
-        var col = 0;
+        var k = 0;
+        // Rasmlar 6 tadan qatorga (kutubxona kollaj sahnasiga 12 tagacha nomzod beradi); shaffof PNG'lar "PNG" belgisi bilan.
         foreach (var x in scene.Candidates.Where(x => x.Type == StockTypes.Image))
-            tiles.Add(new SheetTile(Path.Combine(stockDir, x.File), $"{x.Label} {x.Width}x{x.Height}", 0, col++));
-        var row = col > 0 ? 1 : 0;
+        {
+            var mark = x.HasAlpha ? " PNG" : x.Kind is { Length: > 0 } kind && kind != "photo" ? " " + kind : "";
+            tiles.Add(new SheetTile(Path.Combine(stockDir, x.File), $"{x.Label} {x.Width}x{x.Height}{mark}", k / 6, k % 6));
+            k++;
+        }
+        var row = (k + 5) / 6;
         var framesDir = Path.Combine(stockDir, scene.Id, "frames");
         Directory.CreateDirectory(framesDir);
         foreach (var x in scene.Candidates.Where(x => x.Type == StockTypes.Video))
@@ -417,11 +486,48 @@ public sealed partial class JobRunner
         return set;
     }
 
-    /// <summary>YouTube tavsifi uchun: CC BY rasmlar mualliflari (bo'lmasa "").</summary>
+    private string LibraryCreditsPath(JobContext c) => Path.Combine(StockCacheDir(c), "library_credits.txt");
+
+    /// <summary>
+    /// Claude tugagach: videoda haqiqatda ishlatilgan kutubxona rasmlari - (1) muallif ko'rsatilishi shart bo'lganlari (CC BY) video
+    /// tavsifiga, (2) kanal bo'yicha "ishlatilgan" deb yoziladi (keyingi videolarda shu kanalda takrorlanmaydi). Xato videoni to'xtatmaydi.
+    /// </summary>
+    internal async Task RecordLibraryUsageAsync(JobContext c, StockCandidates stock)
+    {
+        var used = StockReferences(c.FilmDir);
+        var lib = stock.Scenes.SelectMany(s => s.Candidates).Where(x => x.AssetId > 0 && used.Contains(x.File)).ToList();
+        c.StageMetrics["library_used"] = lib.Count;
+        try
+        {
+            var lines = lib.Where(x => x.Credit.Length > 0).Select(x => x.Credit).Distinct().ToList();
+            Directory.CreateDirectory(StockCacheDir(c));
+            File.WriteAllText(LibraryCreditsPath(c), string.Join("\n", lines), new UTF8Encoding(false));
+        }
+        catch (Exception e) { c.Log.Debug("Kutubxona mualliflari yozilmadi: " + e.Message, "Edit"); }
+        if (lib.Count == 0 || _x.AssetCatalog is null) return;
+        try
+        {
+            await _x.AssetCatalog.RecordUsageAsync(lib.Select(x => x.AssetId).ToList(), c.Job.ChannelId ?? "", c.Job.Id, c.Ct).ConfigureAwait(false);
+            c.Log.Info($"Kutubxonadan {lib.Count} ta rasm ishlatildi ({lib.Count(x => x.HasAlpha)} tasi shaffof cutout/render).", "Edit");
+        }
+        catch (Exception e) when (e is not OperationCanceledException) { c.Log.Warn("Kutubxona rasmlaridan foydalanish yozilmadi: " + e.Message, "Edit"); }
+    }
+
+    /// <summary>YouTube tavsifi uchun: CC BY rasmlar mualliflari - ochiq manbalar va kutubxona (bo'lmasa "").</summary>
     internal string MediaCreditsBlock(JobContext c)
     {
-        try { return File.Exists(MediaManifestPath(c)) ? MediaManifest.FromJson(File.ReadAllText(MediaManifestPath(c))).CreditsBlock() : ""; }
-        catch { return ""; }
+        var block = "";
+        try { block = File.Exists(MediaManifestPath(c)) ? MediaManifest.FromJson(File.ReadAllText(MediaManifestPath(c))).CreditsBlock() : ""; }
+        catch { }
+        try
+        {
+            var lib = File.Exists(LibraryCreditsPath(c))
+                ? File.ReadAllLines(LibraryCreditsPath(c)).Select(l => l.Trim()).Where(l => l.Length > 0).ToList() : new List<string>();
+            if (lib.Count == 0) return block;
+            var text = string.Join("\n", lib.Select(l => "- " + l));
+            return block.Length == 0 ? "Image credits:\n" + text : block + "\n" + text;
+        }
+        catch { return block; }
     }
 
     /// <summary>

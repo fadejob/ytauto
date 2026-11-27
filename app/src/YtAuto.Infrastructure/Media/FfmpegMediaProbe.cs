@@ -147,6 +147,22 @@ public sealed class FfmpegMediaProbe : IMediaProbe
         if (r.ExitCode != 0 || !File.Exists(outWav)) throw PipelineException.Transient("ffmpeg_tempo", $"Ovoz tezlashtirilmadi ({factor:0.00}x): {err.Trim()}");
     }
 
+    /// <summary>
+    /// Kesimlar: kichik o'lchamda (320 px) dekodlanadi va har kadr oldingisidan <paramref name="threshold"/> (0..1) dan ko'p farq qilsa -
+    /// kesim. showinfo chiqishidagi pts_time o'qiladi.
+    /// </summary>
+    public async Task<IReadOnlyList<double>> SceneCutsAsync(string video, double threshold, CancellationToken ct)
+    {
+        var th = Math.Clamp(threshold, 0.05, 0.9).ToString("0.###", CultureInfo.InvariantCulture);
+        var args = new[] { "-hide_banner", "-nostats", "-i", video, "-an", "-vf", $"scale=320:-2,select='gt(scene,{th})',showinfo", "-f", "null", "-" };
+        var (r, _, err) = await RunAsync(Ffmpeg, args, TimeSpan.FromMinutes(5), ct).ConfigureAwait(false);
+        if (r.ExitCode != 0) throw PipelineException.Transient("ffmpeg_scenes", $"Kesimlar aniqlanmadi: {err.Trim().Split('\n').LastOrDefault()}");
+        var list = new List<double>();
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(err, @"pts_time:\s*([0-9.]+)"))
+            if (double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var t)) list.Add(t);
+        return list;
+    }
+
     public async Task ExtractFrameAsync(string video, double atSec, string outImage, int width, CancellationToken ct)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(outImage)!);

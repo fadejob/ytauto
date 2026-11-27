@@ -244,6 +244,11 @@ public sealed class VisualSettings
     /// <summary>Har sahnaga nechta video parcha nomzodi (OpenFilm bir so'rovda 1-4; 0 - video qidirilmaydi).</summary>
     public int StockClipsPerScene { get; set; } = 3;
     /// <summary>
+    /// Umumiy rasm kutubxonasidan (Wikimedia/NASA tanlangan fotolari, fondan ajratilgan PNG'lar, 3D renderlar) foydalanish. Sahnalar va
+    /// rasmlar soni video tempi va uzunligidan chiqadi (shablon bo'lsa - uning kesimlar tezligidan).
+    /// </summary>
+    public bool AssetLibrary { get; set; } = true;
+    /// <summary>
     /// Shablon kadrlaridan Gemini dizayn qo'llanmasi (STYLE_GUIDE.md) yaratiladi va Claude'ga beriladi. Majburiy: botda ko'rsatilmaydi va
     /// bot qiymati e'tiborga olinmaydi (TemplateMotionGuide va OpenFilmStock ham) - faqat ichki sinovlar o'chirishi mumkin.
     /// </summary>

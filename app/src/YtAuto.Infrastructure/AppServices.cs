@@ -174,6 +174,9 @@ public sealed class AppServices
             // Stok rasm va video parchalari: OpenFilm o'zi qidiradi (alohida OPENFILM_HOME'li Studio, kalitlar faqat uning muhitida).
             Stock = new OpenFilm.OpenFilmStockSearch(film, () => { var v = Settings.Load().Visuals; return new Media.StockPhotoKeys(v.PexelsApiKey, v.PixabayApiKey); },
                 Path.Combine(Paths.ToolsDir, "openfilm-stock-home")),
+            // Umumiy rasm kutubxonasi (online bazadagi ytauto.assets): faqat online rejimda.
+            Library = Store is PostgresJobStore lib ? new Media.LibraryStockSource(lib) : null,
+            AssetCatalog = Store as PostgresJobStore,
             // Fon musiqasi: botda tanlangan treklar kompyuterda bir marta yuklab olinib keshlanadi.
             Music = new Media.MusicCache(Http, Path.Combine(Paths.DataRoot, "music")),
             // Demo video (Claude Code MCP): ssenariy Gemini'da 2 bosqich, materiallar Storage'dan, natija bot orqali Storage'ga.

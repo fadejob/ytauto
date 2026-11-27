@@ -29,7 +29,7 @@ internal static class EditorInstructions
 
     public static string Build(JobContext c, VideoScript script, IReadOnlyList<SubtitleCue> cues, double audioSec,
         TemplateDefinition? tpl, IReadOnlyList<string> refFrames, bool hasStyleGuide = false, MediaManifest? media = null, bool hasMotionGuide = false,
-        StockCandidates? stock = null, MusicPick? music = null, DemoBrief? demo = null)
+        StockCandidates? stock = null, MusicPick? music = null, DemoBrief? demo = null, double pace = 0, bool kit = false)
     {
         var (w, h) = c.StageSize;
         var inv = CultureInfo.InvariantCulture;
@@ -128,7 +128,9 @@ internal static class EditorInstructions
         sb.AppendLine("Group these lines into scenes by meaning (one idea per scene). Make one page per scene and cut them end to end on one track.");
         sb.AppendLine();
         if (refFrames.Count > 0 || hasStyleGuide || hasMotionGuide) AppendTemplateFidelity(sb, hasMotionGuide);
-        if (stock is { Total: > 0 }) AppendStock(sb, stock, w, h, audioSec, inv);
+        if (pace > 0 && demo is null) AppendPacing(sb, pace, audioSec, hasMotionGuide, inv);
+        if (kit) AppendKit(sb, w, h);
+        if (stock is { Total: > 0 }) AppendStock(sb, stock, w, h, audioSec, inv, pace > 0 ? pace : SecondsPerStockShot);
         if (media is { Assets.Count: > 0 }) AppendMedia(sb, media, inv);
         if (demo is not null) AppendDemo(sb, demo, inv, w, h);
         if (demo is null) AppendDesignBar(sb, w, h, tpl is not null || refFrames.Count > 0, hasMotionGuide);
@@ -203,7 +205,7 @@ internal static class EditorInstructions
     /// Sahnaga taxminan nechta stok kadr sig'adi: hikoyaning shu qismi uzunligi (keyingi stok sahnagacha yoki ovoz oxirigacha) /
     /// <see cref="SecondsPerStockShot"/>, 1 dan 8 gacha (5 rasm + 3 video).
     /// </summary>
-    internal static IReadOnlyDictionary<string, (double Span, int Shots)> StockRoom(StockCandidates stock, double audioSec)
+    internal static IReadOnlyDictionary<string, (double Span, int Shots)> StockRoom(StockCandidates stock, double audioSec, double secondsPerShot = SecondsPerStockShot)
     {
         var ordered = stock.Scenes.Where(s => s.Candidates.Count > 0).OrderBy(s => s.At).ToList();
         var d = new Dictionary<string, (double, int)>();
@@ -211,33 +213,45 @@ internal static class EditorInstructions
         {
             var end = i + 1 < ordered.Count ? ordered[i + 1].At : audioSec;
             var span = Math.Max(1, end - ordered[i].At);
-            d[ordered[i].Id] = (span, Math.Clamp((int)Math.Round(span / SecondsPerStockShot), 1, MaxStockPhotosPerScene + MaxStockClipsPerScene));
+            var shots = (int)Math.Round(span / Math.Max(0.5, secondsPerShot));
+            // Gemini sahna uchun so'ragan elementlar (kollajda bir vaqtda ko'rinadiganlar ham) - kamida shuncha.
+            shots = Math.Max(shots, ordered[i].Elements);
+            d[ordered[i].Id] = (span, Math.Clamp(shots, 1, 12));
         }
         return d;
     }
 
-    private static void AppendStock(StringBuilder sb, StockCandidates stock, int w, int h, double audioSec, CultureInfo inv)
+    private static void AppendStock(StringBuilder sb, StockCandidates stock, int w, int h, double audioSec, CultureInfo inv, double pace = SecondsPerStockShot)
     {
-        var room = StockRoom(stock, audioSec);
+        var room = StockRoom(stock, audioSec, pace);
+        var lib = stock.Scenes.SelectMany(s => s.Candidates).Any(x => x.AssetId > 0);
         var minLong = (int)Math.Round(Math.Max(w, h) * 2 / 3.0);
         var maxImg = stock.Scenes.Max(s => s.Images);
         var maxClip = stock.Scenes.Max(s => s.Clips);
-        sb.AppendLine("## Stock footage and photos (found by OpenFilm on Pexels/Pixabay; YOU decide which are good)");
+        sb.AppendLine(lib
+            ? "## Scene pictures (from the channel's curated image library, plus web stock where the library had too few; YOU decide which are good)"
+            : "## Stock footage and photos (found by OpenFilm on Pexels/Pixabay; YOU decide which are good)");
         sb.AppendLine();
-        sb.AppendLine($"OpenFilm searched the web for the scenes below and downloaded several candidates for each: up to {maxImg} photos (I1, I2, ...) and up to {maxClip} short video clips (V1, V2, ...).");
+        sb.AppendLine(lib
+            ? $"Each scene below has several candidates: up to {maxImg} pictures (I1, I2, ...) and up to {maxClip} short video clips (V1, V2, ...). " +
+              "Library pictures are licence-checked and high-resolution: `photo` = real photograph, `PNG` on the contact sheet = a cut-out object or 3D render on a TRANSPARENT background " +
+              "(made for collages and layered depth - never put it on a flat box), `diagram` = an explanatory drawing."
+            : $"OpenFilm searched the web for the scenes below and downloaded several candidates for each: up to {maxImg} photos (I1, I2, ...) and up to {maxClip} short video clips (V1, V2, ...).");
         sb.AppendLine("They are NOT all good. You are the art director: review every candidate, choose the best ones, and only then design with them.");
         sb.AppendLine();
         foreach (var s in stock.Scenes.Where(s => s.Candidates.Count > 0).OrderBy(s => s.At))
         {
-            sb.AppendLine($"### {s.Id} ~{s.At.ToString("0.0", inv)} s: {(string.IsNullOrWhiteSpace(s.Purpose) ? s.Query : s.Purpose)} (search: \"{s.Query}\")");
+            var typeNote = s.SceneType.Length > 0 ? $" — scene type **{s.SceneType}**, {Math.Max(1, s.Elements)} picture{(s.Elements == 1 ? "" : "s")} planned" : "";
+            sb.AppendLine($"### {s.Id} ~{s.At.ToString("0.0", inv)} s: {(string.IsNullOrWhiteSpace(s.Purpose) ? s.Query : s.Purpose)} (search: \"{s.Query}\"){typeNote}");
             var (span, shots) = room[s.Id];
-            sb.AppendLine($"- This part of the narration lasts about {span.ToString("0.0", inv)} s: room for about {shots} shot{(shots == 1 ? "" : "s")} (one every ~{SecondsPerStockShot.ToString("0.0", inv)} s).");
+            sb.AppendLine($"- This part of the narration lasts about {span.ToString("0.0", inv)} s: room for about {shots} picture{(shots == 1 ? "" : "s")} (a new picture or a new layer every ~{pace.ToString("0.0", inv)} s).");
             if (s.Sheet.Length > 0) sb.AppendLine($"- Contact sheet: `{s.Sheet}`");
             foreach (var x in s.Candidates)
             {
                 var len = x.Type == StockTypes.Video ? $", {x.Duration.ToString("0.0", inv)} s" : "";
                 var mb = x.Bytes > 0 ? $", {(x.Bytes / 1048576.0).ToString("0.0", inv)} MB" : "";
-                sb.AppendLine($"- {x.Label} `film/{x.File}` ({x.Type}, {x.Width}x{x.Height}{len}{mb}, {x.Provider})");
+                var kind = x.Kind.Length > 0 ? (x.HasAlpha ? $"{x.Kind}, transparent PNG" : x.Kind) : x.Type;
+                sb.AppendLine($"- {x.Label} `film/{x.File}` ({kind}, {x.Width}x{x.Height}{len}{mb}, {x.Provider})");
             }
             sb.AppendLine();
         }
@@ -249,7 +263,7 @@ internal static class EditorInstructions
         sb.AppendLine($"  2. Quality: sharp and well exposed, no blur, motion smear, heavy noise, banding or compression blocks. At least {minLong} px on the long side to fill the frame (smaller ones only inside a card). Clips: steady, no jump cuts or shaky handheld in the part you use, not a slideshow of stills.");
         sb.AppendLine("  3. Clean: no watermark or stock-site stamp, no burned-in text, captions or subtitles, no visible brand logos or app UI unless that brand is the topic, no recognisable celebrity, nothing violent or sensitive.");
         sb.AppendLine($"  4. Fit: its colours and mood can sit inside the template style; its orientation works on the {w}x{h} stage (cropping with `object-fit: cover` is fine if the subject stays in frame).");
-        sb.AppendLine($"- How many to use: there is NO fixed number - use every candidate that passes, as many as the scene's length allows (the \"room for\" line above), up to {MaxStockPhotosPerScene} photos and up to {MaxStockClipsPerScene} clips per scene.");
+        sb.AppendLine($"- How many to use: there is NO fixed number - use every candidate that passes, as many as the scene's length and type allow (the \"room for\" line above). A collage may show several cut-outs at once; a hero scene shows one big picture and cuts to the next.");
         sb.AppendLine("  A long scene should show several pictures in turn (the picture changes every 2-3 s, cut on the narration's phrases) instead of one still for the whole scene; a short scene needs only one or two. Never pad with a candidate that failed a check just to fill the room: then hold the good ones longer.");
         sb.AppendLine("  Each photo stays on screen at least 2 s, each clip at least 2.5 s. Prefer good clips over photos (real motion keeps the video alive). If only one passes, use one; if nothing passes, choose nothing there and design that scene with drawn graphics.");
         sb.AppendLine();
@@ -263,6 +277,7 @@ internal static class EditorInstructions
         sb.AppendLine("Step 3 - design with the chosen media only (never a rejected one, never other images from the internet):");
         sb.AppendLine("- Clips go straight on the film.html timeline as `<video src=\"assets/stock/s01/clip2.mp4#t=IN,OUT\" at=\"...\" muted style=\"object-fit: cover\">` on a footage track BELOW the page track; the scene page on the track above paints the headline, labels and overlays (what a page does not paint is transparent). Always `muted`. Choose the best stretch with `#t=IN,OUT`; if the clip is shorter than the scene use `speed` 0.5-0.8 for slow motion, or cut to a second chosen candidate. Never play a clip past its length.");
         sb.AppendLine("- Photos: as an `<img>` clip on the footage track, or inside a scene page (`assets/stock/...` from a page in `film/`). Never stretch them.");
+        sb.AppendLine("- Transparent PNGs (cut-outs, 3D renders): only inside scene pages, as layered objects with `.k-cutout` (contact shadow), different sizes and depths, partly overlapping each other and the headline; animate them with the kit (`collage`, `parallax`, `float`). They are what makes a scene look like a premium edit instead of a slideshow.");
         sb.AppendLine("- Several chosen media in one scene: cut them one after another on the footage track (each starting where the previous ends, timed to the words), or show two side by side / as a framed sequence in the page when they compare things. Keep the scene's headline and overlay steady across the cuts.");
         sb.AppendLine("- Make it look designed and animated, not pasted: a gradient or colour overlay in the template palette so text stays readable over footage; a slow Ken Burns push or pan on photos (scale 1.00 to 1.08 over the scene); framed or masked reveals of the picture timed to the words; animated headline and labels over the footage; the template's transition (or a short cross-dissolve) between scenes. Every frame depends only on t.");
         sb.AppendLine("- Do not write credits or watermarks on screen.");
@@ -371,6 +386,39 @@ internal static class EditorInstructions
     {
         var t = System.Text.RegularExpressions.Regex.Replace(s ?? "", @"\s+", " ").Trim();
         return t.Length > max ? t[..max] + "…" : t;
+    }
+
+    /// <summary>
+    /// Temp: kadr qancha tez almashadi (shablon kesimlaridan yoki format standarti). Sahnalar soni va rasmlar soni shundan chiqadi -
+    /// oldindan belgilangan son yo'q.
+    /// </summary>
+    private static void AppendPacing(StringBuilder sb, double pace, double audioSec, bool hasMotionGuide, CultureInfo inv)
+    {
+        var shots = Visuals.Pacing.ShotBudget(audioSec, pace);
+        sb.AppendLine("## Rhythm (premium short-form editing standard)");
+        sb.AppendLine();
+        sb.AppendLine($"- Something new happens on screen about every **{pace.ToString("0.0", inv)} s** on average (about {shots} picture changes over {audioSec.ToString("0", inv)} s): a cut to a new picture, a new object flying into the collage, a camera move to a new detail, a word slamming in. Never hold the same static composition longer than ~{(pace * 2).ToString("0.0", inv)} s.");
+        sb.AppendLine("- Cut on the words: a new picture or layer lands exactly when the narration names it (use the word timings in voice.vtt).");
+        sb.AppendLine("- Vary scene types through the video (hero, collage, comparison, explainer, mockup, kinetic typography) so two neighbouring scenes never look alike.");
+        sb.AppendLine("- Every scene is layered in depth: background (photo, blurred photo or gradient) → main subject (photo or cut-out) → objects/labels → headline → finishing layers (vignette, grain). Flat single-layer slides are not allowed.");
+        if (hasMotionGuide) sb.AppendLine("- MOTION_GUIDE.md describes this channel's own rhythm and transitions: where it is more specific than this section, follow it.");
+        sb.AppendLine();
+    }
+
+    /// <summary>Tayyor kit (film/kit): Claude har sahifada qayta yozmasdan ishlatadi.</summary>
+    private static void AppendKit(StringBuilder sb, int w, int h)
+    {
+        sb.AppendLine("## Motion kit (`film/kit/`)");
+        sb.AppendLine();
+        sb.AppendLine("`film/kit/` holds a tested motion and composition kit made for OpenFilm pages (everything depends only on t). Read `film/kit/README.md` before writing pages and build scenes with it:");
+        sb.AppendLine("- hero: `kenBurns`/`cameraPush` on a big photo + `.k-photo-bg` (blurred fill) + `.k-scrim` + headline `reveal`;");
+        sb.AppendLine("- collage: 3-8 transparent PNGs with `.k-cutout`, placed with `data-x/y/r/s/depth`, animated with `collage` then `float`/`parallax`;");
+        sb.AppendLine("- comparison: two or more `.k-card`/cut-outs side by side with `.k-label` pills and `countUp` numbers;");
+        sb.AppendLine("- explainer: photo or diagram in a `.k-card`, SVG arrows drawn with `drawPath`, `.k-label` pills that `stagger` in;");
+        sb.AppendLine("- mockup: the picture inside `.k-phone` > `.k-screen` (or a notes/search UI built in HTML with `typeOn`);");
+        sb.AppendLine("- typography: `wordWallBuild`/`wordWall`, `.k-outline` + `.k-accent` words, `countUp` for numbers.");
+        sb.AppendLine($"Finish every page with `.k-vignette` and `.k-grain`. Load `kit/kit.css` first and `style.css` after it, and set the kit's colour/font variables in `style.css` from the template or the default design. Size everything for the {w}x{h} stage.");
+        sb.AppendLine();
     }
 
     /// <summary>

@@ -83,6 +83,68 @@ public class StockMediaTests
         return (h, stock, lib, vis);
     }
 
+    /// <summary>Kutubxona manbasi soxtasi: berilgan so'rovlar uchun 2 ta kutubxona rasmini (biri shaffof PNG) qaytaradi.</summary>
+    private sealed class FakeLibrary : IStockMediaSource
+    {
+        public readonly HashSet<string> Covers = new(StringComparer.OrdinalIgnoreCase);
+        public readonly List<StockRequest> Requests = new();
+        public bool IsConfigured => true;
+        public Task<StockCandidates> FetchAsync(IReadOnlyList<StockRequest> scenes, string workDir, StockOptions o, IJobLog log, CancellationToken ct)
+        {
+            Requests.AddRange(scenes);
+            var r = new StockCandidates();
+            Directory.CreateDirectory(workDir);
+            foreach (var q in scenes)
+            {
+                var s = new StockScene { Id = q.Id, Query = q.Query, Purpose = q.Purpose, At = q.At, SceneType = q.SceneType, Elements = q.Elements };
+                r.Scenes.Add(s);
+                if (!Covers.Contains(q.Query)) continue;
+                for (int i = 1; i <= 2; i++)
+                {
+                    var f = Path.Combine(workDir, $"{q.Id}_lib{i}.{(i == 2 ? "png" : "jpg")}");
+                    File.WriteAllBytes(f, BitConverter.GetBytes(0.04).Concat(new byte[64]).ToArray());
+                    s.Candidates.Add(new StockCandidate
+                    {
+                        Type = StockTypes.Image, File = f, Width = 1920, Height = 1280, Provider = "library:wikimedia", AssetId = 40 + i,
+                        Kind = i == 2 ? "cutout" : "photo", HasAlpha = i == 2, License = "CC BY 4.0",
+                        Credit = i == 1 ? "Card reader by Jane, CC BY 4.0 (https://commons.wikimedia.org/wiki/File:x.jpg)" : "",
+                    });
+                }
+            }
+            return Task.FromResult(r);
+        }
+    }
+
+    [Fact]
+    public async Task Pipeline_LibraryFirst_OpenFilmOnlyForGaps_UsageAndCreditsRecorded()
+    {
+        var (h, stock, _, _) = Setup();
+        using var _h = h;
+        var library = new FakeLibrary { Covers = { "card terminal" } };
+        var catalog = new FakeCatalog();
+        h.Library = library; h.AssetCatalog = catalog;
+        h.Editor.DuringRun = () =>
+        {
+            var film = Path.Combine(Path.GetDirectoryName(Directory.GetFiles(h.Settings.S.Paths.WorkDir, "instructions.md", SearchOption.AllDirectories).Single())!, "film");
+            Assert.True(File.Exists(Path.Combine(film, "kit", "kit.js")));   // kit sahifalar uchun tayyor
+            File.WriteAllText(Path.Combine(film, "a.html"), "<img src=\"assets/stock/s01/img1.jpg\"><img src=\"assets/stock/s01/img2.png\">");
+            return Task.CompletedTask;
+        };
+        var r = await h.Run();
+        Assert.Equal(RunOutcome.Completed, r.Outcome);
+
+        Assert.Equal(new[] { "s01", "s02" }, library.Requests.Select(q => q.Id));
+        Assert.Equal(new[] { "s02" }, stock.Requests.Select(q => q.Id));     // OpenFilm faqat kutubxonada topilmagan sahnaga
+        var ins = h.Editor.LastInstructions!;
+        Assert.Contains("curated image library", ins);
+        Assert.Contains("(cutout, transparent PNG, 1920x1080", ins);       // FakeMedia probe o'lchami
+        Assert.Contains("## Rhythm", ins);
+        Assert.Contains("## Motion kit", ins);
+        var use = Assert.Single(catalog.Usage);
+        Assert.Equal(new long[] { 41, 42 }, use.Ids.OrderBy(x => x));
+        Assert.Contains("Card reader by Jane, CC BY 4.0", h.Uploader.Last!.Description);
+    }
+
     [Fact]
     public async Task Pipeline_OpenFilmCandidates_GoToClaudeForReview_PhotosNotFetchedTwice()
     {
@@ -122,8 +184,8 @@ public class StockMediaTests
         Assert.Contains("watermark", ins);
         Assert.Contains("muted", ins);
         Assert.Contains("there is NO fixed number", ins);
-        Assert.Contains("up to 5 photos and up to 3 clips per scene", ins);
-        Assert.Contains("- This part of the narration lasts about 3.0 s: room for about 1 shot", ins); // s01: 3 s → 6 s
+        Assert.Contains("as many as the scene's length and type allow", ins);
+        Assert.Contains("- This part of the narration lasts about 3.0 s: room for about 1 picture", ins); // s01: 3 s → 6 s
         Assert.DoesNotContain("at most 2", ins);
         Assert.Contains("film/assets/media/logo_00.svg", ins); // logo bo'limi ham bor
 
@@ -267,7 +329,7 @@ public class StockMediaTests
     }
 
     [Fact]
-    public void StockRoom_ShotsFollowSceneLength_CappedAtFivePhotosPlusThreeClips()
+    public void StockRoom_ShotsFollowSceneLength_CappedAtTwelve()
     {
         var c = new StockCandidates();
         foreach (var (id, at) in new[] { ("s01", 0.0), ("s02", 2.0), ("s03", 12.0), ("s04", 40.0) })
@@ -276,8 +338,8 @@ public class StockMediaTests
         var room = EditorInstructions.StockRoom(c, 90);
         Assert.Equal((2.0, 1), room["s01"]);   // qisqa sahna - bitta kadr
         Assert.Equal((10.0, 4), room["s02"]);  // 10 s - to'rtta
-        Assert.Equal((28.0, 8), room["s03"]);  // uzun - ko'pi bilan 5 rasm + 3 video
-        Assert.Equal((50.0, 8), room["s04"]);  // oxirgisi ovoz oxirigacha
+        Assert.Equal((28.0, 11), room["s03"]); // uzun - 28 / 2.5
+        Assert.Equal((50.0, 12), room["s04"]); // oxirgisi ovoz oxirigacha, ko'pi bilan 12
         Assert.False(room.ContainsKey("s05"));
     }
 

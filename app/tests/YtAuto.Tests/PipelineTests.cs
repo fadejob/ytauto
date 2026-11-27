@@ -302,7 +302,7 @@ internal sealed class Harness : IDisposable
         Store = Store, Settings = Settings, Secrets = Secrets, ScriptGenerator = ScriptOverride ?? Script, Tts = TtsOverride ?? Tts, AudioImporter = AudioImporter, Aligner = AlignerOverride ?? Aligner, Editor = Editor,
         Film = Film, Media = Media, Uploader = Uploader, Resources = new FakeResources(), Paths = Paths, Clock = Clock,
         JobLogFactory = _ => Log, RunLog = Log, PostUploadPoll = TimeSpan.Zero, StopBeforeUpload = stopBeforeUpload, OnPublished = OnPublished,
-        OnVoiceCloneStatus = OnVoiceCloneStatus, Visuals = Visuals, MediaLibrary = MediaLib, Stock = Stock, Music = MusicCache,
+        OnVoiceCloneStatus = OnVoiceCloneStatus, Visuals = Visuals, MediaLibrary = MediaLib, Stock = Stock, Library = Library, AssetCatalog = AssetCatalog, Music = MusicCache,
         DemoWriter = DemoWriter, DemoMedia = DemoMedia, DemoResults = DemoResults, PublishAllowed = PublishAllowed,
     });
     public YtAuto.Core.Demo.IDemoScriptWriter? DemoWriter;
@@ -312,6 +312,8 @@ internal sealed class Harness : IDisposable
     public YtAuto.Core.Visuals.IVisualDirector? Visuals;
     public YtAuto.Core.Visuals.IMediaLibrary? MediaLib;
     public YtAuto.Core.Visuals.IStockMediaSource? Stock;
+    public YtAuto.Core.Visuals.IStockMediaSource? Library;
+    public YtAuto.Core.Visuals.IAssetCatalog? AssetCatalog;
     public IMusicCache? MusicCache;
 
     public VideoJob AddJob(string topic = "Boiling water", int minutesAgo = 10, int publishInDays = 3)

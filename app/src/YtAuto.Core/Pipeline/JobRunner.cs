@@ -25,6 +25,13 @@ public sealed class PipelineServices
     public Visuals.IMediaLibrary? MediaLibrary { get; init; }
     /// <summary>Stok rasm va video parchalari nomzodlari (OpenFilm qidiradi; berilmasa yoki kalit yo'q bo'lsa - faqat MediaLibrary).</summary>
     public Visuals.IStockMediaSource? Stock { get; init; }
+    /// <summary>
+    /// Umumiy rasm kutubxonasi (ytauto.assets): sahna nomzodlari avval shu yerdan (tiniq fotolar, shaffof cutout va 3D renderlar),
+    /// topilmagan sahnalar - <see cref="Stock"/> (OpenFilm) dan. Berilmasa (lokal SQLite) - faqat stok.
+    /// </summary>
+    public Visuals.IStockMediaSource? Library { get; init; }
+    /// <summary>Kutubxona katalogi: videoda ishlatilgan rasmlarni yozish (shu kanalda takrorlanmasin).</summary>
+    public Visuals.IAssetCatalog? AssetCatalog { get; init; }
     /// <summary>Fon musiqasi fayllarini (bot serveridan) yuklab, lokal keshda saqlaydi (berilmasa - musiqasiz).</summary>
     public IMusicCache? Music { get; init; }
     /// <summary>Demo video (MCP): ssenariy yozuvchi (Gemini, 2 bosqich), materiallarni yuklab oluvchi va natijani serverga yuboruvchi.</summary>

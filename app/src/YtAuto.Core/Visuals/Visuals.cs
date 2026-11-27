@@ -28,6 +28,12 @@ public sealed class MediaPlanItem
     [JsonPropertyName("purpose")] public string Purpose { get; set; } = "";
     /// <summary>Taxminiy vaqt (s): shu rasm kerak bo'lgan sahna boshlanishi.</summary>
     [JsonPropertyName("at")] public double At { get; set; }
+    /// <summary>"photo" (sahna) uchun: sahna turi (<see cref="SceneTypes"/>) - hero, collage, comparison, explainer, typography, mockup.</summary>
+    [JsonPropertyName("scene_type")] public string SceneType { get; set; } = "";
+    /// <summary>"photo" (sahna) uchun: sahnada nechta alohida rasm kerak (kollajda ko'p, hero'da 1-2).</summary>
+    [JsonPropertyName("elements")] public int Elements { get; set; }
+    /// <summary>Kutubxona qidiruvi uchun inglizcha so'zlar: aniqdan umumiyga (ilmiy nom, sinonimlar).</summary>
+    [JsonPropertyName("keywords")] public List<string> Keywords { get; set; } = new();
 }
 
 public sealed class MediaPlan
@@ -45,7 +51,16 @@ public sealed class MediaPlan
             var q = System.Text.RegularExpressions.Regex.Replace(i.Query ?? "", @"\s+", " ").Trim();
             if (!MediaKinds.All.Contains(kind) || q.Length is < 2 or > 60) continue;
             if (!seen.Add(kind + ":" + q)) continue;
-            list.Add(new MediaPlanItem { Kind = kind, Query = q, Purpose = (i.Purpose ?? "").Trim(), At = Math.Max(0, i.At) });
+            var item = new MediaPlanItem { Kind = kind, Query = q, Purpose = (i.Purpose ?? "").Trim(), At = Math.Max(0, i.At) };
+            if (kind == MediaKinds.Photo)
+            {
+                item.SceneType = SceneTypes.Normalize(i.SceneType);
+                var (lo, hi) = SceneTypes.ElementRange(item.SceneType);
+                item.Elements = Math.Clamp(i.Elements <= 0 ? lo : i.Elements, lo, hi);
+                item.Keywords = (i.Keywords ?? new()).Select(k => System.Text.RegularExpressions.Regex.Replace(k ?? "", @"\s+", " ").Trim())
+                    .Where(k => k.Length is >= 2 and <= 40).Distinct(StringComparer.OrdinalIgnoreCase).Take(6).ToList();
+            }
+            list.Add(item);
             if (list.Count >= max) break;
         }
         return new MediaPlan { Items = list };
@@ -128,6 +143,12 @@ public interface IVisualDirector
     Task<string> TemplateMotionGuideAsync(IReadOnlyList<MotionClip> clips, double fps, string templateName, string notes, IJobLog log, CancellationToken ct);
     /// <summary>Subtitr ma'nosiga qarab qaysi sahnaga qanday real ikon/logo/foto kerakligi.</summary>
     Task<MediaPlan> PlanMediaAsync(string subtitleText, IReadOnlyList<SubtitleCue> cues, string channelContext, int maxItems, IJobLog log, CancellationToken ct);
+    /// <summary>
+    /// Video tempiga qarab sahnalar rejasi: har g'oya - bitta sahna (tur, elementlar soni, kalit so'zlar). Sahnalar va rasmlar soni
+    /// oldindan belgilanmaydi - ovoz uzunligi va temp (<paramref name="secondsPerShot"/>) dan chiqadi.
+    /// </summary>
+    Task<MediaPlan> PlanShotsAsync(string subtitleText, IReadOnlyList<SubtitleCue> cues, string channelContext, double audioSec, double secondsPerShot, IJobLog log, CancellationToken ct)
+        => PlanMediaAsync(subtitleText, cues, channelContext, Pacing.ShotBudget(audioSec, secondsPerShot), log, ct);
     /// <summary>Tayyor video kadrlarini shablon kadrlari va uslub qo'llanmasi bilan solishtiradi.</summary>
     Task<StyleReview> ReviewAgainstTemplateAsync(IReadOnlyList<string> templateFrames, IReadOnlyList<string> videoFrames, string styleGuide, IJobLog log, CancellationToken ct);
 }
@@ -148,11 +169,18 @@ public static class StockTypes
     public const string Video = "video";
 }
 
-/// <summary>Bitta sahna uchun stok qidiruv so'rovi (Gemini rasm rejasidagi "photo" bandidan).</summary>
-public sealed record StockRequest(string Id, string Query, string Purpose, double At);
+/// <summary>
+/// Bitta sahna uchun stok qidiruv so'rovi (Gemini rasm rejasidagi "photo" bandidan): sahna turi va elementlar soni kutubxonadan
+/// nechta va qanday (foto, cutout, render) nomzod olinishini belgilaydi.
+/// </summary>
+public sealed record StockRequest(string Id, string Query, string Purpose, double At, string SceneType = "", int Elements = 1, IReadOnlyList<string>? Keywords = null)
+{
+    /// <summary>Qidiruv so'zlari: Gemini bergan kalit so'zlar, ular bo'lmasa - so'rovning o'zi.</summary>
+    public IReadOnlyList<string> SearchTerms => Keywords is { Count: > 0 } k ? k.Prepend(Query).Distinct(StringComparer.OrdinalIgnoreCase).ToList() : new[] { Query };
+}
 
-/// <summary>Har sahnaga nechta nomzod va qaysi yo'nalishda (landscape/portrait).</summary>
-public sealed record StockOptions(int Images, int Clips, string Orientation);
+/// <summary>Har sahnaga nechta nomzod, qaysi yo'nalishda (landscape/portrait) va qaysi kanal uchun (kutubxona takrorlarni chetlaydi).</summary>
+public sealed record StockOptions(int Images, int Clips, string Orientation, string Channel = "");
 
 /// <summary>Bitta nomzod: OpenFilm internetdan topib yuklagan rasm yoki qisqa video parcha.</summary>
 public sealed class StockCandidate
@@ -173,6 +201,13 @@ public sealed class StockCandidate
     public string Credit { get; set; } = "";
     /// <summary>Asl sahifa.</summary>
     public string Page { get; set; } = "";
+    /// <summary>Kutubxona rasmi bo'lsa - ytauto.assets.id (ishlatilganini yozish uchun), aks holda 0.</summary>
+    public long AssetId { get; set; }
+    /// <summary>Kutubxona turi: photo, cutout (shaffof PNG), render (3D, shaffof), icon, diagram, texture. Stokda "".</summary>
+    public string Kind { get; set; } = "";
+    /// <summary>Shaffof fon (PNG): kollaj va qatlamlar uchun.</summary>
+    public bool HasAlpha { get; set; }
+    public string License { get; set; } = "";
 }
 
 /// <summary>Bitta sahna: so'rov va unga topilgan nomzodlar.</summary>
@@ -186,6 +221,9 @@ public sealed class StockScene
     public List<StockCandidate> Candidates { get; set; } = new();
     /// <summary>Kontakt varaq (edit/ ga nisbiy yo'l), bo'lmasa "".</summary>
     public string Sheet { get; set; } = "";
+    /// <summary>Sahna turi (<see cref="SceneTypes"/>) va kerakli rasm soni (Gemini rejasi).</summary>
+    public string SceneType { get; set; } = "";
+    public int Elements { get; set; }
     /// <summary>Qidiruvda nima bo'lmadi (topilmadi, manba rad etdi...).</summary>
     public List<string> Notes { get; set; } = new();
     public int Images => Candidates.Count(c => c.Type == StockTypes.Image);

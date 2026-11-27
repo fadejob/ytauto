@@ -564,7 +564,10 @@ public sealed partial class JobRunner
         var cues = VttParser.Parse(File.ReadAllText(c.VoiceVtt));
         // Demo video: stok rasmlar o'rniga loyihaning o'z screenshot/videolari (sahna rejasi ovoz vaqtlaridan).
         var demo = c.Job.IsDemo ? PrepareDemoPlan(c, duration) : null;
-        var media = demo is null ? await PrepareMediaAsync(c, script, cues).ConfigureAwait(false) : new PreparedMedia(null, null);
+        var media = demo is null ? await PrepareMediaAsync(c, script, cues, style.CutSec).ConfigureAwait(false)
+            : new PreparedMedia(null, null, YtAuto.Core.Visuals.Pacing.SecondsPerShot(c.Job.Format, style.CutSec));
+        // Tayyor harakat va kompozitsiya to'plami (parallaks, Ken Burns, kollaj, kinetik matn, mockup): sahifalar film/kit/ dan oladi.
+        if (demo is null) EditorKit.WriteTo(c.FilmDir);
         var music = await PrepareMusicAsync(c, duration).ConfigureAwait(false);
         File.WriteAllText(Path.Combine(c.EditDir, "subtitles.txt"), script.SubtitleText, new UTF8Encoding(false));
         File.Copy(c.VoiceSrt, Path.Combine(c.EditDir, "subtitles.srt"), true);
@@ -572,7 +575,7 @@ public sealed partial class JobRunner
         if (File.Exists(stale)) File.Delete(stale);
         File.WriteAllText(Path.Combine(c.EditDir, "instructions.md"),
             EditorInstructions.Build(c, script, cues, duration, tpl, style.Frames, style.Guide.Length > 0, media.Media, style.Motion.Length > 0, media.Stock, music,
-                demo is null ? null : new DemoBrief(DemoSpecOf(c), demo)), new UTF8Encoding(false));
+                demo is null ? null : new DemoBrief(DemoSpecOf(c), demo), pace: media.Pace, kit: demo is null), new UTF8Encoding(false));
         File.Copy(Path.Combine(c.EditDir, "instructions.md"), Path.Combine(c.RecordDir, "instructions.md"), true);
 
         var shimDir = _x.Film.WriteShims(Path.Combine(_x.Paths.ToolsDir, "openfilm-shim"));
@@ -613,7 +616,11 @@ public sealed partial class JobRunner
         }
         File.Copy(c.VoiceVtt, Path.Combine(assets, "voice.vtt"), true);
         CopyIfExists(Path.Combine(c.FilmDir, "BUILD_NOTES.md"), Path.Combine(c.RecordDir, "BUILD_NOTES.md"));
-        if (media.Stock is { Total: > 0 } stock) ReviewStockSelection(c, stock);
+        if (media.Stock is { Total: > 0 } stock)
+        {
+            ReviewStockSelection(c, stock);
+            await RecordLibraryUsageAsync(c, stock).ConfigureAwait(false);
+        }
         CopyIfExists(c.FilmHtml, Path.Combine(c.RecordDir, "film.html"));
 
         var manifest = Hashing.DirectoryManifest(c.FilmDir, f => !f.Contains(Path.DirectorySeparatorChar + ".film" + Path.DirectorySeparatorChar) && !f.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase));

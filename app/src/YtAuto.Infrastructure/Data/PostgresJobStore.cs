@@ -11,7 +11,7 @@ namespace YtAuto.Infrastructure.Data;
 /// Bir nechta kompyuter bitta bazadan foydalansa: band qilish atomar (FOR UPDATE SKIP LOCKED), eskirgan band qilish
 /// heartbeat bo'yicha aniqlanadi - boshqa kompyuterdagi tirik worker'ning vazifasi tortib olinmaydi.
 /// </summary>
-public sealed class PostgresJobStore : IAppStore
+public sealed partial class PostgresJobStore : IAppStore, YtAuto.Core.Visuals.IAssetCatalog
 {
     private readonly NpgsqlDataSource _ds;
     private readonly string _schema;

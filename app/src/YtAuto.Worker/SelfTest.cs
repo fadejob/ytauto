@@ -55,7 +55,13 @@ internal static class SelfTest
         // Foydalanuvchining asosiy sozlamalaridan tashqi dastur yo'llarini olamiz (agar mavjud bo'lsa).
         var mainSettings = new Infrastructure.Data.SqliteSettingsStore(new Infrastructure.Data.SqliteJobStore(new AppPaths(null).DatabasePath), AppServices.DefaultSettings).Load();
         var s = svc.Settings.Load();
-        if (topic is not null)
+        if (topic is not null && svc.IsOnline)
+        {
+            // --data DIR --online: to'liq ajratilgan sinov (o'z bazasi, o'z Gemini kaliti shu papkada). Asosiy hisob bazasiga ulanilmaydi.
+            if (!svc.HasGeminiKey()) { Console.Error.WriteLine("--topic uchun shu sinov papkasida Gemini kaliti kerak."); return 2; }
+            s.Paths.WorkDir = live.Paths.WorkDir;
+        }
+        else if (topic is not null)
         {
             // Haqiqiy mavzu: bot sozlamalari (Gemini kalitlari, shablonlar, kanal konteksti) asosiy hisobdan - worker --poll kabi
             // online bazadan faqat o'qiladi. Vazifa va natijalar esa shu alohida papkadagi lokal bazada qoladi.

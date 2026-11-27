@@ -265,6 +265,11 @@ public interface IMediaProbe
     /// chiziladi (shrift bo'lsa). Claude bitta rasmda bir sahnaning hamma nomzodlarini ko'radi.
     /// </summary>
     Task ContactSheetAsync(IReadOnlyList<Visuals.SheetTile> tiles, int tileWidth, int tileHeight, string outJpg, CancellationToken ct);
+    /// <summary>
+    /// Videodagi kesimlar (sahna almashishi) vaqtlari, soniyada (ffmpeg scene detection). Shablon tempini o'lchash uchun.
+    /// Qo'llab-quvvatlanmasa - bo'sh ro'yxat (temp formatning standartidan olinadi).
+    /// </summary>
+    Task<IReadOnlyList<double>> SceneCutsAsync(string video, double threshold, CancellationToken ct) => Task.FromResult<IReadOnlyList<double>>(Array.Empty<double>());
     string Version { get; }
 }
 

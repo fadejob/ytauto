@@ -191,6 +191,76 @@ NARRATION:
         catch (JsonException e) { throw PipelineException.Transient("gemini_bad_json", "Rasm rejasi JSON emas: " + e.Message); }
     }
 
+    public const string ShotPlanPrompt = """
+You are the visual director of a premium short-form explainer (the editing standard of top Pinterest / Reels / Shorts science edits):
+the picture changes about every {pace} s, scenes are layered compositions of REAL imagery (sharp photos, cut-out objects on
+transparent background, 3D renders, diagrams) with bold kinetic typography - never a slideshow of icons.
+The narration is below with timings (seconds); it lasts {dur} s, so the whole video needs about {shots} shots.
+
+Split the narration into scenes by meaning (one idea = one scene, in order). For EVERY scene add one item with kind "photo":
+- at: the second where the idea starts.
+- scene_type, choose what explains this idea best and vary them across the video:
+  "hero"       one big real subject filling the frame, slow camera push (1-2 pictures),
+  "collage"    3-8 separate cut-out objects layered in depth around a headline (lists, ingredients, "many things"),
+  "comparison" 2-4 things side by side (before/after, big vs small, A vs B),
+  "explainer"  a real photo or diagram with drawn labels, arrows, zoom-ins (how something works, parts of a thing),
+  "mockup"     the picture shown inside a phone, screen, card or notebook (apps, data, news, "imagine you...") (1-2),
+  "typography" kinetic text only, at most one texture (strong statements, numbers, the hook or the punchline) (0-1).
+- elements: how many separate pictures this scene shows. Make the total of all scenes roughly {shots}: a scene that lasts
+  longer than {pace} s shows several pictures in turn or together; a short one needs one.
+- query: 2-4 concrete English nouns for the main subject ("honey bee pollen", "volcano eruption night").
+- keywords: 3-6 English search terms from specific to general: scientific/common names, synonyms, the object class
+  (e.g. ["Apis mellifera", "honey bee", "bee", "pollinator insect"]). Things that can be PHOTOGRAPHED or exist as objects.
+- purpose: one short line - what the viewer sees.
+No identifiable private people, no celebrities, no news events, nothing violent or sensitive. Prefer objects, animals, places, nature,
+lab equipment, space and microscopy imagery.
+
+You may also add:
+- "logo": a real brand/product/organisation actually named in the narration (query = exact name). Never invent brands.
+- "icon": an abstract concept a simple icon shows well (query = 1-2 English words), at most one per scene.
+Queries and keywords in English even if the narration is not.
+{channel}
+NARRATION:
+{cues}
+""";
+
+    public async Task<MediaPlan> PlanShotsAsync(string subtitleText, IReadOnlyList<SubtitleCue> cues, string channelContext, double audioSec, double secondsPerShot, IJobLog log, CancellationToken ct)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        var shots = Pacing.ShotBudget(audioSec, secondsPerShot);
+        var lines = cues.Count > 0
+            ? string.Join("\n", cues.Select(q => $"{q.Start.ToString("0.0", inv)}: {q.Text.Replace("\n", " ")}"))
+            : subtitleText;
+        var prompt = ShotPlanPrompt.Replace("{pace}", Pacing.Describe(secondsPerShot)).Replace("{shots}", shots.ToString(inv))
+            .Replace("{dur}", audioSec.ToString("0", inv)).Replace("{cues}", lines)
+            .Replace("{channel}", string.IsNullOrWhiteSpace(channelContext) ? "" : "\nChannel style (keep pictures consistent with it):\n" + channelContext.Trim() + "\n");
+        var item = new JsonObject
+        {
+            ["type"] = "OBJECT",
+            ["properties"] = new JsonObject
+            {
+                ["kind"] = new JsonObject { ["type"] = "STRING", ["enum"] = new JsonArray("photo", "logo", "icon") },
+                ["at"] = new JsonObject { ["type"] = "NUMBER" },
+                ["scene_type"] = new JsonObject { ["type"] = "STRING", ["enum"] = new JsonArray(SceneTypes.All.Select(x => (JsonNode)x).ToArray()) },
+                ["elements"] = new JsonObject { ["type"] = "INTEGER" },
+                ["query"] = new JsonObject { ["type"] = "STRING" },
+                ["keywords"] = new JsonObject { ["type"] = "ARRAY", ["items"] = new JsonObject { ["type"] = "STRING" } },
+                ["purpose"] = new JsonObject { ["type"] = "STRING" },
+            },
+            ["required"] = new JsonArray("kind", "at", "query", "purpose"),
+        };
+        var schema = new JsonObject
+        {
+            ["type"] = "OBJECT",
+            ["properties"] = new JsonObject { ["items"] = new JsonObject { ["type"] = "ARRAY", ["items"] = item } },
+            ["required"] = new JsonArray("items"),
+        };
+        var json = await CallAsync(new JsonArray(new JsonObject { ["text"] = prompt }),
+            new JsonObject { ["temperature"] = 0.3, ["maxOutputTokens"] = 8192, ["responseMimeType"] = "application/json", ["responseSchema"] = schema }, log, ct, GeminiTask.Light).ConfigureAwait(false);
+        try { return (JsonSerializer.Deserialize<MediaPlan>(GeminiScriptGenerator.TextOf(json)) ?? new()).Clean(shots + 24); }
+        catch (JsonException e) { throw PipelineException.Transient("gemini_bad_json", "Sahna rejasi JSON emas: " + e.Message); }
+    }
+
     public const string ReviewPrompt = """
 You are a strict art director. The first {tn} images are frames of the channel TEMPLATE. The next images are frames of a NEW video
 (their timestamps are given before each one). The style guide of the channel is below.
