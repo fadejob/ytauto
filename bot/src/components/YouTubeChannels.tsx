@@ -7,7 +7,7 @@ import type { Toast } from "./App";
 import { Alert, Btn, SkelCard, useBusy } from "./ui";
 import styles from "./YouTubeChannels.module.css";
 
-export type YtChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired?: boolean };
+export type YtChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired?: boolean; defaults?: { tags: string; description: string } };
 export type YtStatus = {
   connected: boolean; channelId: string; channelTitle: string; connectedAt: string | null;
   channels: YtChannelInfo[]; maxChannels: number; clientConfigured: boolean; redirectUri: string;

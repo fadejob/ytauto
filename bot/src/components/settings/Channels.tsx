@@ -85,6 +85,7 @@ export default function Channels({ toast, back, onChanged }: SettingsPageProps) 
   const y = config?.youtube;
   const google = useDraft(useMemo(() => (y ? { clientId: y.clientId, clientSecret: "" } : null), [y]));
   const configured = !!yt?.clientConfigured;
+  const activeCh = yt?.channels.find((c) => c.active) ?? null;
   const blocked = !yt ? null : !configured ? "Avval Client ID va Secret'ni saqlang" : google.dirty ? "Avval YouTube ulanishi o'zgarishlarini saqlang" : null;
 
   async function saveGoogle() {
@@ -118,6 +119,13 @@ export default function Channels({ toast, back, onChanged }: SettingsPageProps) 
       <div className={styles.tiles}>
         <YouTubeChannels yt={yt} setYt={setYt} toast={toast} blocked={blocked} onSwitched={onChanged} error={ytError} onRetry={loadYt} />
       </div>
+
+      {activeCh ? (
+        <>
+          <div className="section-label"><span>{activeCh.title || "Faol kanal"}</span><span style={{ textTransform: "none" }}>faqat shu kanal uchun</span></div>
+          <ChannelDefaultsCard key={activeCh.id} ch={activeCh} busy={busy} toast={toast} onSaved={setYt} />
+        </>
+      ) : null}
 
       {/* Birinchi ulash: Client ID/Secret saqlanmaguncha Google kartasi kanallardan keyin turadi. */}
       {(yt && !configured) || (!yt && ytError) ? (configError ?? googleCard) : null}
@@ -298,29 +306,62 @@ function FlagsCard({ y, busy, save }: { y: Yt; busy: Busy; save: SaveFn }) {
 }
 
 // ------------------------------------------------------------------ Tavsif va teglar
-const DESC_KEYS = ["defaultTags", "defaultDescription", "locationDescription"] as const;
+const DESC_KEYS = ["locationDescription"] as const;
 
+/** Barcha kanallar uchun umumiy: joy tavsifi. Teglar va tavsif - har kanalda alohida (ChannelDefaultsCard). */
 function DescriptionCard({ y, busy, save }: { y: Yt; busy: Busy; save: SaveFn }) {
   const saved = useMemo(() => pick(y, DESC_KEYS), [y]);
+  const d = useDraft(saved);
+  if (!d.value) return null;
+  const v = d.value;
+  const saving = busy.is("desc");
+  async function onSave() {
+    if (await save("desc", "Joy tavsifi", { ...d.value })) d.reset();
+  }
+  return (
+    <Card title="Joy tavsifi" sub="Ixtiyoriy · videoning joylashuvi" action={<SaveBtn dirty={d.dirty} saving={saving} done={busy.done("desc")} onClick={() => void onSave()} />}>
+      <Field label={<label htmlFor="yt-loc">Joy tavsifi</label>}>
+        <input id="yt-loc" className="inp" value={v.locationDescription} disabled={saving} placeholder="Toshkent, O'zbekiston" onChange={(e) => d.set({ locationDescription: e.target.value })} />
+      </Field>
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------------ Kanalning teglari va tavsifi (har kanalda alohida)
+type ChannelInfo = YtStatus["channels"][number];
+
+/**
+ * Faol kanalning standart teglari va tavsifi: shu kanal videolariga qo'yiladi (bo'sh bo'lsa Gemini yozadi). Kanal almashtirilsa
+ * karta o'sha kanal qiymatlari bilan qayta ochiladi (key = kanal id). Saqlash - /api/youtube {action: "defaults"}.
+ */
+function ChannelDefaultsCard({ ch, busy, toast, onSaved }: { ch: ChannelInfo; busy: Busy; toast: SettingsPageProps["toast"]; onSaved: (s: YtStatus) => void }) {
+  const saved = useMemo(() => ({ defaultTags: ch.defaults?.tags ?? "", defaultDescription: ch.defaults?.description ?? "" }), [ch.defaults]);
   const d = useDraft(saved);
   /** Yozilayotgan (hali chipga aylanmagan) teg: «Saqlash» bosilsa u ham qo'shiladi. */
   const [pending, setPending] = useState("");
   if (!d.value) return null;
   const v = d.value;
-  const saving = busy.is("desc");
+  const key = "chdesc";
+  const saving = busy.is(key);
   const tags = parseTags(v.defaultTags);
   const allTags = pending.trim() ? parseTags(`${v.defaultTags},${pending}`) : tags;
   const tooLong = joinTags(allTags).length > TAGS_MAX_CHARS;
   const dirty = d.dirty || !!pending.trim();
+  const name = ch.title || "shu kanal";
   async function onSave() {
     if (tooLong) return;
-    if (await save("desc", "Tavsif va teglar", { ...d.value, defaultTags: joinTags(allTags) })) { d.reset(); setPending(""); }
+    if (!(await confirmBox(`«${name}» kanalining teglari va tavsifi saqlansinmi? Shu kanalning yangi videolaridan boshlab qo'llanadi.`))) return;
+    const r = await busy.run(key, () => api<YtStatus>("/api/youtube", { action: "defaults", id: ch.id, tags: joinTags(allTags), description: v.defaultDescription }));
+    if (r === false) return;
+    onSaved(r); d.reset(); setPending("");
+    toast(`«${name}»: teglar va tavsif saqlandi.`);
   }
   return (
-    <Card title="Tavsif va teglar" sub="Bo'sh qolsa, Gemini o'zi yozadi" action={<SaveBtn dirty={dirty && !tooLong} saving={saving} done={busy.done("desc")} onClick={() => void onSave()} />}>
+    <Card title="Tavsif va teglar" sub={`Faqat «${name}» videolari uchun · bo'sh qolsa, Gemini o'zi yozadi`}
+      action={<SaveBtn dirty={dirty && !tooLong} saving={saving} done={busy.done(key)} onClick={() => void onSave()} />}>
       <Field label={<label htmlFor="yt-tags">Standart teglar</label>}
         error={tooLong ? `Teglar birga ${TAGS_MAX_CHARS} belgidan oshmasin (YouTube cheklovi).` : undefined}
-        hint="Tegni yozib vergul yoki Enter bosing — u tepada chiqadi. To'ldirilsa faqat shular qo'yiladi, bo'sh bo'lsa Gemini har videoga 5 ta teg yozadi.">
+        hint="Tegni yozib vergul yoki Enter bosing — u tepada chiqadi. To'ldirilsa faqat shular qo'yiladi, bo'sh bo'lsa Gemini har videoga 5 ta teg yozadi. Boshqa kanalning teglari alohida.">
         <TagInput id="yt-tags" tags={tags} pending={pending} disabled={saving} placeholder="fan, texnologiya, ilm-fan"
           onTags={(t) => d.set({ defaultTags: joinTags(t) })} onPending={setPending} />
       </Field>
@@ -328,9 +369,6 @@ function DescriptionCard({ y, busy, save }: { y: Yt; busy: Busy; save: SaveFn })
         hint="To'ldirilsa faqat shu qo'yiladi, bo'sh bo'lsa Gemini har videoga tavsif yozadi.">
         <textarea id="yt-desc" className="inp" rows={4} maxLength={2000} disabled={saving} value={v.defaultDescription}
           placeholder="Masalan: kanal havolalari, ijtimoiy tarmoqlar, ogohlantirish…" onChange={(e) => d.set({ defaultDescription: e.target.value })} />
-      </Field>
-      <Field label={<label htmlFor="yt-loc">Joy tavsifi, ixtiyoriy</label>}>
-        <input id="yt-loc" className="inp" value={v.locationDescription} disabled={saving} placeholder="Toshkent, O'zbekiston" onChange={(e) => d.set({ locationDescription: e.target.value })} />
       </Field>
     </Card>
   );

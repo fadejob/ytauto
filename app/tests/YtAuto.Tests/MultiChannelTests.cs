@@ -100,4 +100,45 @@ public class MultiChannelTests
         Assert.Equal("UC_2", l.Active);
         Assert.Null(SqliteSettingsStore.ReadChannels("not json"));
     }
+
+    // ---- har kanalning o'z standart teglari va tavsifi
+    private static AppSettings WithAccountDefaults() =>
+        new() { YouTube = { DefaultTags = "umumiy, teg", DefaultDescription = "Umumiy tavsif" } };
+
+    [Fact]
+    public void ChannelDefaults_JobGetsItsOwnChannelsTagsAndDescription()
+    {
+        var d = Shared();
+        d[SqliteSettingsStore.ChannelDefaultsKey + ":UC_A"] = """{"tags":"alpha, ai","description":"Alpha kanal havolalari"}""";
+        d[SqliteSettingsStore.ChannelDefaultsKey + ":UC_B"] = """{"tags":"beta, tarix","description":"Beta tavsif"}""";
+        var a = WithAccountDefaults();
+        SqliteSettingsStore.ApplyChannel(a, Db(d), "UC_A");
+        Assert.Equal(("alpha, ai", "Alpha kanal havolalari"), (a.YouTube.DefaultTags, a.YouTube.DefaultDescription));
+        var b = WithAccountDefaults();
+        SqliteSettingsStore.ApplyChannel(b, Db(d), null); // faol kanal - UC_B
+        Assert.Equal(("beta, tarix", "Beta tavsif"), (b.YouTube.DefaultTags, b.YouTube.DefaultDescription));
+    }
+
+    [Fact]
+    public void ChannelDefaults_EmptyValuesOverrideAccount_SoGeminiWrites()
+    {
+        var d = Shared();
+        d[SqliteSettingsStore.ChannelDefaultsKey + ":UC_A"] = """{"tags":"","description":""}""";
+        var s = WithAccountDefaults();
+        SqliteSettingsStore.ApplyChannel(s, Db(d), "UC_A");
+        Assert.Equal(("", ""), (s.YouTube.DefaultTags, s.YouTube.DefaultDescription)); // boshqa kanal teglari o'tmaydi
+    }
+
+    [Fact]
+    public void ChannelDefaults_MissingOrBroken_KeepsAccountValues()
+    {
+        var d = Shared();
+        d[SqliteSettingsStore.ChannelDefaultsKey + ":UC_B"] = "{buzilgan";
+        var a = WithAccountDefaults();
+        SqliteSettingsStore.ApplyChannel(a, Db(d), "UC_A"); // UC_A uchun kalit yo'q
+        Assert.Equal(("umumiy, teg", "Umumiy tavsif"), (a.YouTube.DefaultTags, a.YouTube.DefaultDescription));
+        var b = WithAccountDefaults();
+        SqliteSettingsStore.ApplyChannel(b, Db(d), "UC_B");
+        Assert.Equal(("umumiy, teg", "Umumiy tavsif"), (b.YouTube.DefaultTags, b.YouTube.DefaultDescription));
+    }
 }

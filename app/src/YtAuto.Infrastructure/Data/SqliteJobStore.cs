@@ -816,6 +816,7 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 s.YouTube.MissingChannel = true;
             }
             s.ChannelContext = ReadChannelContext(get(ChannelContextKey + ":" + id) ?? (id == list.Active ? get(ChannelContextKey) : null));
+            ApplyChannelDefaults(s, get(ChannelDefaultsKey + ":" + id));
             return;
         }
         try
@@ -831,6 +832,27 @@ public sealed class SqliteSettingsStore : ISettingsStore
         catch { }
         s.ChannelContext = ReadChannelContext(get(ChannelContextKey));
     }
+    /// <summary>Bot: har kanalning standart teglari va tavsifi - "youtube.defaults:&lt;kanal id&gt;" = {tags, description}.</summary>
+    public const string ChannelDefaultsKey = "youtube.defaults";
+
+    /// <summary>
+    /// Kanalning o'z teglari va tavsifi hisobning umumiy (bot config) qiymati o'rniga qo'yiladi - bo'sh qiymat ham (unda Gemini yozadi).
+    /// Kalit yo'q yoki buzilgan bo'lsa umumiy qiymat qoladi (kanal bo'yicha qiymatlardan oldingi bot).
+    /// </summary>
+    internal static void ApplyChannelDefaults(AppSettings s, string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return;
+        try
+        {
+            var n = System.Text.Json.Nodes.JsonNode.Parse(json);
+            if (n is not System.Text.Json.Nodes.JsonObject) return;
+            static string Str(System.Text.Json.Nodes.JsonNode? v) => v is System.Text.Json.Nodes.JsonValue x && x.TryGetValue<string>(out var t) ? t : "";
+            s.YouTube.DefaultTags = Str(n["tags"]);
+            s.YouTube.DefaultDescription = Str(n["description"]);
+        }
+        catch { /* buzilgan - umumiy qiymat qoladi */ }
+    }
+
     /// <summary>Worker video chiqqanini belgilaydi: bot kanal kontekstini qayta o'rganadi.</summary>
     public const string ChannelStaleKey = "channel.context.stale";
 

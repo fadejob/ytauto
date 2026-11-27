@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { getYouTubeClient } from "./config";
+import { getConfig, getYouTubeClient } from "./config";
 import { currentAccountId, scopedChannel, sql } from "./db";
 import { isDemo } from "./demo";
 import { BLOCKS_KEY, blocksKey } from "./channel/keys";
@@ -55,7 +55,9 @@ async function clientOf(ch: Pick<YtChannel, "client">): Promise<Client | null> {
   return own.clientId && own.clientSecret ? { ...own, kind: "own" } : null;
 }
 
-export type YouTubeChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired: boolean };
+/** Kanalning standart teglari (vergul bilan) va tavsifi: shu kanal videolariga qo'yiladi; bo'sh bo'lsa Gemini yozadi. */
+export type ChannelDefaults = { tags: string; description: string };
+export type YouTubeChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired: boolean; defaults: ChannelDefaults };
 export type YouTubeStatus = {
   connected: boolean; channelId: string; channelTitle: string; connectedAt: string | null;
   channels: YouTubeChannelInfo[]; maxChannels: number;
@@ -212,8 +214,88 @@ export async function findChannel(id: string): Promise<{ id: string; title: stri
   return c ? { id: c.id, title: c.title } : null;
 }
 
+// ------------------------------------------------------------------ kanal standart teglari va tavsifi
+/**
+ * Har kanalning o'z standart teglari va tavsifi: shared_settings['youtube.defaults:<kanal id>'] = {tags, description}.
+ * Desktop worker vazifa qaysi kanalniki bo'lsa, o'shaning qiymatini oladi (yo'q bo'lsa - hisob sozlamasidagi umumiy qiymat).
+ */
+const defaultsKey = (id: string) => `youtube.defaults:${id}`;
+const DEFAULTS_MIGRATED = "youtube.defaults.migrated";
+export const CHANNEL_TAGS_MAX = 500;
+export const CHANNEL_DESC_MAX = 2000;
+const EMPTY_DEFAULTS: ChannelDefaults = { tags: "", description: "" };
+const demoDefaults = new Map<string, ChannelDefaults>();
+
+function parseDefaults(raw: string | null): ChannelDefaults | null {
+  if (!raw) return null;
+  try {
+    const j = JSON.parse(raw) as Partial<ChannelDefaults>;
+    return { tags: String(j.tags ?? ""), description: String(j.description ?? "") };
+  } catch { return null; }
+}
+
+async function readDefaults(id: string): Promise<ChannelDefaults | null> {
+  if (isDemo()) return demoDefaults.get(id) ?? null;
+  return parseDefaults(await getSetting(defaultsKey(id)));
+}
+
+async function writeDefaults(id: string, d: ChannelDefaults) {
+  if (isDemo()) { demoDefaults.set(id, d); return; }
+  await putSetting(defaultsKey(id), JSON.stringify(d));
+}
+
+/**
+ * Bir martalik: kanal bo'yicha qiymatlar paydo bo'lishidan oldingi umumiy (hisob) teglar va tavsif hozir ulangan kanallarning har
+ * biriga ko'chiriladi - mavjud xatti-harakat o'zgarmaydi. Shundan keyin ulangan yangi kanal bo'sh boshlanadi (boshqa kanal
+ * teglari unga o'tmaydi).
+ */
+async function migrateDefaults(l: ChannelList) {
+  if (isDemo() || (await getSetting(DEFAULTS_MIGRATED))) return;
+  const y = (await getConfig()).youtube;
+  for (const c of l.channels) if (!(await readDefaults(c.id))) await writeDefaults(c.id, { tags: y.defaultTags ?? "", description: y.defaultDescription ?? "" });
+  await putSetting(DEFAULTS_MIGRATED, new Date().toISOString());
+}
+
+/** Teglar: vergul bilan, bo'sh va takrorlar (katta-kichik harf farqisiz) olib tashlanadi; YouTube cheklovi - jami 500 belgi. */
+function cleanTags(v: string): string {
+  const seen = new Set<string>(), out: string[] = [];
+  for (const t of v.split(",")) {
+    const x = t.replace(/\s+/g, " ").trim().slice(0, 100);
+    if (x && !seen.has(x.toLowerCase())) { seen.add(x.toLowerCase()); out.push(x); }
+  }
+  return out.join(", ");
+}
+
+/** Kanalning standart teglari va tavsifini saqlaydi (faqat shu hisobga ulangan kanal). */
+export async function setChannelDefaults(id: string, d: Partial<ChannelDefaults>): Promise<ChannelDefaults> {
+  const l = await channelList();
+  if (!l.channels.some((x) => x.id === id)) throw new Error("Kanal topilmadi — ro'yxatni yangilang.");
+  await migrateDefaults(l);
+  const cur = (await readDefaults(id)) ?? EMPTY_DEFAULTS;
+  const tags = d.tags !== undefined ? cleanTags(String(d.tags)) : cur.tags;
+  const description = d.description !== undefined ? String(d.description).replace(/\r\n/g, "\n").trim() : cur.description;
+  if (tags.length > CHANNEL_TAGS_MAX) throw new Error(`Teglar birga ${CHANNEL_TAGS_MAX} belgidan oshmasin (YouTube cheklovi).`);
+  if (description.length > CHANNEL_DESC_MAX) throw new Error(`Tavsif ${CHANNEL_DESC_MAX} belgidan oshmasin.`);
+  if (/[<>]/.test(tags) || /[<>]/.test(description)) throw new Error("Teglar va tavsifda < yoki > bo'lmasligi kerak (YouTube rad etadi).");
+  const next = { tags, description };
+  await writeDefaults(id, next);
+  return next;
+}
+
+/** Kanal (id; bo'sh - faol/bog'langan kanal) standart teglari va tavsifi. Hali yozilmagan bo'lsa - hisobning umumiy qiymati. */
+export async function channelDefaults(id = ""): Promise<ChannelDefaults> {
+  const ch = id || (await activeChannelId());
+  const d = ch ? await readDefaults(ch) : null;
+  if (d) return d;
+  const y = (await getConfig()).youtube;
+  return { tags: y.defaultTags ?? "", description: y.defaultDescription ?? "" };
+}
+
 export async function getYouTubeStatus(origin: string): Promise<YouTubeStatus> {
   const [l, c] = await Promise.all([channelList(), connectClient()]);
+  await migrateDefaults(l);
+  const defaults = new Map<string, ChannelDefaults>();
+  for (const x of l.channels) defaults.set(x.id, await channelDefaults(x.id));
   const pending = new Map<string, number>();
   if (!isDemo() && l.channels.length) {
     const rows = await sql()`SELECT channel_id, count(*)::int AS n FROM ytauto.jobs
@@ -223,7 +305,7 @@ export async function getYouTubeStatus(origin: string): Promise<YouTubeStatus> {
   const a = l.channels.find((x) => x.id === l.active);
   return {
     connected: !!a, channelId: a?.id ?? "", channelTitle: a?.title ?? "", connectedAt: a?.connectedAt || null,
-    channels: l.channels.map((x) => ({ id: x.id, title: x.title, connectedAt: x.connectedAt, active: x.id === l.active, pending: pending.get(x.id) ?? 0, expired: x.expired === true })),
+    channels: l.channels.map((x) => ({ id: x.id, title: x.title, connectedAt: x.connectedAt, active: x.id === l.active, pending: pending.get(x.id) ?? 0, expired: x.expired === true, defaults: defaults.get(x.id) ?? EMPTY_DEFAULTS })),
     maxChannels: MAX_CHANNELS,
     clientConfigured: !!c, redirectUri: redirectOf(origin), globalClient: !!globalClient(),
   };
@@ -264,9 +346,15 @@ export async function finishYouTube(code: string, origin: string): Promise<strin
   await channelList(); // eski bitta ulanish bo'lsa avval ro'yxatga o'tkaziladi
   await lockList();
   const l = parseList(await getSetting(LIST_KEY)) ?? { active: "", channels: [] };
+  await migrateDefaults(l); // mavjud kanallar umumiy teg/tavsifni oladi - yangi kanal esa bo'sh boshlanadi (pastda)
   // Id'si aniqlanmagan eski ulanish shu kanal bo'lsa (nomi bir xil) - uning vazifalari shu kanalga o'tadi.
   const legacy = l.channels.find((x) => x.id === LEGACY_ID && x.title === title);
-  if (legacy) { await bindUnassigned(id, LEGACY_ID); l.channels = l.channels.filter((x) => x !== legacy); }
+  if (legacy) {
+    await bindUnassigned(id, LEGACY_ID); l.channels = l.channels.filter((x) => x !== legacy);
+    const ld = await readDefaults(LEGACY_ID);
+    if (ld && !(await readDefaults(id))) await writeDefaults(id, ld);
+  }
+  if (!(await readDefaults(id))) await writeDefaults(id, EMPTY_DEFAULTS);
   const i = l.channels.findIndex((x) => x.id === id);
   if (i >= 0) l.channels[i] = entry;
   else {
