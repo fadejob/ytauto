@@ -6,8 +6,8 @@ using YtAuto.Infrastructure.Templates;
 namespace YtAuto.Infrastructure.Commands;
 
 /// <summary>
-/// Botdan kelgan, aynan shu kompyuterni o'zgartiradigan buyruqlar (ytauto.machine_commands): shablonni o'chirish va
-/// upload sessiyasini tozalash. Yengil worker (--poll) va ochiq ilova har tekshiruvda chaqiradi.
+/// Botdan kelgan, aynan shu kompyuterni o'zgartiradigan buyruqlar (ytauto.machine_commands): shablonni o'chirish, upload
+/// sessiyasini tozalash va tarixdan o'chirilgan videolarning fayllarini o'chirish. Yengil worker (--poll) va ochiq ilova har tekshiruvda chaqiradi.
 /// </summary>
 public static class RemoteCommands
 {
@@ -29,6 +29,7 @@ public static class RemoteCommands
                         svc.Secrets.Set(SecretNames.UploadSessionPrefix + arg.Trim(), null);
                         svc.Log.Info($"Botdan: #{arg} uchun upload sessiyasi tozalandi.");
                         break;
+                    case "delete_job_files": LocalJobFiles.DeleteJobs(svc, arg); break;
                     default: svc.Log.Warn($"Noma'lum buyruq: {kind}"); break;
                 }
             }
@@ -46,17 +47,28 @@ public static class RemoteCommands
         try { TemplateStore.DeleteFiles(s.Paths.TemplatesDir, t); } catch (Exception e) { svc.Log.Warn("Shablon fayllarini o'chirib bo'lmadi: " + e.Message); }
         if (!t.Managed)
         {
-            // Tayyor video shabloni: arxivdagi video O'CHIRILMAYDI, faqat kichik rasm papkasi. Qayta avtomatik qo'shilmasligi uchun yo'l eslab qolinadi.
+            // Tayyor video shabloni: kichik rasm va arxivdagi video (yonidagi subtitr/muqova/meta bilan) kompyuterdan o'chadi.
+            // Video hali YouTube'ga chiqarilmagan bo'lsa (arxivda kutmoqda) fayl qoladi - aks holda chiqarib bo'lmay qoladi.
             Ignore(svc, t.Path);
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(t.Thumbnail) && PathGuard.IsUnder(s.Paths.TemplatesDir, t.Thumbnail))
-                    PathGuard.SafeDeleteDirectory(s.Paths.TemplatesDir, Path.GetDirectoryName(t.Thumbnail)!);
-            }
-            catch { }
+            TemplateStore.DeleteThumbnail(s.Paths.TemplatesDir, t);
+            if (AwaitsUpload(svc, t.Path)) svc.Log.Info($"Shablon '{t.Name}' videosi hali YouTube'ga chiqarilmagan - arxivdagi fayl qoldirildi.");
+            else LocalJobFiles.DeleteVideoSet(s.Paths, t.Path);
         }
         svc.Settings.Save(s); // katalog va shablonlar ro'yxati bazaga yangilanadi
         svc.Log.Info($"Botdan: shablon o'chirildi: '{t.Name}'.");
+    }
+
+    /// <summary>Shu arxiv fayli YouTube'ga chiqarilishini kutayotgan vazifaniki (arxivlangan, yuklanmoqda yoki tayyor).</summary>
+    private static bool AwaitsUpload(AppServices svc, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var full = PathGuard.Full(path);
+            return svc.Store.ListByStatus(Core.Domain.JobStatus.Archived, Core.Domain.JobStatus.Uploading, Core.Domain.JobStatus.Ready)
+                .Any(j => !string.IsNullOrWhiteSpace(j.VideoArchivePath) && string.Equals(PathGuard.Full(j.VideoArchivePath), full, StringComparison.OrdinalIgnoreCase));
+        }
+        catch { return true; } // bilmasak - o'chirmaymiz
     }
 
     public static HashSet<string> Ignored(AppServices svc)

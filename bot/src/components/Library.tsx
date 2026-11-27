@@ -60,7 +60,7 @@ export default function Library({ toast, canUpload = true, onCount }: { toast: T
   }, [doneIds, load]);
 
   async function del(t: TemplateItem) {
-    const note = t.source === "video" ? "Arxivdagi video O'CHIRILMAYDI, faqat shablon ro'yxatidan olib tashlanadi." : "Shablon fayllari kompyuterdan o'chiriladi.";
+    const note = t.source === "video" ? "Arxivdagi video ham kompyuterdan o'chiriladi (YouTube'ga hali chiqmagan bo'lsa - qoladi). YouTube'dagi video o'zgarmaydi." : "Shablon fayllari kompyuterdan o'chiriladi.";
     if (!(await confirmBox(`"${t.name}" shabloni o'chirilsinmi?\n\n${note}\nShu shablonni ishlatadigan navbatdagi mavzular "e'tibor kerak" holatiga tushishi mumkin.`))) return;
     const k = key(t.machine, t.name);
     await busy.run("del:" + k, async () => {

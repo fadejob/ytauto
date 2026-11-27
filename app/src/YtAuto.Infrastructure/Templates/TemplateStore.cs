@@ -78,7 +78,8 @@ public sealed class TemplateStore
 
     /// <summary>
     /// Arxivdagi tayyor videoni NUSXALAMASDAN shablon sifatida ro'yxatdan o'tkazadi (Path - arxivdagi fayl, Managed=false):
-    /// faqat kichik rasm shablonlar papkasiga yoziladi. Arxiv fayli hech qachon shablon orqali o'chirilmaydi.
+    /// faqat kichik rasm shablonlar papkasiga yoziladi. Botdan shablon o'chirilganda arxiv fayli ham o'chadi (RemoteCommands) - faqat
+    /// video YouTube'ga chiqarilishini kutmayotgan bo'lsa.
     /// </summary>
     public async Task<TemplateDefinition> RegisterExistingVideoAsync(string templatesDir, string videoPath, string name, string notes, CancellationToken ct)
     {
@@ -103,6 +104,17 @@ public sealed class TemplateStore
             catch { /* kichik rasm ixtiyoriy */ }
         }
         return def;
+    }
+
+    /// <summary>Arxiv videosi shablonining (Managed=false) kichik rasm papkasi - faqat shablonlar papkasi ichida.</summary>
+    public static void DeleteThumbnail(string templatesDir, TemplateDefinition t)
+    {
+        try
+        {
+            if (!t.Managed && !string.IsNullOrWhiteSpace(templatesDir) && !string.IsNullOrWhiteSpace(t.Thumbnail) && PathGuard.IsUnder(templatesDir, t.Thumbnail))
+                PathGuard.SafeDeleteDirectory(templatesDir, Path.GetDirectoryName(t.Thumbnail)!);
+        }
+        catch { }
     }
 
     /// <summary>Faqat ilova o'zi nusxalagan (Managed) shablon papkasini o'chiradi.</summary>

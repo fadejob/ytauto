@@ -389,8 +389,8 @@ function ChannelDataCard({ ch, busy, toast, onDone }: { ch: ChannelInfo; busy: B
 
   async function purge(action: "purge" | "purge_published") {
     const text = action === "purge_published"
-      ? `«${name}» kanalining ${published} ta chiqqan video tarixi o'chirilsinmi?\n\nYtAuto'dagi yozuvlari, loglari va bosqichlari o'chadi. YouTube'dagi videolar O'ZGARMAYDI. Qaytarib bo'lmaydi.`
-      : `«${name}» kanalining BARCHA ma'lumotlari o'chirilsinmi?\n\n• ${videos} ta video/mavzu (navbatdagilar ham) — yozuvlari, loglari, fayllari\n• kanal tahlili, mavzu tavsiyalari, kontekst\n• standart teglar va tavsif\n\nYouTube'dagi videolar O'ZGARMAYDI, kanal ulanishi qoladi. Qaytarib bo'lmaydi.`;
+      ? `«${name}» kanalining ${published} ta chiqqan video tarixi o'chirilsinmi?\n\nYtAuto'dagi yozuvlari, loglari va bosqichlari, kompyuterdagi fayllari (video, ovoz, subtitr, muqova) o'chadi. YouTube'dagi videolar O'ZGARMAYDI. Qaytarib bo'lmaydi.`
+      : `«${name}» kanalining BARCHA ma'lumotlari o'chirilsinmi?\n\n• ${videos} ta video/mavzu (navbatdagilar ham) — yozuvlari, loglari, fayllari (kompyuterdagilari ham)\n• kanal tahlili, mavzu tavsiyalari, kontekst\n• standart teglar va tavsif\n\nYouTube'dagi videolar O'ZGARMAYDI, kanal ulanishi qoladi. Qaytarib bo'lmaydi.`;
     if (!(await confirmBox(text))) return;
     if (action === "purge" && !(await confirmBox(`Aniqmi? «${name}» bo'yicha YtAuto'dagi hamma narsa butunlay o'chadi.`))) return;
     const r = await busy.run(action, () => api<PurgeResponse>("/api/youtube", { action, id: ch.id }));
@@ -400,7 +400,7 @@ function ChannelDataCard({ ch, busy, toast, onDone }: { ch: ChannelInfo; busy: B
   }
 
   return (
-    <Card title="Ma'lumotlarni tozalash" sub={`Faqat YtAuto'da · YouTube'dagi videolarga tegilmaydi`}>
+    <Card title="Ma'lumotlarni tozalash" sub={`YtAuto va kompyuterdagi fayllar · YouTube'dagi videolarga tegilmaydi`}>
       <div className="sub">{videos} ta video yozuvi, ulardan {published} tasi chiqqan.</div>
       {/* Ustma-ust, to'liq kenglikda: telefonda uzun yozuvlar sig'adi. */}
       <div style={{ display: "grid", gap: 8 }}>
