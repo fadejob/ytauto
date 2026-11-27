@@ -93,7 +93,16 @@ export type BotConfig = {
    */
   visuals: { realMedia: boolean; maxMedia: number; templateStyleGuide: boolean; templateMotion: boolean; styleReview: boolean; minStyleScore: number; pexelsKeySet: boolean; pixabayKeySet: boolean;
     /** OpenFilm stok qidiruvi: har sahnaga rasm/video nomzodlari, tanlovni Claude qiladi. */
-    openFilmStock: boolean; stockImages: number; stockClips: number };
+    openFilmStock: boolean; stockImages: number; stockClips: number;
+    /** Video paytida jonli manbalar (bazasiz): fotolar, 3D ikonlar, aylanadigan 3D modellar; max3dModels - bitta videoga 3D modellar. */
+    liveAssets: boolean; max3dModels: number };
+  /** Dizaynli subtitr: so'zma-so'z yonadi; uslub, o'lcham, ibora uzunligi, ranglar va joylashuv. */
+  subtitles: SubtitleConfig;
+};
+export type SubtitleStyle = "bold" | "box" | "clean" | "karaoke";
+export type SubtitleConfig = {
+  designed: boolean; style: SubtitleStyle; fontScale: number; maxWords: number; uppercase: boolean;
+  textColor: string; highlightColor: string; boxColor: string; position: number; font: string;
 };
 export type GeminiKeyInfo = { id: string; hint: string };
 /**
@@ -110,6 +119,7 @@ export type BotConfigInput = {
   claude: BotConfig["claude"];
   voice: BotConfig["voice"];
   visuals: BotConfig["visuals"] & { pexelsApiKey?: string; pixabayApiKey?: string };
+  subtitles?: BotConfig["subtitles"];
 };
 
 export type Catalog = {

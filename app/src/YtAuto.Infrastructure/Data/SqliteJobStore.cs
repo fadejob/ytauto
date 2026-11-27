@@ -1042,6 +1042,9 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 // Sifatli stok foto manbalari (bepul kalitlar): bo'lmasa Openverse/Wikimedia ishlatiladi.
                 s.Visuals.PexelsApiKey = vis["pexelsApiKey"] is System.Text.Json.Nodes.JsonValue pk && pk.TryGetValue<string>(out var pkv) ? pkv.Trim() : "";
                 s.Visuals.PixabayApiKey = vis["pixabayApiKey"] is System.Text.Json.Nodes.JsonValue xk && xk.TryGetValue<string>(out var xkv) ? xkv.Trim() : "";
+                // Jonli manbalar (bazasiz): fotolar, 3D ikonlar va aylanadigan 3D modellar.
+                if (vis["liveAssets"] is System.Text.Json.Nodes.JsonValue la && la.TryGetValue<bool>(out var lav)) s.Visuals.LiveAssets = lav;
+                if (vis["max3dModels"] is System.Text.Json.Nodes.JsonValue m3 && m3.TryGetValue<int>(out var m3v)) s.Visuals.Max3dModels = Math.Clamp(m3v, 0, 8);
             }
             if (root?["voice"] is { } vc)
             {
@@ -1080,6 +1083,25 @@ public sealed class SqliteSettingsStore : ISettingsStore
                 if (of["burnSubtitles"] is { } bs) s.OpenFilm.BurnSubtitles = bs.GetValue<bool>();
                 if (of["lookFullAfterRender"] is { } lf) s.OpenFilm.LookFullAfterRender = lf.GetValue<bool>();
                 if (of["renderTimeoutMinutes"] is { } rt) s.OpenFilm.RenderTimeoutMinutes = Math.Max(5, rt.GetValue<int>());
+            }
+            if (root?["subtitles"] is System.Text.Json.Nodes.JsonObject st)
+            {
+                // Dizaynli subtitr (bot → Sozlamalar → Video sifati → Subtitr).
+                static bool B(System.Text.Json.Nodes.JsonNode? n, out bool v) { v = false; return n is System.Text.Json.Nodes.JsonValue x && x.TryGetValue(out v); }
+                static bool D(System.Text.Json.Nodes.JsonNode? n, out double v) { v = 0; return n is System.Text.Json.Nodes.JsonValue x && (x.TryGetValue(out v) || (x.TryGetValue<int>(out var i) && (v = i) == i)); }
+                static string S(System.Text.Json.Nodes.JsonNode? n) => n is System.Text.Json.Nodes.JsonValue x && x.TryGetValue<string>(out var v) ? v.Trim() : "";
+                static bool Hex(string v) => System.Text.RegularExpressions.Regex.IsMatch(v, "^#[0-9a-fA-F]{6}$");
+                var ss = s.Subtitles;
+                if (B(st["designed"], out var d1)) ss.Designed = d1;
+                if (SubtitleSettings.Styles.Contains(S(st["style"]))) ss.Style = S(st["style"]);
+                if (D(st["fontScale"], out var fsc)) ss.FontScale = Math.Clamp(fsc, 0.5, 2.0);
+                if (D(st["maxWords"], out var mw)) ss.MaxWords = (int)Math.Clamp(mw, 0, 8);
+                if (B(st["uppercase"], out var up)) ss.Uppercase = up;
+                if (Hex(S(st["textColor"]))) ss.TextColor = S(st["textColor"]);
+                if (Hex(S(st["highlightColor"]))) ss.HighlightColor = S(st["highlightColor"]);
+                if (Hex(S(st["boxColor"]))) ss.BoxColor = S(st["boxColor"]);
+                if (D(st["position"], out var po)) ss.Position = Math.Clamp(po, 0, 0.92);
+                if (st["font"] is not null) ss.Font = S(st["font"]);
             }
             if (root?["limits"] is { } l)
             {
@@ -1258,6 +1280,13 @@ public sealed class SqliteSettingsStore : ISettingsStore
             {
                 ["realMedia"] = s.Visuals.RealMedia, ["maxMedia"] = s.Visuals.MaxMedia, ["styleReview"] = s.Visuals.StyleReview,
                 ["minStyleScore"] = s.Visuals.MinStyleScore, ["stockImages"] = s.Visuals.StockImagesPerScene, ["stockClips"] = s.Visuals.StockClipsPerScene,
+                ["liveAssets"] = s.Visuals.LiveAssets, ["max3dModels"] = s.Visuals.Max3dModels,
+            },
+            ["subtitles"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["designed"] = s.Subtitles.Designed, ["style"] = s.Subtitles.Style, ["fontScale"] = s.Subtitles.FontScale, ["maxWords"] = s.Subtitles.MaxWords,
+                ["uppercase"] = s.Subtitles.Uppercase, ["textColor"] = s.Subtitles.TextColor, ["highlightColor"] = s.Subtitles.HighlightColor,
+                ["boxColor"] = s.Subtitles.BoxColor, ["position"] = s.Subtitles.Position, ["font"] = s.Subtitles.Font,
             },
             ["voice.settings"] = new System.Text.Json.Nodes.JsonObject
             {

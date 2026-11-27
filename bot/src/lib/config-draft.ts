@@ -13,6 +13,7 @@ export const toDraft = (c: BotConfig): ConfigDraft => ({
   youtube: { ...c.youtube, clientSecret: "" },
   openFilm: { ...c.openFilm },
   visuals: { ...c.visuals, pexelsApiKey: "", pixabayApiKey: "" },
+  subtitles: { ...c.subtitles },
   claude: { ...c.claude },
   voice: { profiles: c.voice.profiles.map((p) => ({ ...p })), settings: { ...c.voice.settings } },
 });

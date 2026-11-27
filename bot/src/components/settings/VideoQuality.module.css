@@ -76,3 +76,27 @@
 @media (max-width: 360px) {
   .format { padding: 10px; }
 }
+
+/* ---- Subtitr kartasi */
+.capWrap { display: grid; grid-template-columns: 112px 1fr; gap: 14px; align-items: stretch; }
+.capPreview { position: relative; aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden;
+  background: linear-gradient(160deg, #3a4a2c, #1b2430 55%, #0c0f15); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+.capLine { position: absolute; left: 6%; right: 6%; transform: translateY(-50%); text-align: center; line-height: 1.1;
+  font-family: "Segoe UI", Arial, sans-serif; letter-spacing: -0.01em; width: fit-content; margin: 0 auto; }
+.capStyles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.capStyle { text-align: left; padding: 10px 12px; border-radius: 12px; border: 1.5px solid var(--line, rgba(127,127,127,.25));
+  background: var(--card2, transparent); color: inherit; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.capStyle b { font-size: 14px; }
+.capStyle span { font-size: 12px; opacity: .7; line-height: 1.3; }
+.capStyle.on { border-color: var(--accent, #4f7cff); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent, #4f7cff) 22%, transparent); }
+.capStyle:disabled { opacity: .5; cursor: default; }
+.colors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.color { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 12px; border: 1.5px solid var(--line, rgba(127,127,127,.25)); cursor: pointer; min-width: 0; }
+.color input { width: 30px; height: 30px; border: 0; padding: 0; background: none; border-radius: 8px; flex: none; }
+.color > span { display: flex; flex-direction: column; min-width: 0; }
+.color b { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 420px) {
+  .capWrap { grid-template-columns: 92px 1fr; }
+  .capStyles { grid-template-columns: 1fr; }
+  .colors { grid-template-columns: 1fr; }
+}

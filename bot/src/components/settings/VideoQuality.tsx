@@ -9,7 +9,7 @@ import { useCallback, useState, type ReactNode } from "react";
 import { AudioLines, Check, ChevronDown, ClipboardPaste, KeyRound, LayoutTemplate, Lock, Minus, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { confirmBox, haptic } from "@/lib/client";
 import { differs, useBotConfig, type ConfigDraft } from "@/lib/settings-data";
-import { FormatText, type BotConfig, type Catalog } from "@/lib/types";
+import { FormatText, type BotConfig, type Catalog, type SubtitleConfig, type SubtitleStyle } from "@/lib/types";
 import { FormatLength } from "@/lib/video-rules";
 import { Alert, Btn, Card, PageHead, SaveBtn, SkelCard, Status, Toggle, ToggleRow, useBusy } from "../ui";
 import type { SettingsPageProps } from "./types";
@@ -50,8 +50,9 @@ export default function VideoQuality({ state, toast, back, onChanged }: Settings
         {props ? <>
           <DefaultsCard {...props} catalog={state?.catalog ?? null} />
           <MediaCard {...props} />
+          <SubtitleCard {...props} />
         </> : !error ? <>
-          <SkelCard lines={6} /><SkelCard lines={6} />
+          <SkelCard lines={6} /><SkelCard lines={6} /><SkelCard lines={6} />
         </> : null}
       </div>
     </div>
@@ -233,11 +234,12 @@ function DefaultsCard({ config, save, busy, catalog }: CardProps & { catalog: Ca
 // ------------------------------------------------------------------ 2. Real rasm va ikonlar
 
 type MediaDraft = {
-  realMedia: boolean; maxMedia: number; stockImages: number; stockClips: number;
+  realMedia: boolean; maxMedia: number; stockImages: number; stockClips: number; liveAssets: boolean; max3dModels: number;
   pexelsKeySet: boolean; pixabayKeySet: boolean; pexelsApiKey: string; pixabayApiKey: string;
 };
 const pickMedia = (c: BotConfig): MediaDraft => ({
   realMedia: c.visuals.realMedia, maxMedia: c.visuals.maxMedia, stockImages: c.visuals.stockImages, stockClips: c.visuals.stockClips,
+  liveAssets: c.visuals.liveAssets, max3dModels: c.visuals.max3dModels,
   pexelsKeySet: c.visuals.pexelsKeySet, pixabayKeySet: c.visuals.pixabayKeySet, pexelsApiKey: "", pixabayApiKey: "",
 });
 /** Server tekshiruvi bilan bir xil (lib/config.ts stockKey). */
@@ -255,6 +257,14 @@ function MediaCard({ config, save, busy }: CardProps) {
       action={<Toggle on={draft.realMedia} onChange={(v) => set({ realMedia: v })} label="Real rasm, logo va ikonlar" />}>
       <Row title="Bir videoda ko'pi bilan" desc="0–40 ta rasm">
         <Stepper label="Bir videoga rasmlar" value={draft.maxMedia} min={0} max={40} onChange={(v) => set({ maxMedia: v })} />
+      </Row>
+
+      <hr className={s.divider} />
+
+      <ToggleRow title="Jonli manbalar va 3D" sub="Video paytida: Wikimedia, NASA fotolari, 3D ikonlar (3dicons, Icons8), aylanadigan 3D modellar (Poly Haven, Objaverse)"
+        on={draft.liveAssets} onChange={(v) => set({ liveAssets: v })} />
+      <Row title="Aylanadigan 3D modellar" desc="bitta videoga, 0 – o'chiq">
+        <Stepper label="3D modellar soni" value={draft.max3dModels} min={0} max={8} onChange={(v) => set({ max3dModels: v })} />
       </Row>
 
       <hr className={s.divider} />
@@ -284,6 +294,7 @@ function MediaCard({ config, save, busy }: CardProps) {
       <Foot hint="Kalit bo'lmasa — faqat ochiq manbalar" dirty={dirty} saving={busy.is(TITLE)} done={busy.done(TITLE)}
         dirtyHint={invalid ? "Kalitni tekshiring" : changed(draft, saved, {
           realMedia: "Real rasmlar", maxMedia: "Rasmlar soni", stockImages: "Rasm nomzodlari", stockClips: "Klip nomzodlari",
+          liveAssets: "Jonli manbalar", max3dModels: "3D modellar",
           pexelsKeySet: "Pexels kaliti", pexelsApiKey: "Pexels kaliti", pixabayKeySet: "Pixabay kaliti", pixabayApiKey: "Pixabay kaliti",
         })}
         onReset={() => setDraft(saved)}
@@ -293,11 +304,109 @@ function MediaCard({ config, save, busy }: CardProps) {
             ...d,
             visuals: {
               ...d.visuals, realMedia: draft.realMedia, maxMedia: draft.maxMedia, stockImages: draft.stockImages, stockClips: draft.stockClips,
+              liveAssets: draft.liveAssets, max3dModels: draft.max3dModels,
               pexelsKeySet: draft.pexelsKeySet, pixabayKeySet: draft.pixabayKeySet,
               pexelsApiKey: draft.pexelsApiKey.trim(), pixabayApiKey: draft.pixabayApiKey.trim(),
             },
           }));
           if (r) setDraft(pickMedia(r));
+        }} />
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------------ 3. Subtitr
+
+const STYLES: { id: SubtitleStyle; name: string; sub: string }[] = [
+  { id: "bold", name: "Qalin", sub: "Oq matn, qora kontur, so'z rangli" },
+  { id: "box", name: "Plashka", sub: "Qorong'i fon, so'z ajratilgan" },
+  { id: "clean", name: "Ixcham", sub: "Oddiy registr, yumshoq soya" },
+  { id: "karaoke", name: "Karaoke", sub: "So'zlar aytilishi bilan chiqadi" },
+];
+
+/** Subtitr ko'rinishining jonli namunasi (worker'dagi captions.html uslubining soddalashtirilgani). */
+function CaptionPreview({ v }: { v: SubtitleConfig }) {
+  const words = ["Bees", "see", "colours", "we", "can't"];
+  const on = 2;
+  const caps = v.uppercase && v.style !== "clean";
+  const size = Math.round((v.style === "clean" ? 15 : 19) * v.fontScale);
+  const top = `${Math.round((v.position > 0 ? v.position : 0.8) * 100)}%`;
+  return (
+    <div className={s.capPreview} aria-hidden>
+      <div className={s.capLine} style={{
+        top, fontSize: size, fontWeight: v.style === "clean" ? 700 : 900, fontFamily: v.font || undefined,
+        background: v.style === "box" ? `${v.boxColor}d9` : undefined, padding: v.style === "box" ? "3px 8px" : undefined, borderRadius: 8,
+      }}>
+        {words.slice(0, v.maxWords > 0 ? v.maxWords : 3).map((w, i) => {
+          const active = i === on;
+          const hidden = v.style === "karaoke" && i > on;
+          return (
+            <span key={w} style={{
+              margin: "0 3px", display: "inline-block", opacity: hidden ? 0 : v.style === "clean" && !active ? 0.72 : 1,
+              color: v.style === "box" && active ? v.boxColor : active ? v.highlightColor : v.textColor,
+              background: v.style === "box" && active ? v.highlightColor : undefined, borderRadius: 4, padding: v.style === "box" && active ? "0 3px" : undefined,
+              WebkitTextStroke: v.style === "bold" || v.style === "karaoke" ? "1.2px #000" : undefined, paintOrder: "stroke fill",
+              textShadow: v.style === "clean" ? "0 1px 6px #000c" : "0 2px 6px #000b", transform: active && v.style !== "clean" ? "scale(1.12)" : undefined,
+            }}>{caps ? w.toUpperCase() : w}</span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ColorPick({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className={s.color}>
+      <input type="color" value={value} aria-label={label} onChange={(e) => onChange(e.target.value.toUpperCase())} />
+      <span><b>{label}</b><span className="sub tnum">{value}</span></span>
+    </label>
+  );
+}
+
+function SubtitleCard({ config, save, busy }: CardProps) {
+  const TITLE = "Subtitr";
+  const { draft, setDraft, saved, dirty } = useDraft(config, (c) => ({ ...c.subtitles }));
+  const set = (p: Partial<SubtitleConfig>) => setDraft((d) => ({ ...d, ...p }));
+  return (
+    <Card title={TITLE} sub="Videoga qo'shiladigan subtitr: so'zma-so'z ovoz bilan yonadi"
+      action={<Toggle on={draft.designed} onChange={(v) => set({ designed: v })} label="Dizaynli subtitr" />}>
+      <div className={s.capWrap}>
+        <CaptionPreview v={draft} />
+        <div className={s.capStyles} role="radiogroup" aria-label="Subtitr uslubi">
+          {STYLES.map((x) => (
+            <button key={x.id} type="button" role="radio" aria-checked={draft.style === x.id} disabled={!draft.designed}
+              className={`${s.capStyle} ${draft.style === x.id ? s.on : ""}`} onClick={() => set({ style: x.id })}>
+              <b>{x.name}</b><span>{x.sub}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <Row title="Shrift o'lchami" desc="50–200%">
+        <Stepper label="Subtitr o'lchami" value={Math.round(draft.fontScale * 100)} min={50} max={200} step={10} suffix="%" onChange={(v) => set({ fontScale: v / 100 })} />
+      </Row>
+      <Row title="Iboradagi so'zlar" desc="0 – avtomatik (vertikal 3, gorizontal 5)">
+        <Stepper label="Iboradagi so'zlar" value={draft.maxWords} min={0} max={8} onChange={(v) => set({ maxWords: v })} />
+      </Row>
+      <Row title="Joylashuv (balandlik)" desc="0 – avtomatik; 50–92% pastdan">
+        <Stepper label="Subtitr joyi" value={Math.round(draft.position * 100)} min={0} max={92} step={2} suffix="%"
+          onChange={(v) => set({ position: v === 0 ? 0 : Math.max(50, v) / 100 })} />
+      </Row>
+      <ToggleRow title="KATTA HARFLAR" sub="Ixcham uslubda doim oddiy registr" on={draft.uppercase} onChange={(v) => set({ uppercase: v })} />
+      <div className={s.colors}>
+        <ColorPick label="Matn" value={draft.textColor} onChange={(v) => set({ textColor: v })} />
+        <ColorPick label="Aytilayotgan so'z" value={draft.highlightColor} onChange={(v) => set({ highlightColor: v })} />
+        <ColorPick label="Plashka" value={draft.boxColor} onChange={(v) => set({ boxColor: v })} />
+      </div>
+      <Foot hint={draft.designed ? "Yangi videolardan boshlab" : "O'chiq: OpenFilm'ning oddiy subtitri"} dirty={dirty} saving={busy.is(TITLE)} done={busy.done(TITLE)}
+        dirtyHint={changed(draft, saved, {
+          designed: "Dizaynli subtitr", style: "Uslub", fontScale: "O'lcham", maxWords: "So'zlar soni", position: "Joylashuv",
+          uppercase: "Katta harflar", textColor: "Rang", highlightColor: "Rang", boxColor: "Rang",
+        })}
+        onReset={() => setDraft(saved)}
+        onSave={async () => {
+          const r = await save(TITLE, (d) => ({ ...d, subtitles: { ...draft } }));
+          if (r) setDraft({ ...r.subtitles });
         }} />
     </Card>
   );

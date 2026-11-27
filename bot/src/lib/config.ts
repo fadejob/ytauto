@@ -24,6 +24,7 @@ type Stored = {
   claude?: Partial<BotConfig["claude"]>;
   voice?: { profiles?: BotConfig["voice"]["profiles"]; settings?: Partial<BotConfig["voice"]["settings"]> };
   visuals?: Partial<Omit<BotConfig["visuals"], "pexelsKeySet" | "pixabayKeySet">> & { pexelsApiKey?: string; pixabayApiKey?: string };
+  subtitles?: Partial<BotConfig["subtitles"]>;
 };
 
 const DEF: BotConfig = {
@@ -42,8 +43,13 @@ const DEF: BotConfig = {
   },
   openFilm: { renderWorkers: 1, fps: 30, loudnessLufs: -14, burnSubtitles: true, lookFullAfterRender: true, renderTimeoutMinutes: 90 },
   visuals: { realMedia: true, maxMedia: 16, templateStyleGuide: true, templateMotion: true, styleReview: true, minStyleScore: 6.5, pexelsKeySet: false, pixabayKeySet: false,
-    openFilmStock: true, stockImages: 5, stockClips: 3 },
+    openFilmStock: true, stockImages: 5, stockClips: 3, liveAssets: true, max3dModels: 4 },
+  subtitles: { designed: true, style: "bold", fontScale: 1, maxWords: 0, uppercase: true, textColor: "#FFFFFF", highlightColor: "#FFD60A",
+    boxColor: "#111111", position: 0, font: "" },
 };
+
+const STYLES = ["bold", "box", "clean", "karaoke"] as const;
+const hex = (v: unknown, d: string) => (typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toUpperCase() : d);
 
 let demoStored: Stored = {};
 
@@ -111,6 +117,7 @@ function view(s: Stored): BotConfig {
     visuals: { ...DEF.visuals, ...vis, templateStyleGuide: true, templateMotion: true, openFilmStock: true, pexelsKeySet: !!pexelsApiKey, pixabayKeySet: !!pixabayApiKey },
     claude: { ...DEF.claude, ...(s.claude ?? {}) },
     voice: { profiles: s.voice?.profiles ?? [], settings: { ...DEF.voice.settings, ...(s.voice?.settings ?? {}) } },
+    subtitles: { ...DEF.subtitles, ...(s.subtitles ?? {}) },
   };
 }
 
@@ -280,7 +287,20 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
       stockClips: Math.round(num(input.visuals.stockClips ?? DEF.visuals.stockClips, 0, 4, "Sahnaga video nomzodlari")),
       pexelsApiKey: stockKey(input.visuals.pexelsApiKey, input.visuals.pexelsKeySet, cur.visuals?.pexelsApiKey, "Pexels"),
       pixabayApiKey: stockKey(input.visuals.pixabayApiKey, input.visuals.pixabayKeySet, cur.visuals?.pixabayApiKey, "Pixabay"),
+      liveAssets: input.visuals.liveAssets ?? DEF.visuals.liveAssets,
+      max3dModels: Math.round(num(input.visuals.max3dModels ?? DEF.visuals.max3dModels, 0, 8, "3D modellar")),
     } : cur.visuals,
+    subtitles: input.subtitles ? {
+      designed: !!input.subtitles.designed,
+      style: (STYLES as readonly string[]).includes(input.subtitles.style) ? input.subtitles.style : "bold",
+      fontScale: Math.round(num(input.subtitles.fontScale, 0.5, 2, "Subtitr o'lchami") * 100) / 100,
+      maxWords: Math.round(num(input.subtitles.maxWords, 0, 8, "Iboradagi so'zlar")),
+      uppercase: !!input.subtitles.uppercase,
+      textColor: hex(input.subtitles.textColor, DEF.subtitles.textColor), highlightColor: hex(input.subtitles.highlightColor, DEF.subtitles.highlightColor),
+      boxColor: hex(input.subtitles.boxColor, DEF.subtitles.boxColor),
+      position: Math.round(num(input.subtitles.position, 0, 0.92, "Subtitr joyi") * 100) / 100,
+      font: String(input.subtitles.font ?? "").replace(/["<>;{}]/g, "").trim().slice(0, 60),
+    } : cur.subtitles,
   };
   await channelSide(cur, next);
   if (isDemo()) { demoStored = next; return getConfig(); }

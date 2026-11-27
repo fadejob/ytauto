@@ -619,7 +619,7 @@ public sealed partial class JobRunner
         if (media.Stock is { Total: > 0 } stock)
         {
             ReviewStockSelection(c, stock);
-            await RecordLibraryUsageAsync(c, stock).ConfigureAwait(false);
+            await RecordLibraryUsageAsync(c, stock).ConfigureAwait(false);   // kutubxona + jonli manbalar mualliflari
         }
         CopyIfExists(c.FilmHtml, Path.Combine(c.RecordDir, "film.html"));
 
@@ -634,14 +634,43 @@ public sealed partial class JobRunner
 
     private static void CopyIfExists(string src, string dst) { try { if (File.Exists(src)) File.Copy(src, dst, true); } catch { } }
 
+    /// <summary>
+    /// voice.vtt so'z vaqtlaridan captions.html va film.html'da eng yuqori yo'lak. Xato bo'lsa false - OpenFilm'ning oddiy subtitri ishlatiladi.
+    /// </summary>
+    private bool WriteCaptions(JobContext c)
+    {
+        try
+        {
+            var words = YtAuto.Core.Text.Captions.ParseWords(File.ReadAllText(c.VoiceVtt));
+            if (words.Count == 0) return false;
+            var duration = c.Job.AudioDurationSec ?? words[^1].End;
+            var (w, h) = c.StageSize;
+            var maxWords = YtAuto.Core.Text.Captions.WordsPerChunk(c.S.Subtitles, c.Job.Format);
+            var chunks = YtAuto.Core.Text.Captions.Chunk(words, maxWords, c.SubtitleMaxChars);
+            File.WriteAllText(Path.Combine(c.FilmDir, YtAuto.Core.Text.Captions.PageFile),
+                YtAuto.Core.Text.Captions.BuildPage(chunks, c.S.Subtitles, w, h, duration, c.Job.Format), new UTF8Encoding(false));
+            File.WriteAllText(c.FilmHtml, YtAuto.Core.Text.Captions.InsertTrack(File.ReadAllText(c.FilmHtml), duration), new UTF8Encoding(false));
+            c.StageMetrics["caption_chunks"] = chunks.Count;
+            c.Log.Info($"Subtitr: \"{c.S.Subtitles.Style}\" uslubida {chunks.Count} ibora (ibora {maxWords} so'zgacha), so'zma-so'z.", "Render");
+            return true;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            c.Log.Warn("Dizaynli subtitr yasalmadi, OpenFilm'ning oddiy subtitri ishlatiladi: " + e.Message, "Render");
+            return false;
+        }
+    }
+
     // ---------------------------------------------------------------- F: OpenFilm eksporti
     private async Task<StageOutputs> RenderStageAsync(JobContext c)
     {
         if (File.Exists(c.FinalMp4)) File.Delete(c.FinalMp4);
+        // Dizaynli subtitr: film.html'ga o'z yo'lagi (so'zma-so'z yonadi); OpenFilm'ning oddiy subtitri o'chiriladi.
+        var designed = c.S.OpenFilm.BurnSubtitles && c.S.Subtitles.Designed && WriteCaptions(c);
         var opts = new RenderOptions
         {
             Fps = c.S.OpenFilm.Fps, Workers = Math.Clamp(c.S.OpenFilm.RenderWorkers, 1, 4), LoudnessLufs = c.S.OpenFilm.LoudnessLufs,
-            BurnSubtitles = c.S.OpenFilm.BurnSubtitles, Timeout = TimeSpan.FromMinutes(Math.Max(10, c.S.OpenFilm.RenderTimeoutMinutes)),
+            BurnSubtitles = c.S.OpenFilm.BurnSubtitles && !designed, Timeout = TimeSpan.FromMinutes(Math.Max(10, c.S.OpenFilm.RenderTimeoutMinutes)),
         };
         if (_x.Resources.TotalRamGb() < 10 && opts.Workers > 1)
         {

@@ -24,6 +24,8 @@ public sealed class AppSettings
     public ChannelContextSettings ChannelContext { get; set; } = new();
     /// <summary>Video sifati: shablon uslubi tahlili, ochiq manbalardan real rasm/ikonlar va shablonga moslik tekshiruvi.</summary>
     public VisualSettings Visuals { get; set; } = new();
+    /// <summary>Dizaynli subtitrlar (so'zma-so'z yonadigan, uslubi sozlanadigan).</summary>
+    public SubtitleSettings Subtitles { get; set; } = new();
     /// <summary>
     /// Hisobning ovoz namunasi («Mening ovozim»): vazifa kanalining o'z namunasi (bot: shared_settings['voice.clone:&lt;kanal&gt;']),
     /// bo'lmasa umumiy namuna (shared_settings['voice.clone']); job snapshot'iga tushadi.
@@ -249,6 +251,13 @@ public sealed class VisualSettings
     /// </summary>
     public bool AssetLibrary { get; set; } = true;
     /// <summary>
+    /// Video paytida jonli ko'p manbali qidiruv (oldindan to'ldirilgan baza shart emas): Wikimedia/NASA fotolari, 3D ikonlar
+    /// (3dicons, Icons8 3D Fluency) va sahnada aylanadigan haqiqiy 3D modellar (Poly Haven, Objaverse).
+    /// </summary>
+    public bool LiveAssets { get; set; } = true;
+    /// <summary>Bitta videoga ko'pi bilan nechta aylanadigan 3D model (0 - 3D model ishlatilmaydi).</summary>
+    public int Max3dModels { get; set; } = 4;
+    /// <summary>
     /// Shablon kadrlaridan Gemini dizayn qo'llanmasi (STYLE_GUIDE.md) yaratiladi va Claude'ga beriladi. Majburiy: botda ko'rsatilmaydi va
     /// bot qiymati e'tiborga olinmaydi (TemplateMotionGuide va OpenFilmStock ham) - faqat ichki sinovlar o'chirishi mumkin.
     /// </summary>
@@ -259,6 +268,32 @@ public sealed class VisualSettings
     public bool StyleReview { get; set; } = true;
     /// <summary>Shundan past ball (0-10) - tuzatishga qaytariladi.</summary>
     public double MinStyleScore { get; set; } = 6.5;
+}
+
+/// <summary>
+/// Dizaynli subtitrlar: worker film.html'ning eng yuqori yo'lagiga o'z sahifasini qo'yadi (OpenFilm'ning oddiy subtitri o'rniga).
+/// Botda: Sozlamalar → Video sifati → Subtitr.
+/// </summary>
+public sealed class SubtitleSettings
+{
+    public static readonly string[] Styles = { "bold", "box", "clean", "karaoke" };
+    /// <summary>true - dizaynli subtitr; false - OpenFilm'ning oddiy subtitri (OpenFilm.BurnSubtitles bo'yicha).</summary>
+    public bool Designed { get; set; } = true;
+    /// <summary>bold - qalin oq matn, qora kontur, aytilayotgan so'z rangli; box - qorong'i plashka, so'z rangli "tabletka" ichida;
+    /// clean - ixcham, oddiy registr; karaoke - so'zlar aytilishi bilan paydo bo'ladi.</summary>
+    public string Style { get; set; } = "bold";
+    /// <summary>Shrift o'lchami ko'paytiruvchisi (0.5-2).</summary>
+    public double FontScale { get; set; } = 1.0;
+    /// <summary>Bir iborada nechta so'z (0 - avtomatik: vertikal 3, gorizontal 5).</summary>
+    public int MaxWords { get; set; }
+    public bool Uppercase { get; set; } = true;
+    public string TextColor { get; set; } = "#FFFFFF";
+    public string HighlightColor { get; set; } = "#FFD60A";
+    public string BoxColor { get; set; } = "#111111";
+    /// <summary>Subtitr markazi kadr balandligining qayerida (0.5-0.92; 0 - avtomatik: vertikal 0.80, gorizontal 0.86).</summary>
+    public double Position { get; set; }
+    /// <summary>Tizim shrifti nomi ("" - Segoe UI).</summary>
+    public string Font { get; set; } = "";
 }
 
 public sealed class VoiceStudioSettings
