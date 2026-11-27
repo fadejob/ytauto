@@ -201,6 +201,8 @@ tahrirlaydi/o'chiradi. Masalan: *«Kanalim uchun kiberxavfsizlik haqida 30 ta ma
 | `get_youtube_video` | Bitta video: to'liq tavsif, teglar, kategoriya, holat, reja vaqti. |
 | `update_youtube_video` | Title, tavsif, teglar, kategoriya, privacy, `publish_at` (reja), made for kids — faqat berilganlari o'zgaradi. |
 | `delete_youtube_video` | Videoni **butunlay** o'chiradi (`confirm: true`, qaytarib bo'lmaydi); faqat ulangan kanalning videosi. |
+| `get_youtube_defaults` | Kanalning standart teglari va tavsifi (botdagi «Tavsif va teglar» bilan bir xil). |
+| `update_youtube_defaults` | Standart teglar va/yoki tavsifni o'zgartiradi — keyingi har yangi videoga qo'yiladi; bo'sh = Gemini yozadi. |
 
 YouTube tool'lari faqat asosiy hisob tokeni bilan ishlaydi. Tahrirlash/o'chirish uchun `youtube.force-ssl` ruxsati kerak — bu
 o'zgarishdan oldin ulangan kanallar uchun botda **Sozlamalar → YouTube → kanalni qayta ulang** (aks holda tool shuni aytadi).

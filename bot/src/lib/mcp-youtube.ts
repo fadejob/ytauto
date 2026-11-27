@@ -1,7 +1,7 @@
 import "server-only";
 import { isGuest, sql } from "./db";
 import { McpToolError } from "./demo-video";
-import { youtubeAccessToken, youtubeCredentials, youtubeCanManage } from "./youtube";
+import { activeChannelId, CHANNEL_DESC_MAX, CHANNEL_TAGS_MAX, channelDefaults, findChannel, setChannelDefaults, youtubeAccessToken, youtubeCredentials, youtubeCanManage } from "./youtube";
 import { isoDuration } from "./channel/youtube-data";
 
 /**
@@ -200,4 +200,52 @@ export async function deleteYouTubeVideo(args: Json, run: Run) {
   await run(() => sql()`INSERT INTO ytauto.job_events(job_id, at_utc, level, stage, message)
     SELECT id, now(), 'Warning', NULL, ${`YouTube videosi MCP orqali o'chirildi: ${id}`} FROM ytauto.jobs WHERE youtube_video_id = ${id}`).catch(() => undefined);
   return { ok: true, message: `"${v.snippet?.title ?? id}" (${id}) YouTube'dan o'chirildi. Bu qaytarib bo'lmaydi.` };
+}
+
+// ------------------------------------------------------------------ kanalning standart teglari va tavsifi
+/**
+ * Kanal standart teglari va tavsifi (botdagi Sozlamalar → Kanallar va YouTube → «Tavsif va teglar» bilan bir xil qiymat):
+ * YtAuto shu kanalga chiqaradigan har bir yangi videoga qo'yiladi; bo'sh bo'lsa Gemini o'zi yozadi.
+ * Kanal MCP'sida - bog'langan kanal, oddiy ytauto'da - botdagi faol kanal. Faqat bazaga tegadi (YouTube API emas).
+ */
+async function defaultsChannel() {
+  if (isGuest()) fail("Bu qo'shimcha (mehmon) token: kanal sozlamalari bilan faqat asosiy hisob tokeni ishlaydi.");
+  const id = await activeChannelId();
+  const ch = id ? await findChannel(id) : null;
+  if (!ch) fail("YouTube kanali ulanmagan (botda Sozlamalar → Kanallar va YouTube).");
+  return ch!;
+}
+
+const tagList = (t: string) => t.split(",").map((x) => x.trim()).filter(Boolean);
+const defaultsView = (ch: { id: string; title: string }, d: { tags: string; description: string }) => ({
+  channel: ch, tags: tagList(d.tags), description: d.description,
+  limits: { tags_total_chars: CHANNEL_TAGS_MAX, description_chars: CHANNEL_DESC_MAX },
+  note: "Applied to every NEW video YtAuto publishes on this channel (already published videos are not changed; use update_youtube_video for those). Empty = Gemini writes them per video.",
+});
+
+export async function getYouTubeDefaults(_args: Json, run: Run) {
+  return run(async () => {
+    const ch = await defaultsChannel();
+    return defaultsView(ch, await channelDefaults(ch.id));
+  });
+}
+
+export async function updateYouTubeDefaults(args: Json, run: Run) {
+  const patch: { tags?: string; description?: string } = {};
+  if (args.tags !== undefined) {
+    if (typeof args.tags === "string") patch.tags = args.tags;
+    else if (Array.isArray(args.tags) && args.tags.every((t) => typeof t === "string")) patch.tags = (args.tags as string[]).join(", ");
+    else fail("tags satrlar ro'yxati (yoki vergul bilan ajratilgan satr) bo'lsin.");
+  }
+  if (args.description !== undefined) {
+    if (typeof args.description !== "string") fail("description satr bo'lsin.");
+    patch.description = args.description as string;
+  }
+  if (patch.tags === undefined && patch.description === undefined) fail("tags yoki description dan kamida bittasini yuboring.");
+  return run(async () => {
+    const ch = await defaultsChannel();
+    // setChannelDefaults tekshiradi (500/2000 belgi, < >, takror teglar) - xabari modelga ko'rinsin.
+    const d = await setChannelDefaults(ch.id, patch).catch((e: unknown) => fail(e instanceof Error ? e.message : String(e)));
+    return { ok: true, message: `«${ch.title}» kanalining standart ${[patch.tags !== undefined && "teglari", patch.description !== undefined && "tavsifi"].filter(Boolean).join(" va ")} saqlandi.`, ...defaultsView(ch, d) };
+  });
 }

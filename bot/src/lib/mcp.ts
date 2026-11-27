@@ -1,7 +1,7 @@
 import "server-only";
 import { createDemoVideo, DEMO_EFFECTS, McpToolError, MEDIA_LIMIT, publishVideo, requestMediaUpload, videoResult, videoResultLive, videoStatus, videoStatusLive } from "./demo-video";
 import { addTopics, deleteTopics, listTopicsTool, topicOptions, updateTopics } from "./mcp-topics";
-import { deleteYouTubeVideo, getYouTubeVideo, listYouTubeVideos, updateYouTubeVideo, youtubeChannel } from "./mcp-youtube";
+import { deleteYouTubeVideo, getYouTubeDefaults, getYouTubeVideo, listYouTubeVideos, updateYouTubeDefaults, updateYouTubeVideo, youtubeChannel } from "./mcp-youtube";
 import { MCP_MAX_TOPICS } from "./topics";
 
 /**
@@ -9,7 +9,7 @@ import { MCP_MAX_TOPICS } from "./topics";
  * Claude Code ulanadi: claude mcp add --transport http ytauto https://<bot>/api/mcp --header "Authorization: Bearer <token>".
  * Auth va hisob konteksti route.ts da; bu yerda - protokol va tool'lar.
  */
-export const SERVER_INFO = { name: "ytauto", title: "YtAuto", version: "1.2.0" };
+export const SERVER_INFO = { name: "ytauto", title: "YtAuto", version: "1.3.0" };
 const VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
 export const INSTRUCTIONS = `YtAuto turns a software project into a narrated product demo / intro video. You (Claude Code) only study the project and capture visuals; YtAuto writes the script (Gemini), generates the voice (VoiceStudio, the user's chosen voice), edits (OpenFilm: camera moves, cuts, transitions, highlights, kinetic text, subtitles, music, SFX; only the product's own screenshots and recordings are shown, never decorative backgrounds), renders and optionally publishes to the user's main YouTube channel.
@@ -28,7 +28,8 @@ Topics (the regular video queue): each topic becomes one narrated video that YtA
 - add_topics adds up to ${MCP_MAX_TOPICS} topics in one call. You supply every part of each topic yourself: topic (the subject), notes (angle, key points, facts, audience, what to avoid), and optionally publish_at, template, format, voice, music; or a finished title + script (exact narration) to skip Gemini. The call is all-or-nothing: if one topic is invalid nothing is added.
 - list_topics / update_topics / delete_topics manage the queue. Only topics whose video is not made yet can be edited or deleted. Delete only when the user asked.
 
-YouTube channel (main account only; the channel this connection is bound to — or, for the plain ytauto server without ?channel, the channel currently active in the YtAuto bot): get_youtube_channel (name, logo, banner, stats), list_youtube_videos, get_youtube_video, update_youtube_video (title, description, tags, category, privacy, scheduled time, made for kids), delete_youtube_video. Edit or delete only when the user explicitly asks; deleting is permanent, so confirm the exact video with the user first.`;
+YouTube channel (main account only; the channel this connection is bound to — or, for the plain ytauto server without ?channel, the channel currently active in the YtAuto bot): get_youtube_channel (name, logo, banner, stats), list_youtube_videos, get_youtube_video, update_youtube_video (title, description, tags, category, privacy, scheduled time, made for kids), delete_youtube_video. Edit or delete only when the user explicitly asks; deleting is permanent, so confirm the exact video with the user first.
+- Channel defaults: get_youtube_defaults / update_youtube_defaults read and change the default tags and description that YtAuto puts on every new video of this channel (empty = Gemini writes them per video). Change them only when the user asks.`;
 
 type Json = Record<string, unknown>;
 const obj = (properties: Json, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -245,6 +246,23 @@ export const TOOLS = [
     }, ["video_id", "confirm"]),
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true },
   },
+  {
+    name: "get_youtube_defaults",
+    title: "Channel default tags and description",
+    description: "The default tags and description YtAuto puts on every new video it publishes on this channel (the same values as in the YtAuto bot: Settings → Channels and YouTube → Description and tags). Empty = Gemini writes them per video.",
+    inputSchema: obj({}),
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  },
+  {
+    name: "update_youtube_defaults",
+    title: "Set channel default tags and description",
+    description: "Sets the default tags and/or description for every NEW video YtAuto publishes on this channel. Only the fields you send change; send \"\" (or [] for tags) to clear one so Gemini writes it per video. Already published videos are not changed (use update_youtube_video for those). Call only when the user asked for the change.",
+    inputSchema: obj({
+      tags: { type: "array", items: { type: "string" }, description: "Replaces all default tags (duplicates removed; max 500 chars total, no < >). [] clears them" },
+      description: s("Replaces the default description (max 2000 chars, no < >). \"\" clears it", { maxLength: 2000 }),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
 ] as const;
 
 type Run = <T>(fn: () => Promise<T>) => Promise<T>;
@@ -268,6 +286,8 @@ const HANDLERS: Record<string, (a: Json, run: Run) => Promise<unknown>> = {
   get_youtube_video: getYouTubeVideo,
   update_youtube_video: updateYouTubeVideo,
   delete_youtube_video: deleteYouTubeVideo,
+  get_youtube_defaults: getYouTubeDefaults,
+  update_youtube_defaults: updateYouTubeDefaults,
 };
 
 type RpcRequest = { jsonrpc?: string; id?: string | number | null; method?: string; params?: Json };
