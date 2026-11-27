@@ -33,6 +33,10 @@ def _call(params: dict) -> dict:
 
 
 _TAG = re.compile(r"<[^>]+>")
+# Taniladigan odamlar (shaxsiy huquq) va odam asosiy mavzu bo'lgan rasmlar olinmaydi: kutubxona - obyektlar, tabiat, fan.
+_PEOPLE = re.compile(r"\b(people|persons?|wom[ae]n|m[ae]n|girls?|boys?|child(ren)?|kids?|bab(y|ies)|teen(ager)?s?|portraits?|selfies?|"
+                     r"famil(y|ies)|weddings?|brides?|models? \(person\)|nudes?|crowds?|tourists?|actors?|actress(es)?|"
+                     r"politicians?|celebrit(y|ies))\b", re.I)
 
 
 def text(s: str | None, limit: int = 400) -> str:
@@ -92,6 +96,8 @@ def _to_asset(p: dict, curated: bool) -> Asset | None:
         return None
     if _meta(info, "NonFree").lower() == "true" or text(_meta(info, "Restrictions")):
         return None  # savdo belgisi, shaxsiy huquq va h.k. cheklovlar
+    if _PEOPLE.search(" ".join((p.get("title", ""), _meta(info, "ObjectName"), _meta(info, "Categories"), text(_meta(info, "ImageDescription"))))):
+        return None
     lic = licenses.classify(_meta(info, "License"), text(_meta(info, "LicenseShortName")), _meta(info, "LicenseUrl"))
     if lic is None:
         return None

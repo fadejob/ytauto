@@ -104,6 +104,16 @@ class SourceParsingTests(unittest.TestCase):
         base["imageinfo"][0]["extmetadata"] = {"License": {"value": "cc0"}, "Restrictions": {"value": "trademarked"}}
         self.assertIsNone(wikimedia._to_asset(base, True))
 
+    def test_wikimedia_people_skipped(self):
+        def page(title, cats, desc=""):
+            return {"pageid": 7, "title": f"File:{title}.jpg", "imageinfo": [{"mime": "image/jpeg", "url": "u", "extmetadata": {
+                "License": {"value": "cc0"}, "Categories": {"value": cats}, "ImageDescription": {"value": desc}}}]}
+        self.assertIsNone(wikimedia._to_asset(page("Girl in lavender field", "Lavender fields"), True))
+        self.assertIsNone(wikimedia._to_asset(page("Lavender 3", "Children in Provence|Lavender"), True))
+        self.assertIsNone(wikimedia._to_asset(page("Field", "Lavender", "A woman walking"), True))
+        self.assertIsNotNone(wikimedia._to_asset(page("Lavender field at dusk", "Lavandula angustifolia|Human eye diagrams"), True))
+        self.assertIsNotNone(wikimedia._to_asset(page("Hylaeus taeniolatus female 1", "Hylaeus|Bees of Australia"), True))  # hasharot jinsi
+
     def test_nasa_copyright_and_logos_skipped(self):
         def item(title, desc="", kw=()):
             return {"data": [{"nasa_id": "x1", "title": title, "description": desc, "keywords": list(kw)}],
