@@ -35,8 +35,8 @@ public sealed partial class PostgresJobStore
                        ts_rank_cd(a.search, q, 32) * (0.5 + a.quality)
                          * (1.0 - 0.12 * (array_position(@kinds, a.kind) - 1))
                          * (CASE WHEN @orient = '' THEN 1.0
-                                 WHEN @orient = 'portrait' AND a.height > a.width * 1.1 THEN 1.25
-                                 WHEN @orient = 'landscape' AND a.width > a.height * 1.1 THEN 1.25
+                                 WHEN @orient = 'portrait' AND a.height > a.width * 1.1 THEN 1.12
+                                 WHEN @orient = 'landscape' AND a.width > a.height * 1.1 THEN 1.12
                                  ELSE 1.0 END) AS rank
                 FROM {T("assets")} a, websearch_to_tsquery('english', @q) q
                 WHERE NOT a.disabled AND a.search @@ q AND a.kind = ANY(@kinds) AND GREATEST(a.width, a.height) >= @minlong

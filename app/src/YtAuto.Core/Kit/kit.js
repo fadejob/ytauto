@@ -122,24 +122,40 @@ export function drawPath(path, t, at, dur = 0.6) {
 }
 
 /**
- * Kinetic word wall: rows of a repeated phrase sliding in alternate directions (the "Let them replicate" look). The row whose
- * index is `hot` is drawn in the accent class. Build the rows once (wordWallBuild), then call wordWall every frame.
+ * Kinetic word wall: rows of a repeated phrase sliding in alternate directions (the "Let them replicate" look). The row `hot`
+ * is drawn in the accent colour. It is painted on a <canvas> filling the container, so rows may run off the frame edges on
+ * purpose without counting as cut-off text. Build once (wordWallBuild), then call wordWall(wall, t) every frame.
+ * Colours and font come from the container's CSS (color, font-family, font-size, font-weight) and --k-accent.
  */
-export function wordWallBuild(container, phrase, rows = 7, { hot = 3, repeat = 6 } = {}) {
+export function wordWallBuild(container, phrase, rows = 7, { hot = 3, repeat = 8 } = {}) {
   container.innerHTML = "";
-  for (let i = 0; i < rows; i++) {
-    const row = document.createElement("div");
-    row.className = "k-wall-row" + (i === hot ? " k-accent" : "");
-    row.textContent = Array(repeat).fill(phrase).join("  ");
-    container.appendChild(row);
-  }
-  return [...container.children];
+  const cv = document.createElement("canvas");
+  const r = container.getBoundingClientRect();
+  cv.width = Math.max(1, Math.round(r.width));
+  cv.height = Math.max(1, Math.round(r.height));
+  cv.style.cssText = "position:absolute;inset:0;width:100%;height:100%";
+  container.appendChild(cv);
+  const cs = getComputedStyle(container);
+  const accent = getComputedStyle(document.documentElement).getPropertyValue("--k-accent").trim() || "#ffcc33";
+  return { cv, rows, hot, text: Array(repeat).fill(phrase).join("   "), font: `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`,
+    size: parseFloat(cs.fontSize) || 120, color: cs.color, accent };
 }
-export function wordWall(rowsEls, t, { speed = 90 } = {}) {
-  rowsEls.forEach((row, i) => {
+export function wordWall(wall, t, { speed = 90, lineHeight = 0.95 } = {}) {
+  const { cv, rows, hot, text, font, size, color, accent } = wall;
+  const g = cv.getContext("2d");
+  g.clearRect(0, 0, cv.width, cv.height);
+  g.font = font;
+  g.textBaseline = "middle";
+  const lh = size * lineHeight;
+  const top = (cv.height - rows * lh) / 2 + lh / 2;
+  const w = g.measureText(text).width;
+  for (let i = 0; i < rows; i++) {
     const dir = i % 2 === 0 ? -1 : 1;
-    row.style.transform = `translateX(${dir * speed * t - (dir > 0 ? 600 : 0)}px)`;
-  });
+    const x = -((dir * speed * t + i * 137) % w + w) % w;   // seamless loop: same t -> same x
+    g.fillStyle = i === hot ? accent : color;
+    g.fillText(text, x, top + i * lh);
+    g.fillText(text, x + w, top + i * lh);
+  }
 }
 
 /** Camera "push" on the whole composition towards a focus point (0..1 of the stage) - for hero scenes. */

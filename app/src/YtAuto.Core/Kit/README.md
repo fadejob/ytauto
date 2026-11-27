@@ -43,7 +43,7 @@ K.page(D, (t) => {
 | `typeOn(el, text, t, at, cps)` | typewriter with caret (notes app, search bar, chat) |
 | `countUp(el, t, at, dur, to, {suffix})` | numbers counting up |
 | `drawPath(path, t, at, dur)` | draws an SVG arrow/outline/leader line |
-| `wordWallBuild(el, phrase, rows, {hot})` + `wordWall(rows, t)` | the repeated-phrase kinetic wall |
+| `wall = wordWallBuild(el, phrase, rows, {hot})` + `wordWall(wall, t)` | the repeated-phrase kinetic wall, painted on a canvas (rows may run off the frame on purpose); style it with `.k-wall` + `font-size` |
 | `whipOut(el, t, total)` | fast blur/slide out in the last 0.25 s: an edited cut instead of a fade |
 
 ## kit.css
