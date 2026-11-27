@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CircleCheck, Clapperboard, Film, LayoutTemplate, LoaderCircle, Package, Plus, Trash2, TriangleAlert, Upload as UploadIcon } from "lucide-react";
 import { api, confirmBox } from "@/lib/client";
-import type { TemplateItem, TemplateUpload as Upload } from "@/lib/types";
+import { assetAllowed } from "@/lib/assets-shared";
+import type { ChannelAssets, State, TemplateItem, TemplateUpload as Upload } from "@/lib/types";
 import type { Toast } from "./App";
 import TemplateUpload, { MB, useTemplateUploads, type LocalUpload } from "./TemplateUpload";
 import { Alert, Empty, Skel, Status, useBusy } from "./ui";
@@ -31,8 +32,12 @@ const STAGE: Record<Upload["status"], string> = {
  * Shablonlar (dizayn: Shablonlar va musiqa Fk4Jp6): kompyuterlar bazaga yozgan shablonlar plitkalarda + yuklanayotganlari foiz bilan
  * + «Shablon yuklash» plitkasi (sheet ochadi).
  * canUpload=false - qo'shimcha token (mehmon): shablon kompyuter egasi tomonidan yuklanadi, mehmon faqat tanlaydi.
+ * Har kanalning o'z shablonlari: faol kanalniki va umumiylari ko'rinadi; har plitkada «Kanal» tanlovi (assets - katalogdan).
  */
-export default function Library({ toast, canUpload = true, onCount }: { toast: Toast; canUpload?: boolean; onCount?: (n: number) => void }) {
+export default function Library({ toast, canUpload = true, onCount, assets, onChanged }: {
+  toast: Toast; canUpload?: boolean; onCount?: (n: number) => void; assets?: ChannelAssets; onChanged?: (s?: State) => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
   const [templates, setTemplates] = useState<TemplateItem[] | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   /** O'chirish so'rovi yuborilganlar: kompyuter bajargach ro'yxatdan yo'qoladi. */
@@ -70,6 +75,21 @@ export default function Library({ toast, canUpload = true, onCount }: { toast: T
     });
   }
 
+  /** Shablonni kanalga biriktirish ("" - umumiy): javobdagi yangi holat (katalog) ilovaga beriladi. */
+  async function assign(t: TemplateItem, channel: string) {
+    await busy.run("ch:" + t.name, async () => {
+      const r = await api<{ ok: boolean; state: State }>("/api/channel-assets", { kind: "template", name: t.name, channel });
+      onChanged?.(r.state);
+      const title = assets?.channels.find((c) => c.id === channel)?.title;
+      toast(channel ? `«${t.name}» endi faqat «${title}» kanalida tanlanadi.` : `«${t.name}» umumiy: hamma kanalda tanlanadi.`);
+    });
+  }
+  const multi = !!assets?.channel && assets.channels.length > 0;
+  const mine = (t: TemplateItem) => assetAllowed(assets, "template", t.name);
+  const hidden = templates?.filter((t) => !mine(t)).length ?? 0;
+  const activeTitle = assets?.channels.find((c) => c.id === assets.channel)?.title ?? "";
+  const shown = templates?.filter((t) => showAll || mine(t)) ?? null;
+
   const fromVideo = templates?.filter((t) => t.source === "video").length ?? 0;
   const have = new Set((templates ?? []).map((t) => key(t.machine, t.name)));
   // Kompyuterda: jarayondagilar va xatolar; tugaganlari shablon ro'yxatiga tushguncha «o'rnatildi» bo'lib turadi.
@@ -81,6 +101,13 @@ export default function Library({ toast, canUpload = true, onCount }: { toast: T
 
       {templates ? (
         <div className="section-label"><span>{fromVideo} tasi videodan · {templates.length - fromVideo} tasi yuklangan</span></div>
+      ) : null}
+      {multi && templates ? (
+        <div className="hint">
+          «{activeTitle}» kanali shablonlari va umumiylari ko&apos;rsatilmoqda: mavzu yaratishda (bot va Claude Code) faqat shular tanlanadi.
+          {hidden ? <> {" "}<button type="button" className="linkbtn" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? "Faqat shu kanalnikini ko'rsatish" : `Boshqa kanallarniki ham (${hidden})`}</button></> : null}
+        </div>
       ) : null}
 
       {loadErr && !templates ? (
@@ -104,7 +131,7 @@ export default function Library({ toast, canUpload = true, onCount }: { toast: T
 
         {!templates && !loadErr ? [0, 1, 2].map((i) => <Skel key={i} h={164} r={24} />) : null}
 
-        {templates?.map((t) => {
+        {shown?.map((t) => {
           const k = key(t.machine, t.name);
           const gone = deleting.has(k);
           const when = day(t.addedAt);
@@ -126,6 +153,15 @@ export default function Library({ toast, canUpload = true, onCount }: { toast: T
               </span>
               {t.notes ? <span className={st.note}>{t.notes}</span> : null}
               <span className={`${st.meta} tnum`}>{size(t.size)} · {t.machine}</span>
+              {multi ? (
+                canUpload && !gone ? (
+                  <select className={st.chan} aria-label={`«${t.name}» qaysi kanalniki`} value={assets!.templates[t.name] ?? ""}
+                    disabled={busy.is("ch:" + t.name)} onChange={(e) => void assign(t, e.target.value)}>
+                    <option value="">Umumiy (hamma kanal)</option>
+                    {assets!.channels.map((c) => <option key={c.id} value={c.id}>{c.title || c.id}</option>)}
+                  </select>
+                ) : <span className={st.meta}>{assets!.channels.find((c) => c.id === assets!.templates[t.name])?.title ?? "Umumiy"}</span>
+              ) : null}
             </article>
           );
         })}

@@ -83,7 +83,7 @@ export async function topicOptions() {
     music: { enabled: cat.music.enabled, values: ["auto (omit)", "none", ...cat.music.tracks.map((t) => `${t.id} — ${t.title}`)] },
     defaults: { template: cat.defaults.template, voice: cat.defaults.voiceProfile, format: FORMAT_NAMES[cat.defaults.format] ?? "16:9" },
     max_topics_per_call: MCP_MAX_TOPICS,
-    note: "Omitted fields use the defaults. publish_at is local time in time_zone, format \"YYYY-MM-DD HH:mm\"; omitted = next free slot (every 2 days at default_publish_time).",
+    note: "templates and voices are this channel's own plus shared ones (other channels' are not allowed here). Omitted fields use the defaults. publish_at is local time in time_zone, format \"YYYY-MM-DD HH:mm\"; omitted = next free slot (every 2 days at default_publish_time).",
   };
 }
 

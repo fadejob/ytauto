@@ -8,7 +8,8 @@ import { useEffect, useState } from "react";
 import { Plus, RefreshCw } from "lucide-react";
 import { api, haptic } from "@/lib/client";
 import { useBotConfig } from "@/lib/settings-data";
-import type { VoiceInfo, VoiceProfileCfg } from "@/lib/types";
+import { assetAllowed } from "@/lib/assets-shared";
+import type { State, VoiceInfo, VoiceProfileCfg } from "@/lib/types";
 import { Alert, Btn, PageHead, Skel, SkelCard, useBusy } from "../ui";
 import { VoiceCloneEntry, VoiceCloneScreen, useVoiceClone } from "../VoiceClone";
 import { AddProfileSheet, DefaultTiles, ProfileCard, buildTiles } from "../VoiceProfiles";
@@ -22,6 +23,7 @@ export default function Voice({ state, toast, back, onChanged, setSubBack }: Set
   const [view, setView] = useState<"main" | "clone">("main");
   const [adding, setAdding] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   /** Ochiq kartalar: belgilanmagan bo'lsa standart profil (yoki yagona profil) ochiq turadi. */
   const [open, setOpen] = useState<Record<string, boolean>>({});
   /** Kompyuterlardagi VoiceStudio ma'lumoti (dvigatellar, lokal profillar). null - yuklanmoqda. */
@@ -46,10 +48,16 @@ export default function Voice({ state, toast, back, onChanged, setSubBack }: Set
     );
   }
 
-  const profiles = config?.voice.profiles ?? [];
-  const defaultProfile = config?.defaults.voiceProfile ?? "";
   const cat = state?.catalog;
-  const tiles = config ? buildTiles(profiles, cat?.known ? cat.voiceProfiles : [], clone.st) : [];
+  const assets = cat?.assets;
+  // Har kanalning o'z ovozlari: faol kanalniki va umumiylari (boshqa kanallarniki «Boshqa kanallar» tugmasi bilan).
+  const allProfiles = config?.voice.profiles ?? [];
+  const multi = !!assets?.channel && assets.channels.length > 0;
+  const hiddenCount = allProfiles.filter((x) => !assetAllowed(assets, "voice", x.name)).length;
+  const profiles = showAll ? allProfiles : allProfiles.filter((x) => assetAllowed(assets, "voice", x.name));
+  const activeTitle = assets?.channels.find((c) => c.id === assets.channel)?.title ?? "";
+  const defaultProfile = config?.defaults.voiceProfile ?? "";
+  const tiles = config ? buildTiles(allProfiles.filter((x) => assetAllowed(assets, "voice", x.name)), cat?.known ? cat.voiceProfiles : [], clone.st) : [];
   const localProfiles = info?.[0]?.profiles ?? [];
 
   /** Saqlash + umumiy holatni yangilash (Hub qisqa matni, mavzu oynasidagi ovozlar). Xato bo'lsa throw - chaqirgan tugma toast qiladi. */
@@ -82,6 +90,15 @@ export default function Voice({ state, toast, back, onChanged, setSubBack }: Set
     if (ok !== false) toast("Kompyuterdagi ro'yxat botga olindi. Endi profillarni shu yerda tahrirlaysiz.");
   }
 
+  /** Profilni kanalga biriktirish ("" - umumiy). Javobdagi yangi holat - katalog va standart shu kanal bo'yicha yangilanadi. */
+  const assign = (name: string) => async (channel: string) => {
+    const r = await api<{ ok: boolean; state: State }>("/api/channel-assets", { kind: "voice", name, channel });
+    onChanged(r.state);
+    await reload(); // standart ovoz (kanal bo'yicha) o'zgargan bo'lishi mumkin
+    const title = assets?.channels.find((c) => c.id === channel)?.title;
+    toast(channel ? `«${name}» endi faqat «${title}» kanalida ishlatiladi.` : `«${name}» umumiy: hamma kanalda ishlatiladi.`);
+  };
+
   const isOpen = (name: string) => open[name] ?? (name === defaultProfile || profiles.length === 1);
 
   return (
@@ -112,7 +129,7 @@ export default function Voice({ state, toast, back, onChanged, setSubBack }: Set
                 {picking === "" ? "Saqlanmoqda…" : "Kompyuterdagi standartga qaytarish"}
               </button>
             )}
-            {profiles.length === 0 ? (
+            {allProfiles.length === 0 ? (
               <Alert tone="note">
                 <div className={p.stack}>
                   <span>Botda profil ro&apos;yxati hali yo&apos;q: kompyuterdagi lokal ro&apos;yxat ishlatilmoqda ({info === null ? "…" : localProfiles.map((x) => x.name).join(", ") || "bo'sh"}).</span>
@@ -130,11 +147,19 @@ export default function Voice({ state, toast, back, onChanged, setSubBack }: Set
       {!config ? (!error ? <SkelCard lines={4} /> : null) : profiles.length ? (
         <section className={p.section} aria-label="Tezlik va til">
           <div className="section-label"><span>Tezlik va til</span><span className={p.labelHint}>har profil alohida saqlanadi</span></div>
+          {multi ? (
+            <div className="hint">
+              «{activeTitle}» kanali ovozlari va umumiylari: mavzu yaratishda (bot va Claude Code) faqat shular tanlanadi. Yangi profil shu kanalga qo&apos;shiladi.
+              {hiddenCount ? <> {" "}<button type="button" className="linkbtn" onClick={() => setShowAll((v) => !v)}>
+                {showAll ? "Faqat shu kanalnikini ko'rsatish" : `Boshqa kanallarniki ham (${hiddenCount})`}</button></> : null}
+            </div>
+          ) : null}
           <div className="cards">
             {profiles.map((x) => (
-              <ProfileCard key={x.name} profile={x} isDefault={x.name === defaultProfile} canDelete={profiles.length > 1} toast={toast}
+              <ProfileCard key={x.name} profile={x} isDefault={x.name === defaultProfile} canDelete={allProfiles.length > 1} toast={toast}
                 expanded={isOpen(x.name)} onToggle={() => setOpen((o) => ({ ...o, [x.name]: !isOpen(x.name) }))}
-                onSave={saveProfile(x.name)} onDelete={deleteProfile(x.name)} onOpenClone={() => go("clone")} />
+                onSave={saveProfile(x.name)} onDelete={deleteProfile(x.name)} onOpenClone={() => go("clone")}
+                channel={multi && !state?.account?.guest ? { owner: assets!.voices[x.name] ?? "", channels: assets!.channels, onAssign: assign(x.name) } : undefined} />
             ))}
           </div>
         </section>
@@ -148,7 +173,7 @@ export default function Voice({ state, toast, back, onChanged, setSubBack }: Set
         <VoiceCloneEntry st={clone.st} onOpen={() => go("clone")} />
       </section>
 
-      {adding && config ? <AddProfileSheet info={info} profiles={profiles} toast={toast} onClose={() => setAdding(false)} onAdd={addProfile} /> : null}
+      {adding && config ? <AddProfileSheet info={info} profiles={allProfiles} toast={toast} onClose={() => setAdding(false)} onAdd={addProfile} /> : null}
     </div>
   );
 }

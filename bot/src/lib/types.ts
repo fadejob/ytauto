@@ -122,7 +122,15 @@ export type Catalog = {
   defaults: { voiceProfile: string; template: string; format: number };
   youtube: { publishTime: string; timeZone: string };
   known: boolean; // false — desktop ilova katalogni hali yubormagan (standart qiymatlar)
+  /** Kanal bo'yicha shablon/ovoz: ro'yxatlar yuqorida allaqachon shu kanal (va umumiy) bo'yicha filtrlangan. */
+  assets?: ChannelAssets;
 };
+
+/**
+ * Shablon va ovozlarning kanallarga biriktirilishi. channel - mavzular yaratiladigan kanal ('' - kanal ulanmagan);
+ * templates/voices - nom → kanal id (yo'q bo'lsa - umumiy, hamma kanalda).
+ */
+export type ChannelAssets = { channel: string; channels: { id: string; title: string }[]; templates: Record<string, string>; voices: Record<string, string> };
 
 export type State = {
   topics: Topic[]; catalog: Catalog; viewer: { name: string; dev: boolean }; now: string; demo: boolean;

@@ -1,5 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
+import { assignToActive } from "./channel-assets";
 import { currentAccountId, sql, wakeAgents } from "./db";
 import { isDemo } from "./demo";
 import { BUCKET, storageCfg } from "./storage";
@@ -54,6 +55,7 @@ export async function commitUpload(i: { groupId: string; path: string; name: str
                 VALUES (${i.groupId}, ${i.name.trim().slice(0, 60)}, ${i.kind}, ${i.path}, ${Math.round(i.size)}, ${m}, ${downloadUrl})`;
   }
   if (i.machines.length) wakeAgents("template");
+  await assignToActive("template", [i.name.trim().slice(0, 60)]); // yuklangan paytdagi faol kanal shabloni
   return { ok: true };
 }
 

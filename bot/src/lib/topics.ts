@@ -3,6 +3,8 @@ import { isGuest, sql, wakeAgents } from "./db";
 import { queueForAll } from "./commands";
 import { GEMINI_REQUIRED, geminiReady, getConfig } from "./config";
 import { templateCatalog } from "./library";
+import { assetScope } from "./channel-assets";
+import { assetAllowed } from "./assets-shared";
 import { pendingTemplates } from "./templates";
 import { checkTopicMusic, musicCatalog, setTopicMusic, topicMusicMap } from "./music";
 import { attachAudio } from "./audio";
@@ -28,12 +30,22 @@ export async function pickContext(cat: Catalog): Promise<PickCtx> {
   return { cfg, channelVoice };
 }
 
-export async function pickTemplateFormat(cat: Catalog, template?: string, format?: number, voice?: string, ctx?: PickCtx): Promise<{ template: string; format: number; voice: string } | { error: string }> {
+/** keep - mavzuning hozirgi shablon/ovozi: o'zgartirilmasa (boshqa kanalga biriktirilgan bo'lsa ham) tahrirda qoladi. */
+export async function pickTemplateFormat(cat: Catalog, template?: string, format?: number, voice?: string, ctx?: PickCtx, keep?: { template: string; voice: string }): Promise<{ template: string; format: number; voice: string } | { error: string }> {
   const { cfg, channelVoice } = ctx ?? (await pickContext(cat));
+  const ok = (kind: "template" | "voice", n: string) => !n || n === keep?.[kind] || assetAllowed(cat.assets, kind, n);
   const tpl = template !== undefined ? template : cfg.defaults.template || cat.defaults.template;
   const fmt = format !== undefined ? format : cfg.defaults.format ?? cat.defaults.format;
-  // Ovoz: aniq berilgan → bot sozlamasidagi standart → kanal tahlili tavsiyasi (kanal ovoziga mos) → katalog standarti.
-  const vc = voice !== undefined && voice !== "" ? voice : cfg.defaults.voiceProfile || channelVoice || cat.defaults.voiceProfile || cat.voiceProfiles[0] || "";
+  // Ovoz: aniq berilgan → kanal (yoki umumiy) standarti → kanal tahlili tavsiyasi (kanal ovoziga mos) → katalog standarti.
+  // Hammasi faqat shu kanalga biriktirilgan yoki umumiy ovozlardan.
+  const vc = voice !== undefined && voice !== "" ? voice
+    : [cfg.defaults.voiceProfile, channelVoice, cat.defaults.voiceProfile, cat.voiceProfiles[0]].find((v) => v && ok("voice", v)) || "";
+  const other = (kind: "template" | "voice", n: string) => {
+    const ch = cat.assets?.channels.find((c) => c.id === (kind === "template" ? cat.assets!.templates : cat.assets!.voices)[n]);
+    return `${kind === "template" ? "Shablon" : "Ovoz profili"} "${n}" boshqa kanalga («${ch?.title ?? "?"}») biriktirilgan — shu kanalnikini yoki umumiysini tanlang.`;
+  };
+  if (!ok("template", tpl)) return { error: other("template", tpl) };
+  if (!ok("voice", vc)) return { error: other("voice", vc) };
   if (![0, 1, 2].includes(fmt)) return { error: "Format noto'g'ri (0 = 16:9, 1 = Shorts 9:16, 2 = 1:1)." };
   if (tpl && cat.pendingTemplates.some((p) => p.name === tpl))
     return { error: `"${tpl}" shabloni hali serverga yuklanmoqda: kompyuterga tushib o'rnatilgach tanlash mumkin bo'ladi.` };
@@ -147,7 +159,28 @@ type CatalogJson = {
   youtube?: { publish_time?: string; time_zone?: string };
 };
 
+/**
+ * Mavzu yaratish katalogi so'rov kanali bo'yicha (bot - faol kanal, kanal MCP'si - bog'langan kanal): shablon va ovozlardan faqat shu
+ * kanalga biriktirilgan va umumiylari; standartlar - shu kanalniki. Bot oynasi va MCP get_topic_options/add_topics shu katalogni ishlatadi.
+ */
 export async function getCatalog(): Promise<Catalog> {
+  const cat = await rawCatalog();
+  const [sc, cfg] = await Promise.all([assetScope([...cat.templates.map((t) => t.name), ...cat.pendingTemplates.map((p) => p.name)]), getConfig()]);
+  if (!sc.channel) return { ...cat, assets: { channel: "", channels: sc.channels, templates: sc.templates, voices: sc.voices } };
+  const templates = cat.templates.filter((t) => sc.allowed("template", t.name));
+  const voiceProfiles = cat.voiceProfiles.filter((v) => sc.allowed("voice", v));
+  // Standart: kanal (yoki umumiy) sozlamasi → kompyuter katalogi standarti, faqat shu kanalda ruxsat bo'lsa.
+  const template = cfg.defaults.template || (sc.allowed("template", cat.defaults.template) ? cat.defaults.template : "");
+  const voice = cfg.defaults.voiceProfile || (sc.allowed("voice", cat.defaults.voiceProfile) ? cat.defaults.voiceProfile : "");
+  return {
+    ...cat, templates, voiceProfiles,
+    pendingTemplates: cat.pendingTemplates.filter((p) => sc.allowed("template", p.name)),
+    defaults: { ...cat.defaults, template, voiceProfile: voice },
+    assets: { channel: sc.channel, channels: sc.channels, templates: sc.templates, voices: sc.voices },
+  };
+}
+
+async function rawCatalog(): Promise<Catalog> {
   // Kompyuterga hali tushmagan yuklashlar (bir kompyuterda o'rnatilgan bo'lsa, u allaqachon tanlanadi).
   const pendingOf = async (templates: { name: string }[]) =>
     (await pendingTemplates()).filter((p) => !templates.some((t) => t.name === p.name));
@@ -320,7 +353,8 @@ export async function applyAction(a: Action, opts: { maxTopics?: number } = {}):
       if (given === "invalid") return { ok: false, message: `Sana formati noto'g'ri: ${a.publishAt}.` };
       const at = given ?? r.publish_at_utc;
       if (given && at.getTime() <= Date.now() + MIN_LEAD_MS) return { ok: false, message: "Chiqish vaqti kamida 30 daqiqa kelajakda bo'lsin." };
-      const tf = await pickTemplateFormat(cat, a.template ?? r.template_name, a.format ?? r.format, a.voice ?? r.voice_profile);
+      const tf = await pickTemplateFormat(cat, a.template ?? r.template_name, a.format ?? r.format, a.voice ?? r.voice_profile, undefined,
+        { template: r.template_name, voice: r.voice_profile });
       if ("error" in tf) return { ok: false, message: tf.error };
       // Hook: Gemini yozadigan mavzuda majburiy (hook'siz qo'shilgan eski mavzu hook berilmaguncha o'zgarishsiz qoladi).
       let hook: string | null = null;

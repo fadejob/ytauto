@@ -4,6 +4,7 @@ import { currentAccountId, isGuest, sql, wakeAgents } from "./db";
 import { mediaLinksWhy, waitJobChange } from "./agent";
 import { geminiReady, GEMINI_REQUIRED, getConfig } from "./config";
 import { getCatalog, pickTemplateFormat } from "./topics";
+import { assetAllowed } from "./assets-shared";
 import { getMachines } from "./machines";
 import { objectInfo, signDownload, signUpload } from "./storage";
 import { activeChannelId, youtubeCredentials } from "./youtube";
@@ -145,10 +146,12 @@ export async function createDemoVideo(args: Record<string, unknown>) {
   // Ovoz tilga mos bo'lishi shart: o'zbekcha matnni inglizcha ovoz o'qisa tushunarsiz chiqadi. Aniq voice_profile berilmasa,
   // shu tildagi profil tanlanadi (bot standarti mos bo'lsa - o'sha); topilmasa aniq yo'riqnoma bilan to'xtaydi.
   let voiceArg = q.voice_profile === undefined ? undefined : str(q.voice_profile, 120);
-  const profiles = (await getConfig()).voice.profiles;
+  const cfg = await getConfig();
+  // Faqat shu kanalga biriktirilgan va umumiy ovozlar (har kanalning o'z ovozi).
+  const profiles = cfg.voice.profiles.filter((p) => assetAllowed(cat.assets, "voice", p.name));
   const voiceWarning: string[] = [];
   if (!voiceArg) {
-    const defName = (await getConfig()).defaults.voiceProfile;
+    const defName = cfg.defaults.voiceProfile;
     const same = profiles.filter((p) => (p.language || "en").toLowerCase() === language);
     const pick = same.find((p) => p.name === defName) ?? same[0];
     if (pick) voiceArg = pick.name;

@@ -1,5 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
+import { assetScope, assignToActive, forgetAssets, setActiveDefaults } from "./channel-assets";
 import { currentAccountId, isGuest, sql } from "./db";
 import { isDemo } from "./demo";
 import { DEFAULT_GEMINI_CHAIN, modelChain } from "./gemini-models";
@@ -113,7 +114,18 @@ function view(s: Stored): BotConfig {
   };
 }
 
-export async function getConfig(): Promise<BotConfig> { return view(await readStored()); }
+/**
+ * Standart shablon va ovoz - so'rov kanalining o'zi (Sozlamalar shu kanal uchun ko'rsatadi va saqlaydi): kanalda tanlanmagan
+ * bo'lsa hisobning umumiy standarti; boshqa kanalga biriktirilgan shablon/ovoz standart bo'la olmaydi ("" - kompyuter standarti).
+ */
+export async function getConfig(): Promise<BotConfig> {
+  const cfg = view(await readStored());
+  const d = cfg.defaults;
+  const sc = await assetScope([d.template]);
+  if (!sc.channel) return cfg;
+  const template = sc.defaults.template ?? d.template, voice = sc.defaults.voice ?? d.voiceProfile;
+  return { ...cfg, defaults: { ...d, template: sc.allowed("template", template) ? template : "", voiceProfile: sc.allowed("voice", voice) ? voice : "" } };
+}
 
 /** «Mening ovozim» klon profili (VoiceStudio profil nomi "YtAuto u-<hisob>"): faqat voice-clone.ts boshqaradi. */
 const isCloneProfile = (p: { voice?: string }) => /^YtAuto u-[0-9a-f]{8}$/.test(p.voice ?? "");
@@ -136,8 +148,10 @@ export async function setCloneProfile(p: { name: string; model: string; voice: s
   // Namuna almashtirilganda foydalanuvchi tanlagan tezlik va til saqlanadi.
   if (p) profiles.push({ name: p.name, model: p.model, voice: p.voice, language: old?.language || "en", speed: old?.speed ?? 1 });
   const defaults = { ...(cur.defaults ?? {}) };
-  if (p && makeDefault) defaults.voiceProfile = p.name;
+  // Standart - faol kanalniki (kanal ulanmagan bo'lsa - umumiy).
+  if (p && makeDefault && !(await setActiveDefaults({ voice: p.name }))) defaults.voiceProfile = p.name;
   else if (!p && old && defaults.voiceProfile === old.name) defaults.voiceProfile = "";
+  if (!p && old) await forgetAssets("voice", [old.name]);
   const next: Stored = { ...cur, voice: { ...(cur.voice ?? {}), profiles }, defaults };
   if (isDemo()) { demoStored = next; return; }
   await writeStored(next);
@@ -231,6 +245,7 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
       maxRunAttempts: Math.round(num(l.maxRunAttempts, 1, 10, "Urinishlar")), maxQaFixCycles: Math.round(num(l.maxQaFixCycles, 0, 10, "QA sikllari")),
       minFreeDiskGb: num(l.minFreeDiskGb, 0, 1000, "Min. disk"), minFreeRamGbForTts: num(l.minFreeRamGbForTts, 0, 128, "Min. RAM"),
     },
+    // Shablon va ovoz standarti - faol kanalniki (pastda); umumiy qiymat faqat kanal ulanmagan bo'lsa o'zgaradi.
     defaults: { language: (d.language || "en").trim(), format: Number(d.format), template: d.template ?? "", voiceProfile: d.voiceProfile ?? "" },
     youtube: {
       clientId: y.clientId.trim(), publishTime: hhmm(y.publishTime, "Public soati"), timeZoneId: y.timeZoneId.trim(),
@@ -258,7 +273,27 @@ export async function saveConfig(input: BotConfigInput): Promise<BotConfig> {
       pixabayApiKey: stockKey(input.visuals.pixabayApiKey, input.visuals.pixabayKeySet, cur.visuals?.pixabayApiKey, "Pixabay"),
     } : cur.visuals,
   };
-  if (isDemo()) { demoStored = next; return view(next); }
+  await channelSide(cur, next);
+  if (isDemo()) { demoStored = next; return getConfig(); }
   await writeStored(next);
-  return view(next);
+  return getConfig();
+}
+
+/**
+ * Kanal bo'yicha qismlar: o'zgargan standart shablon/ovoz faol kanalga yoziladi (umumiy qiymat o'zgarmaydi); yangi ovoz profillari
+ * faol kanalga biriktiriladi, o'chirilganlari biriktirmalardan olib tashlanadi.
+ */
+async function channelSide(cur: Stored, next: Stored) {
+  const eff = (await getConfig()).defaults;
+  const nd = next.defaults ?? {};
+  const patch = {
+    template: nd.template !== eff.template ? nd.template ?? "" : undefined,
+    voice: nd.voiceProfile !== eff.voiceProfile ? nd.voiceProfile ?? "" : undefined,
+  };
+  const scoped = await setActiveDefaults(patch);
+  if (scoped) next.defaults = { ...nd, template: cur.defaults?.template ?? "", voiceProfile: cur.defaults?.voiceProfile ?? "" };
+  const before = new Set((cur.voice?.profiles ?? []).map((p) => p.name));
+  const after = new Set((next.voice?.profiles ?? []).map((p) => p.name));
+  await assignToActive("voice", [...after].filter((n) => !before.has(n) && !isCloneProfile((next.voice?.profiles ?? []).find((p) => p.name === n) ?? {})));
+  await forgetAssets("voice", [...before].filter((n) => !after.has(n)));
 }

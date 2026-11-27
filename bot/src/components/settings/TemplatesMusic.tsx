@@ -41,7 +41,7 @@ export default function TemplatesMusic({ state, toast, back, onChanged }: Settin
         ]}
       />
       <div role="tabpanel" aria-label="Shablonlar" hidden={tab !== "templates"}>
-        <Library toast={toast} canUpload={!guest} onCount={onTemplates} />
+        <Library toast={toast} canUpload={!guest} onCount={onTemplates} assets={state?.catalog?.assets} onChanged={onChanged} />
       </div>
       <div role="tabpanel" aria-label="Musiqa" hidden={tab !== "music"}>
         <Music toast={toast} onCount={onTracks} onChanged={onChanged} active={tab === "music"} />

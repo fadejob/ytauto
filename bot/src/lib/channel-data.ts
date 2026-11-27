@@ -1,4 +1,5 @@
 import "server-only";
+import { forgetChannelAssetDefaults } from "./channel-assets";
 import { queueForAll } from "./commands";
 import { currentAccountId, sql } from "./db";
 import { isDemo } from "./demo";
@@ -74,6 +75,7 @@ export async function purgeChannel(channelId: string, scope: PurgeScope): Promis
       sql()`DELETE FROM ytauto.topic_suggestions WHERE channel_id = ${ch.id}`,
       sql()`DELETE FROM ytauto.channel_profile WHERE channel_id = ${ch.id}`,
       forgetChannelSettings(ch.id),
+      forgetChannelAssetDefaults(ch.id),
     );
   }
   // Kompyuterdagi fayllar: buyruq navbatga (kompyuter darhol bajaradi, o'chiq bo'lsa - yoqilganda). Faqat haqiqatan o'chganlari.

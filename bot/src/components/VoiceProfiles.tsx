@@ -141,9 +141,11 @@ export function DefaultTiles({ tiles, value, pending, disabled, onPick }: {
  * Bitta profil: tezlik va til shu kartada o'zgartiriladi va shu kartaning «Saqlash» tugmasi bilan saqlanadi.
  * «Mening ovozim» profilida ham tezlik/til saqlanadi (server nomi/modeli/ovozini bazadagidek qoldiradi); o'chirish o'rniga namuna ekrani ochiladi.
  */
-export function ProfileCard({ profile, isDefault, canDelete, expanded, onToggle, toast, onSave, onDelete, onOpenClone }: {
+export function ProfileCard({ profile, isDefault, canDelete, expanded, onToggle, toast, onSave, onDelete, onOpenClone, channel }: {
   profile: VoiceProfileCfg; isDefault: boolean; canDelete: boolean; expanded: boolean; onToggle: () => void; toast: Toast;
   onSave: (patch: { language: string; speed: number }) => Promise<unknown>; onDelete: () => Promise<unknown>; onOpenClone: () => void;
+  /** Profil qaysi kanalniki (owner "" - umumiy); berilmasa tanlov ko'rsatilmaydi. */
+  channel?: { owner: string; channels: { id: string; title: string }[]; onAssign: (channel: string) => Promise<unknown> };
 }) {
   const busy = useBusy((m) => toast(m, true));
   const saved = { language: profile.language || "en", speed: safeSpeed(profile.speed) };
@@ -153,7 +155,7 @@ export function ProfileCard({ profile, isDefault, canDelete, expanded, onToggle,
   if (differs(base, saved)) { setBase(saved); if (!differs(draft, base)) setDraft(saved); }
   const dirty = differs(draft, saved);
   const clone = isCloneProfile(profile);
-  const working = busy.is("save") || busy.is("delete");
+  const working = busy.is("save") || busy.is("delete") || busy.is("chan");
 
   async function save() {
     const language = draft.language.trim() || "en";
@@ -191,6 +193,16 @@ export function ProfileCard({ profile, isDefault, canDelete, expanded, onToggle,
             <span className={s.grow} />
             <SaveBtn dirty={dirty} saving={busy.is("save")} done={busy.done("save")} onClick={save} />
           </div>
+          {channel ? (
+            <label className={s.chan}>
+              <span>Kanal</span>
+              <select className="inp" value={channel.owner} disabled={working} aria-label={`«${profile.name}» qaysi kanalniki`}
+                onChange={(e) => void busy.run("chan", () => channel.onAssign(e.target.value))}>
+                <option value="">Umumiy (hamma kanal)</option>
+                {channel.channels.map((c) => <option key={c.id} value={c.id}>{c.title || c.id}</option>)}
+              </select>
+            </label>
+          ) : null}
           <div className="hint">Yangi tezlik keyingi videolarga qo&apos;llanadi. Ovozi tayyor videolar o&apos;zgarmaydi.</div>
         </>
       ) : null}
