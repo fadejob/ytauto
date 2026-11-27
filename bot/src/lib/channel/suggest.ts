@@ -58,7 +58,9 @@ export async function generateSuggestions(accountId: string, opts: { guest?: boo
     `Suggest ${COUNT} new video ideas for the YouTube channel "${ctx.channel.title}".\n` +
     `Niche: ${ctx.niche}\nAudience: ${ctx.audience}\nTone: ${ctx.tone}\nTopics the channel covers: ${ctx.recurringTopics.join("; ")}\n` +
     `Title patterns that work: ${ctx.titlePatterns.join("; ")}\n` +
-    `Best performing recent videos: ${[...ctx.videos].sort((a, b) => b.views - a.views).map((v) => `${v.title} (${v.views} views)`).join("; ")}\n\n` +
+    (ctx.videos.length
+      ? `Best performing recent videos: ${[...ctx.videos].sort((a, b) => b.views - a.views).map((v) => `${v.title} (${v.views} views)`).join("; ")}\n\n`
+      : `The channel has no videos yet; its direction above is inferred from its name and description:\n${ctx.channel.description.trim().slice(0, 1500)}\n\n`) +
     `Do NOT repeat or closely paraphrase any of these (already published, queued or rejected):\n` +
     [...ctx.recentTitles, ...prep.queued, ...prep.recent.dismissed, ...prep.recent.accepted].slice(0, 90).map((t) => `- ${t}`).join("\n") +
     `\n\nIdeas must be specific, evergreen or timely, and realistic to explain with narration and 2D motion graphics. Topic, notes and hook in English; reason in Uzbek.\n` +

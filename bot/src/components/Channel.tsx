@@ -264,6 +264,9 @@ function Understanding({ st, c, analyzing, onReanalyze }: { st: ChannelState; c:
         <Btn tone="secondary" size="sm" icon={RotateCcw} loading={analyzing} onClick={onReanalyze}>Qayta tahlil</Btn>
       </div>
       {st.error ? <Alert><b>Oxirgi tahlil xatosi</b><br />{st.error}</Alert> : null}
+      {c.basis === "description" ? (
+        <p className="sub">Kanalda hali video yo&apos;q — nomi va tavsifidan o&apos;rganildi. Birinchi video chiqqach to&apos;liq tahlil qilinadi.</p>
+      ) : null}
 
       {c.videos?.length ? (
         <div className={s.videos}>

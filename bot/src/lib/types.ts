@@ -156,6 +156,8 @@ export type ChannelContext = {
   doList: string[]; avoidList: string[];
   videos: VideoInsight[];
   recentTitles: string[];
+  /** Nimadan o'rganilgan: "description" - kanalda hali video yo'q, faqat nomi va tavsifidan (yo'q bo'lsa - videolardan). */
+  basis?: "videos" | "description";
 };
 
 export type Suggestion = { id: number; forDate: string; topic: string; notes: string; hook: string; reason: string; status: "new" | "accepted" | "dismissed" };

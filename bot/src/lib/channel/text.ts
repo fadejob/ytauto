@@ -10,11 +10,13 @@ const clip = (s: string) => (s.length > MAX ? s.slice(0, MAX - 1) + "…" : s);
 
 export function scriptBlock(c: ChannelContext): string {
   const v = c.videos.filter((x) => x.source === "video");
+  const fromDesc = c.basis === "description";
   const parts = [
-    `This video is for the YouTube channel "${c.channel.title}"${c.niche ? ` (${c.niche})` : ""}. Match the channel's established style.`,
+    `This video is for the YouTube channel "${c.channel.title}"${c.niche ? ` (${c.niche})` : ""}. ` +
+      (fromDesc ? "The channel has no videos yet: follow the direction below, inferred from its name and description." : "Match the channel's established style."),
     c.audience && `Audience: ${c.audience}`,
     c.tone && `Tone of voice: ${c.tone}`,
-    c.scriptGuidelines.length && `How scripts on this channel work (learned from the latest videos):\n${bullets(c.scriptGuidelines)}`,
+    c.scriptGuidelines.length && `How scripts on this channel ${fromDesc ? "should work (inferred from the channel description)" : "work (learned from the latest videos)"}:\n${bullets(c.scriptGuidelines)}`,
     v.length && `Hooks that opened the latest videos:\n${bullets(v.map((x) => x.script.hook), 3)}`,
     c.titlePatterns.length && `Title patterns that fit the channel:\n${bullets(c.titlePatterns, 4)}`,
     c.doList.length && `Do:\n${bullets(c.doList, 5)}`,
@@ -26,8 +28,12 @@ export function scriptBlock(c: ChannelContext): string {
 
 export function montageBlock(c: ChannelContext): string {
   const v = c.videos.filter((x) => x.source === "video");
+  // Videosiz kanal: tavsifda montaj/subtitr haqida asos bo'lmasa blok bo'sh qoladi (umumiy gap OpenFilm'ga berilmaydi).
+  if (c.basis === "description" && !c.montageGuidelines.length && !c.subtitleGuidelines.length) return "";
   const parts = [
-    `Keep the visual identity of the channel "${c.channel.title}" consistent with its latest videos.`,
+    c.basis === "description"
+      ? `Visual direction for the channel "${c.channel.title}" (no videos yet; inferred from its name and description).`
+      : `Keep the visual identity of the channel "${c.channel.title}" consistent with its latest videos.`,
     c.montageGuidelines.length && `Montage style:\n${bullets(c.montageGuidelines)}`,
     v.length && `Observed in the latest videos:\n${bullets(v.map((x) => `${x.montage.visualStyle}; pace: ${x.montage.editingPace}; on-screen text: ${x.montage.onScreenText}; transitions: ${x.montage.transitions}`), 3)}`,
     c.subtitleGuidelines.length && `Subtitles:\n${bullets(c.subtitleGuidelines, 4)}`,

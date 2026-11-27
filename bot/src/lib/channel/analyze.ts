@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { getConfig, getGeminiKeys } from "../config";
 import { sql, withAccount } from "../db";
 import { geminiGenerate, responseJson } from "../gemini";
@@ -104,9 +105,15 @@ async function synthesize(ch: { title: string; description: string; subscribers:
   const vids = videos.map((v, i) =>
     `### Latest video ${i + 1}: ${v.title} (${v.source === "video" ? "watched" : "metadata only"}, ${v.views} views, ${v.durationSec}s)\n` +
     JSON.stringify({ summary: v.summary, script: v.script, voice: v.voice, montage: v.montage, subtitles: v.subtitles })).join("\n\n");
+  // Videosiz kanal: faqat nom va tavsif. Gemini kanal yo'nalishidan kelib chiqib boshlang'ich qoidalar beradi, asosi bo'lmagan joyni bo'sh qoldiradi.
+  const evidence = videos.length
+    ? `Base every point on the evidence below; prefer specific, actionable rules over generic advice. English only.\n\n`
+    : `The channel has not published any videos yet, so the only evidence is its name and description. Infer the intended niche, audience and tone ` +
+      `from them and write concrete starting rules that fit this specific channel. Where the name and description give no basis (for example visual style, ` +
+      `subtitles or voice), return an empty list or "unknown" instead of generic advice. Leave titlePatterns empty unless the description implies a format. English only.\n\n`;
   const prompt =
     `Build a compact "channel memory" for an automated video studio that will produce the next videos for this YouTube channel.\n` +
-    `Base every point on the evidence below; prefer specific, actionable rules over generic advice. English only.\n\n` +
+    evidence +
     `Channel: ${ch.title}\nSubscribers: ${ch.subscribers}, videos: ${ch.videoCount}\nChannel description:\n${clip(ch.description, 2000) || "-"}\n\n` +
     `Recent video titles (newest first):\n${titles.slice(0, 30).map((t) => `- ${t}`).join("\n") || "-"}\n\n${vids}`;
   const { data } = await geminiGenerate(
@@ -119,6 +126,39 @@ async function synthesize(ch: { title: string; description: string; subscribers:
 const gender = (s: string | undefined): ChannelContext["voice"]["gender"] => (/female|woman/i.test(s ?? "") ? "female" : /\bmale\b|\bman\b/i.test(s ?? "") ? "male" : "unknown");
 
 export type AnalyzeResult = { status: "analyzed" | "unchanged" | "busy" | "not_connected" | "failed"; message: string };
+
+/** Videosiz kanal uchun shundan qisqa tavsif (nom bilan birga) tayanch bo'la olmaydi: kontekst umumiy maslahatlarga to'lib qoladi. */
+const MIN_DESCRIPTION_CHARS = 40;
+
+type Prep = {
+  chId: string; profile: Awaited<ReturnType<typeof readProfile>>; keys: GeminiKeys; profiles: Parameters<typeof pickVoiceProfile>[1];
+};
+type ChannelMeta = Awaited<ReturnType<typeof fetchChannel>>;
+
+/**
+ * Kanalda hali video yo'q: kontekst kanal nomi va tavsifidan tuziladi (basis "description"). last_video_id o'rniga nom+tavsif
+ * izi saqlanadi - tavsif o'zgarmasa Gemini qayta chaqirilmaydi; birinchi video chiqqach izi mos kelmaydi va to'liq tahlil qilinadi.
+ */
+async function analyzeFromDescription(accountId: string, prep: Prep, ch: ChannelMeta, opts: { force?: boolean; guest?: boolean }): Promise<AnalyzeResult> {
+  const description = ch.description.trim();
+  if (description.length < MIN_DESCRIPTION_CHARS)
+    throw new Error("Kanalda hali video yo'q va tavsifi juda qisqa — YouTube'da kanal tavsifini yozing yoki birinchi video chiqqach tahlil qilinadi.");
+  const mark = "desc:" + createHash("sha256").update(`${ch.title}\n${description}`).digest("hex").slice(0, 16);
+  if (!opts.force && prep.profile?.last_video_id === mark && parseContext(prep.profile)) {
+    await withAccount(accountId, () => markChecked(prep.chId), { guest: opts.guest });
+    return { status: "unchanged", message: "Kanalda hali video yo'q, tavsif o'zgarmagan — kontekst o'zgarmadi." };
+  }
+  const a = await synthesize(ch, [], [], prep.keys);
+  const g = gender(a.voice?.gender);
+  const ctx: ChannelContext = {
+    ...a,
+    channel: { id: ch.id, title: ch.title, description: ch.description, subscribers: ch.subscribers, videoCount: ch.videoCount, url: ch.customUrl ? `https://www.youtube.com/${ch.customUrl}` : `https://www.youtube.com/channel/${ch.id}` },
+    voice: { gender: g, style: a.voice?.style ?? "", pace: a.voice?.pace ?? "", recommendedProfile: pickVoiceProfile(g, prep.profiles) },
+    videos: [], recentTitles: [], basis: "description",
+  };
+  await withAccount(accountId, () => saveResult(prep.chId, ctx, mark, { script: scriptBlock(ctx), montage: montageBlock(ctx), voiceProfile: ctx.voice.recommendedProfile }), { guest: opts.guest });
+  return { status: "analyzed", message: "Kanalda hali video yo'q — kontekst kanal nomi va tavsifidan tuzildi. Birinchi video chiqqach to'liq tahlil qilinadi." };
+}
 
 /**
  * Kanalni tahlil qiladi. force=false bo'lsa: eng yangi video o'zgarmagan va worker "yangi video" belgisini qo'ymagan bo'lsa
@@ -145,9 +185,9 @@ export async function analyzeChannel(accountId: string, opts: { force?: boolean;
     const token = await youtubeAccessToken(prep.creds);
     const ch = await fetchChannel(token);
     const ids = await fetchRecentIds(token, ch.uploads, 30);
-    if (!ids.length) throw new Error("Kanalda hali video yo'q — birinchi video chiqqach tahlil qilinadi.");
-
     const staleNewer = !!prep.stale && (!prep.profile?.analyzed_at_utc || prep.stale > prep.profile.analyzed_at_utc);
+    if (!ids.length) return await analyzeFromDescription(accountId, prep, ch, opts);
+
     if (!opts.force && !staleNewer && prep.profile?.last_video_id === ids[0] && parseContext(prep.profile)) {
       await withAccount(accountId, () => markChecked(prep.chId), { guest: opts.guest });
       return { status: "unchanged", message: "Yangi video yo'q — kontekst o'zgarmadi." };
@@ -162,7 +202,7 @@ export async function analyzeChannel(accountId: string, opts: { force?: boolean;
       ...a,
       channel: { id: ch.id, title: ch.title, description: ch.description, subscribers: ch.subscribers, videoCount: ch.videoCount, url: ch.customUrl ? `https://www.youtube.com/${ch.customUrl}` : `https://www.youtube.com/channel/${ch.id}` },
       voice: { gender: g, style: a.voice?.style ?? "", pace: a.voice?.pace ?? "", recommendedProfile: pickVoiceProfile(g, prep.profiles) },
-      videos, recentTitles: metas.map((m) => m.title),
+      videos, recentTitles: metas.map((m) => m.title), basis: "videos",
     };
     await withAccount(accountId, () => saveResult(prep.chId, ctx, ids[0], { script: scriptBlock(ctx), montage: montageBlock(ctx), voiceProfile: ctx.voice.recommendedProfile }), { guest: opts.guest });
     const watched = videos.filter((v) => v.source === "video").length;
