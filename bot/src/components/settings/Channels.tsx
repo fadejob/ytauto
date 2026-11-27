@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronUp, Copy, KeyRound } from "lucide-react";
+import { Check, ChevronUp, Copy, History, KeyRound, Trash2 } from "lucide-react";
 import { api, confirmBox } from "@/lib/client";
 import { differs, useBotConfig } from "@/lib/settings-data";
-import type { BotConfig } from "@/lib/types";
+import type { BotConfig, State } from "@/lib/types";
 import TagInput, { joinTags, parseTags, TAGS_MAX_CHARS } from "../TagInput";
 import YouTubeChannels, { type YtStatus } from "../YouTubeChannels";
 import { Alert, Btn, Card, Field, PageHead, SaveBtn, SettingsRow, SkelCard, ToggleRow, useBusy } from "../ui";
@@ -124,6 +124,7 @@ export default function Channels({ toast, back, onChanged }: SettingsPageProps) 
         <>
           <div className="section-label"><span>{activeCh.title || "Faol kanal"}</span><span style={{ textTransform: "none" }}>faqat shu kanal uchun</span></div>
           <ChannelDefaultsCard key={activeCh.id} ch={activeCh} busy={busy} toast={toast} onSaved={setYt} />
+          <ChannelDataCard ch={activeCh} busy={busy} toast={toast} onDone={(r) => { setYt(r); onChanged(r.state); }} />
         </>
       ) : null}
 
@@ -370,6 +371,46 @@ function ChannelDefaultsCard({ ch, busy, toast, onSaved }: { ch: ChannelInfo; bu
         <textarea id="yt-desc" className="inp" rows={4} maxLength={2000} disabled={saving} value={v.defaultDescription}
           placeholder="Masalan: kanal havolalari, ijtimoiy tarmoqlar, ogohlantirish…" onChange={(e) => d.set({ defaultDescription: e.target.value })} />
       </Field>
+    </Card>
+  );
+}
+
+// ------------------------------------------------------------------ Kanal ma'lumotlarini tozalash
+type PurgeResponse = YtStatus & { state?: State; result?: { ok: boolean; deleted: number; skipped: number; message: string } };
+
+/**
+ * Faol kanal ma'lumotlarini tozalash: chiqqan videolar tarixi yoki kanalga tegishli hamma narsa (YtAuto'da). YouTube'dagi videolarga
+ * tegilmaydi. Har biri aniq ogohlantirish bilan; javobda ilovaning yangi holati keladi (alohida yangilash yo'q).
+ */
+function ChannelDataCard({ ch, busy, toast, onDone }: { ch: ChannelInfo; busy: Busy; toast: SettingsPageProps["toast"]; onDone: (r: PurgeResponse) => void }) {
+  const name = ch.title || ch.id;
+  const videos = ch.videos ?? 0, published = ch.published ?? 0;
+  const working = busy.is("purge") || busy.is("purge_published");
+
+  async function purge(action: "purge" | "purge_published") {
+    const text = action === "purge_published"
+      ? `«${name}» kanalining ${published} ta chiqqan video tarixi o'chirilsinmi?\n\nYtAuto'dagi yozuvlari, loglari va bosqichlari o'chadi. YouTube'dagi videolar O'ZGARMAYDI. Qaytarib bo'lmaydi.`
+      : `«${name}» kanalining BARCHA ma'lumotlari o'chirilsinmi?\n\n• ${videos} ta video/mavzu (navbatdagilar ham) — yozuvlari, loglari, fayllari\n• kanal tahlili, mavzu tavsiyalari, kontekst\n• standart teglar va tavsif\n\nYouTube'dagi videolar O'ZGARMAYDI, kanal ulanishi qoladi. Qaytarib bo'lmaydi.`;
+    if (!(await confirmBox(text))) return;
+    if (action === "purge" && !(await confirmBox(`Aniqmi? «${name}» bo'yicha YtAuto'dagi hamma narsa butunlay o'chadi.`))) return;
+    const r = await busy.run(action, () => api<PurgeResponse>("/api/youtube", { action, id: ch.id }));
+    if (r === false) return;
+    onDone(r);
+    if (r.result) toast(r.result.message, !r.result.ok);
+  }
+
+  return (
+    <Card title="Ma'lumotlarni tozalash" sub={`Faqat YtAuto'da · YouTube'dagi videolarga tegilmaydi`}>
+      <div className="sub">{videos} ta video yozuvi, ulardan {published} tasi chiqqan.</div>
+      {/* Ustma-ust, to'liq kenglikda: telefonda uzun yozuvlar sig'adi. */}
+      <div style={{ display: "grid", gap: 8 }}>
+        <Btn tone="secondary" block icon={History} loading={busy.is("purge_published")} disabled={working || !published} onClick={() => void purge("purge_published")}>
+          Chiqqan videolar tarixini tozalash
+        </Btn>
+        <Btn tone="danger" block icon={Trash2} loading={busy.is("purge")} disabled={working} onClick={() => void purge("purge")}>
+          Kanal ma&apos;lumotlarini o&apos;chirish
+        </Btn>
+      </div>
     </Card>
   );
 }

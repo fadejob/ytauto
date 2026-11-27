@@ -57,7 +57,8 @@ async function clientOf(ch: Pick<YtChannel, "client">): Promise<Client | null> {
 
 /** Kanalning standart teglari (vergul bilan) va tavsifi: shu kanal videolariga qo'yiladi; bo'sh bo'lsa Gemini yozadi. */
 export type ChannelDefaults = { tags: string; description: string };
-export type YouTubeChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired: boolean; defaults: ChannelDefaults };
+/** videos - shu kanalning YtAuto'dagi barcha video yozuvlari, published - ulardan chiqqanlari (tarix). */
+export type YouTubeChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired: boolean; defaults: ChannelDefaults; videos: number; published: number };
 export type YouTubeStatus = {
   connected: boolean; channelId: string; channelTitle: string; connectedAt: string | null;
   channels: YouTubeChannelInfo[]; maxChannels: number;
@@ -317,15 +318,20 @@ export async function getYouTubeStatus(origin: string): Promise<YouTubeStatus> {
   // Teg/tavsif va navbatdagi videolar soni birga (pipelining).
   const [defaults, rows] = await Promise.all([
     defaultsFor(l),
-    !isDemo() && l.channels.length ? sql()`SELECT channel_id, count(*)::int AS n FROM ytauto.jobs
-      WHERE youtube_video_id IS NULL AND status NOT IN ${sql()([Status.Published, Status.Cancelled])} GROUP BY channel_id` : Promise.resolve([]),
+    !isDemo() && l.channels.length ? sql()`SELECT channel_id,
+        count(*) FILTER (WHERE youtube_video_id IS NULL AND status NOT IN ${sql()([Status.Published, Status.Cancelled])})::int AS n,
+        count(*)::int AS total, count(*) FILTER (WHERE status = ${Status.Published})::int AS published
+      FROM ytauto.jobs GROUP BY channel_id` : Promise.resolve([]),
   ]);
-  const pending = new Map<string, number>();
-  for (const r of rows) pending.set(r.channel_id as string, r.n as number);
+  const pending = new Map<string, number>(), totals = new Map<string, { videos: number; published: number }>();
+  for (const r of rows) {
+    pending.set(r.channel_id as string, r.n as number);
+    totals.set(r.channel_id as string, { videos: r.total as number, published: r.published as number });
+  }
   const a = l.channels.find((x) => x.id === l.active);
   return {
     connected: !!a, channelId: a?.id ?? "", channelTitle: a?.title ?? "", connectedAt: a?.connectedAt || null,
-    channels: l.channels.map((x) => ({ id: x.id, title: x.title, connectedAt: x.connectedAt, active: x.id === l.active, pending: pending.get(x.id) ?? 0, expired: x.expired === true, defaults: defaults.get(x.id) ?? EMPTY_DEFAULTS })),
+    channels: l.channels.map((x) => ({ id: x.id, title: x.title, connectedAt: x.connectedAt, active: x.id === l.active, pending: pending.get(x.id) ?? 0, expired: x.expired === true, defaults: defaults.get(x.id) ?? EMPTY_DEFAULTS, videos: totals.get(x.id)?.videos ?? 0, published: totals.get(x.id)?.published ?? 0 })),
     maxChannels: MAX_CHANNELS,
     clientConfigured: !!c, redirectUri: redirectOf(origin), globalClient: !!globalClient(),
   };
@@ -408,6 +414,21 @@ export async function switchChannel(id: string): Promise<string> {
  * Kanalni uzadi. Shu kanalga bog'langan, hali yuklanmagan videolar yuklanmaydi ("E'tibor kerak") - kanal qayta ulansa davom etadi.
  * Faol kanal uzilsa ro'yxatdagi keyingisi faol bo'ladi.
  */
+/**
+ * Kanal ma'lumotlari o'chirilganda: shu kanalning kontekst bloklari, teg/tavsifi (bo'sh qilinadi - hisobning umumiy qiymati
+ * qaytib qo'yilmasin) va "tasdiqlangan kanal" keshi. Faol kanal bo'lsa - uning nusxasi (eski desktop) ham.
+ */
+export async function forgetChannelSettings(id: string): Promise<void> {
+  if (isDemo()) { demoDefaults.set(id, EMPTY_DEFAULTS); return; }
+  const active = (await channelList()).active === id;
+  await Promise.all([
+    putSetting(blocksKey(id), null),
+    putSetting(`youtube.verified.${id}`, null),
+    writeDefaults(id, EMPTY_DEFAULTS),
+    active ? putSetting(BLOCKS_KEY, null) : Promise.resolve(),
+  ]);
+}
+
 export async function removeChannel(id: string): Promise<void> {
   if (isDemo()) {
     const channels = demoList.channels.filter((x) => x.id !== id);

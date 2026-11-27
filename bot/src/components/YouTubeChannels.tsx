@@ -8,7 +8,9 @@ import type { State } from "@/lib/types";
 import { Alert, Btn, SkelCard, useBusy } from "./ui";
 import styles from "./YouTubeChannels.module.css";
 
-export type YtChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired?: boolean; defaults?: { tags: string; description: string } };
+export type YtChannelInfo = { id: string; title: string; connectedAt: string; active: boolean; pending: number; expired?: boolean; defaults?: { tags: string; description: string };
+  /** Shu kanalning YtAuto'dagi barcha video yozuvlari va ulardan chiqqanlari. */
+  videos?: number; published?: number };
 export type YtStatus = {
   connected: boolean; channelId: string; channelTitle: string; connectedAt: string | null;
   channels: YtChannelInfo[]; maxChannels: number; clientConfigured: boolean; redirectUri: string;
