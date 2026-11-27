@@ -25,7 +25,25 @@ const HASH_RE = /^[0-9a-f]{64}$/;
 export type LinkedAccount = { id: string; guest: boolean; hostLabel: string | null };
 
 /** Telegram foydalanuvchisi bog'langan hisob (token hali amal qilsa) va u qo'shimcha (mehmon) tokenmi. */
+/**
+ * Telegram ID → hisob: har API so'rovida kerak, shuning uchun shu server nusxasida qisqa muddat (30 s) eslab qolinadi - har so'rovga
+ * bitta baza borib-kelishi kamayadi. Kirish/chiqishda darhol tozalanadi; ilovada token yangilansa eski bog'lanish ko'pi bilan 30 s ishlaydi.
+ */
+const LINK_TTL_MS = 30_000;
+const linkCache = new Map<number, { acc: LinkedAccount; until: number }>();
+
 export async function accountForTelegram(telegramId: number): Promise<LinkedAccount | null> {
+  const hit = linkCache.get(telegramId);
+  if (hit && hit.until > Date.now()) return hit.acc;
+  const acc = await lookupTelegram(telegramId);
+  if (acc) {
+    if (linkCache.size > 5000) linkCache.clear();
+    linkCache.set(telegramId, { acc, until: Date.now() + LINK_TTL_MS });
+  } else linkCache.delete(telegramId);
+  return acc;
+}
+
+async function lookupTelegram(telegramId: number): Promise<LinkedAccount | null> {
   await ensureSchema();
   const [row] = await ownerSql()`
     SELECT l.account_id::text AS id, a.host_account_id IS NOT NULL AS guest, h.device_name AS host_label FROM ytauto.telegram_links l
@@ -194,6 +212,7 @@ export async function loginTelegram(telegramId: number, name: string, token: str
   const t = token.trim();
   if (!TOKEN_RE.test(t)) return { ok: false, message: "Token noto'g'ri ko'rinishda. YtAuto ilovasidagi tokenni to'liq nusxalang (yt_ bilan boshlanadi)." };
   const h = hashToken(t);
+  linkCache.delete(telegramId);
   const [acc] = await ownerSql()`SELECT id::text AS id FROM ytauto.accounts WHERE token_hash = ${h}`;
   if (!acc) return { ok: false, message: "Bunday token topilmadi. Ilovadagi joriy tokenni nusxalang (token yangilangan bo'lishi mumkin)." };
   await ownerSql()`
@@ -211,6 +230,7 @@ export async function loginTelegram(telegramId: number, name: string, token: str
 
 export async function logoutTelegram(telegramId: number) {
   await ensureSchema();
+  linkCache.delete(telegramId);
   await ownerSql()`DELETE FROM ytauto.telegram_links WHERE telegram_id = ${telegramId}`;
 }
 

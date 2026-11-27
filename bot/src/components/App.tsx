@@ -93,6 +93,11 @@ export default function App() {
     }
   }, [show]);
 
+  /** Server javobida kelgan yangi holat (kanal almashtirish, uzish): alohida /api/state so'rovi kerak emas. */
+  const applyState = useCallback((s: State) => { setState(s); cache.set("state", s); }, []);
+  /** Holat o'zgargan bo'lishi mumkin: javobda holat kelgan bo'lsa - o'shani, aks holda /api/state. */
+  const changed = useCallback((s?: State) => { if (s) applyState(s); else void refresh(); }, [applyState, refresh]);
+
   useEffect(() => {
     initTelegram();
     const stopTheme = followSystemTheme();
@@ -181,7 +186,7 @@ export default function App() {
     setState(null); setNeedToken(true);
   };
   const pageProps: SettingsPageProps = {
-    state, toast: show, run, back: () => { setPage(null); window.scrollTo({ top: 0 }); }, open: (p) => openSettings(p), onChanged: () => void refresh(), onLogout: logout, setSubBack,
+    state, toast: show, run, back: () => { setPage(null); window.scrollTo({ top: 0 }); }, open: (p) => openSettings(p), onChanged: changed, onLogout: logout, setSubBack,
   };
   const Page = page ? PAGES[page] : null;
 
@@ -216,7 +221,7 @@ export default function App() {
       ) : null}
 
       {tab === "videos" && videoId === null && (
-        <Topics state={state} loading={loading} refresh={refresh} run={run} locked={geminiOff} openVideo={(id) => { haptic.tap(); setVideoId(id); window.scrollTo({ top: 0 }); }} openSettings={openSettings} openAi={() => go("ai")} />
+        <Topics state={state} loading={loading} refresh={refresh} changed={changed} run={run} locked={geminiOff} openVideo={(id) => { haptic.tap(); setVideoId(id); window.scrollTo({ top: 0 }); }} openSettings={openSettings} openAi={() => go("ai")} />
       )}
       {tab === "videos" && videoId !== null && <VideoDetail state={state} id={videoId} back={() => setVideoId(null)} run={run} toast={show} refresh={refresh} />}
       {tab === "channel" && <Channel toast={show} onTopicsChanged={() => void refresh()} openSettings={() => openSettings("channels")} />}

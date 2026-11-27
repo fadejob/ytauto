@@ -13,8 +13,8 @@ export type SettingsPageProps = {
   back: () => void;
   /** Boshqa sozlama sahifasini ochish (masalan Gemini kaliti yo'q → AI va promptlar). */
   open: (p: SettingsPage) => void;
-  /** Umumiy holat (mavzular, faol kanal, Gemini) o'zgargan bo'lishi mumkin - /api/state qayta olinadi. */
-  onChanged: () => void;
+  /** Umumiy holat (mavzular, faol kanal, Gemini) o'zgargan bo'lishi mumkin: s berilsa (server javobidagi holat) - o'sha, aks holda /api/state qayta olinadi. */
+  onChanged: (s?: State) => void;
   onLogout: () => void;
   /**
    * Sahifa ichidagi ichki ekran ochilganda (masalan «Mening ovozim», prompt muharriri) Telegram'ning «orqaga» tugmasi avval shu

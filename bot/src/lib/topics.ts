@@ -145,14 +145,20 @@ export async function getCatalog(): Promise<Catalog> {
   const pendingOf = async (templates: { name: string }[]) =>
     (await pendingTemplates()).filter((p) => !templates.some((t) => t.name === p.name));
   if (isDemo()) return { ...demoCatalog, pendingTemplates: await pendingOf(demoCatalog.templates), music: await musicCatalog() };
-  const [row] = await sql()`SELECT value FROM ytauto.shared_settings WHERE key = 'bot.catalog'`;
+  // Mustaqil o'qishlar birga (pipelining) - ketma-ket 4 ta borib-kelish o'rniga ~1 ta.
+  const [[row], lib, pending, music] = await Promise.all([
+    sql()`SELECT value FROM ytauto.shared_settings WHERE key = 'bot.catalog'`,
+    templateCatalog(),
+    pendingTemplates(),
+    musicCatalog(),
+  ]);
   const c = row ? (JSON.parse(row.value as string) as CatalogJson) : null;
-  const templates = (await templateCatalog()) ?? c?.templates ?? [];
+  const templates = lib ?? c?.templates ?? [];
   return {
     voiceProfiles: c?.voice_profiles ?? [],
     templates,
-    pendingTemplates: await pendingOf(templates),
-    music: await musicCatalog(),
+    pendingTemplates: pending.filter((p) => !templates.some((t) => t.name === p.name)),
+    music,
     defaults: { voiceProfile: c?.defaults?.voice_profile ?? "", template: c?.defaults?.template ?? "", format: c?.defaults?.format ?? 0 },
     youtube: { publishTime: c?.youtube?.publish_time ?? "18:00", timeZone: c?.youtube?.time_zone ?? "Asia/Tashkent" },
     known: !!c,
@@ -160,13 +166,16 @@ export async function getCatalog(): Promise<Catalog> {
 }
 
 export async function listTopics(tz: string): Promise<Topic[]> {
-  const music = await topicMusicMap();
+  if (isDemo()) { const m = await topicMusicMap(); return demoTopics().map((t) => ({ ...t, music: m[String(t.id)] ?? "" })); }
+  // Mustaqil qismlar birga (pipelining): musiqa tanlovi, faol kanal va eski fayllarni tozalash.
+  const [music, ch] = await Promise.all([
+    topicMusicMap(),
+    activeChannelId(),
+    cleanupAudio().catch((e) => console.warn("[audio] tozalash:", e instanceof Error ? e.message : e)),
+    cleanupCovers().catch((e) => console.warn("[cover] tozalash:", e instanceof Error ? e.message : e)),
+  ]);
   const withMusic = (t: Topic): Topic => ({ ...t, music: music[String(t.id)] ?? "" });
-  if (isDemo()) return demoTopics().map(withMusic);
-  try { await cleanupAudio(); } catch (e) { console.warn("[audio] tozalash:", e instanceof Error ? e.message : e); }
-  try { await cleanupCovers(); } catch (e) { console.warn("[cover] tozalash:", e instanceof Error ? e.message : e); }
   // Faol kanal (va kanal tanlanmagan) vazifalari: chiqmaganlar hammasi + oxirgi 30 ta chiqqan.
-  const ch = await activeChannelId();
   const rows = await sql()<Row[]>`
     (SELECT ${cols()} FROM ytauto.jobs WHERE channel_id IN (${ch}, '') AND status <> ${Status.Published} ORDER BY publish_at_utc, id LIMIT 300)
     UNION ALL

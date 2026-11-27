@@ -71,7 +71,9 @@ function create() {
   const common = {
     ssl: local ? (false as const) : ("require" as const),
     max: 3,
-    idle_timeout: 20,
+    // Bo'sh ulanish tez yopilsa keyingi amal yangi TCP+TLS+auth (≈12 borib-kelish) to'laydi - foydalanuvchi amallari orasida
+    // bir necha daqiqa ochiq turadi (Supabase pooler o'zi ham bo'sh ulanishlarni boshqaradi).
+    idle_timeout: 240,
     connect_timeout: 10,
     prepare: false, // Supabase pooler (transaction mode) bilan ham ishlaydi
     onnotice: () => {}, // migratsiyadagi "already exists" xabarlari

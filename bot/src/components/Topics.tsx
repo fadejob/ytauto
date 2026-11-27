@@ -77,12 +77,14 @@ type Item = { key: string; label: string; icon: IconT; danger?: boolean; kind?: 
 
 type Props = {
   state: State | null; loading: boolean; refresh: () => Promise<void>; run: Run; locked?: boolean;
+  /** Server javobidagi yangi holatni qo'llash (yo'q bo'lsa - refresh). */
+  changed?: (s?: State) => void;
   openVideo?: (id: number) => void; openSettings?: (p: SettingsPage | null) => void;
   /** «AI yordamchi» tabiga o'tish (bo'sh navbat kartasidagi tugma). */
   openAi?: () => void;
 };
 
-export default function Topics({ state, loading, refresh, run, locked, openVideo, openSettings, openAi }: Props) {
+export default function Topics({ state, loading, refresh, changed, run, locked, openVideo, openSettings, openAi }: Props) {
   const [group, setGroup] = useState<Group>("queue");
   const [sheet, setSheet] = useState<{ mode: "new" } | { mode: "edit"; topic: Topic } | null>(null);
   const [resched, setResched] = useState<Topic | null>(null);
@@ -204,7 +206,7 @@ export default function Topics({ state, loading, refresh, run, locked, openVideo
     <div className="page">
       <div className={s.top}>
         {state ? (
-          <ChannelMenu title={channel?.title || null} total={channel?.total ?? 0} onSwitched={() => void refresh()} onManage={() => openSettings?.("channels")} />
+          <ChannelMenu title={channel?.title || null} total={channel?.total ?? 0} onSwitched={(s) => (changed ? changed(s) : void refresh())} onManage={() => openSettings?.("channels")} />
         ) : <Skel h={44} w={200} r={999} />}
         <button type="button" className={`round ${s.refresh}`} aria-label="Yangilash" disabled={loading} onClick={() => { haptic.tap(); void refresh(); }}>
           <RotateCw size={18} className={loading && state ? "spin" : undefined} />

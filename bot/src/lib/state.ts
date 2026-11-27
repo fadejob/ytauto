@@ -12,13 +12,19 @@ import { channelList, customThumbnails } from "./youtube";
  * so'rovsiz) ishlatadi: foydalanuvchi o'zgarishni darhol ko'radi. refreshChannel - kanal kontekstini fonda yangilash (faqat /api/state).
  */
 export async function buildState(viewer: AccountViewer, opts?: { refreshChannel?: boolean }): Promise<State> {
-  const catalog = await getCatalog();
-  const ch = await channelList(); // eski bitta ulanish bo'lsa shu yerda ro'yxatga o'tkaziladi (mavzular ro'yxatidan oldin)
+  // Mustaqil o'qishlar birga yuboriladi (postgres.js bitta ulanishda javobni kutmasdan ketma-ket yuboradi - pipelining):
+  // ketma-ket await'lar o'rniga ~bitta borib-kelish. channelList birinchi - eski bitta ulanish bo'lsa ro'yxatga o'tkaziladi.
+  const ch = await channelList();
+  const [catalog, gemini, customCover] = await Promise.all([
+    getCatalog(),
+    geminiReady(),
+    ch.active ? customThumbnails() : Promise.resolve(false),
+    opts?.refreshChannel ? maybeRefreshChannel() : Promise.resolve(),
+  ]);
   const topics = await listTopics(catalog.youtube.timeZone);
-  if (opts?.refreshChannel) await maybeRefreshChannel();
   return {
-    topics, catalog, viewer: { name: viewer.name, dev: viewer.dev }, now: new Date().toISOString(), demo: isDemo(), gemini: { ready: await geminiReady() },
+    topics, catalog, viewer: { name: viewer.name, dev: viewer.dev }, now: new Date().toISOString(), demo: isDemo(), gemini: { ready: gemini },
     account: { guest: viewer.guest, hostLabel: viewer.hostLabel },
-    channel: { id: ch.active, title: ch.channels.find((c) => c.id === ch.active)?.title ?? "", total: ch.channels.length, customCover: ch.active ? await customThumbnails() : false },
+    channel: { id: ch.active, title: ch.channels.find((c) => c.id === ch.active)?.title ?? "", total: ch.channels.length, customCover },
   };
 }

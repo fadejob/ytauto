@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Check, ChevronDown, CircleCheck, CircleX, Link2Off, LoaderCircle, Lock, Plus, ShieldCheck, Tv } from "lucide-react";
 import { api, confirmBox, openExternal } from "@/lib/client";
 import type { Toast } from "./App";
+import type { State } from "@/lib/types";
 import { Alert, Btn, SkelCard, useBusy } from "./ui";
 import styles from "./YouTubeChannels.module.css";
 
@@ -11,6 +12,8 @@ export type YtChannelInfo = { id: string; title: string; connectedAt: string; ac
 export type YtStatus = {
   connected: boolean; channelId: string; channelTitle: string; connectedAt: string | null;
   channels: YtChannelInfo[]; maxChannels: number; clientConfigured: boolean; redirectUri: string;
+  /** switch/remove javobida: ilovaning yangi holati (alohida /api/state kerak emas). */
+  state?: State;
   /** Server umumiy OAuth client'i bor: Client ID/Secret kiritish ixtiyoriy. */
   globalClient?: boolean;
 };
@@ -27,7 +30,7 @@ export default function YouTubeChannels({ yt, setYt, toast, blocked, onSwitched,
   yt: YtStatus | null; setYt: (s: YtStatus) => void; toast: Toast;
   /** Ulash tugmasini to'sadigan sabab (Client ID/Secret yo'q yoki saqlanmagan o'zgarish). */
   blocked: string | null;
-  onSwitched?: () => void;
+  onSwitched?: (s?: State) => void;
   /** Holatni yuklab bo'lmadi (yt null bo'lsa skelet o'rniga xato ko'rsatiladi). */
   error?: string | null;
   onRetry?: () => Promise<unknown>;
@@ -67,7 +70,7 @@ export default function YouTubeChannels({ yt, setYt, toast, blocked, onSwitched,
     const r = await busy.run(`switch:${c.id}`, () => api<YtStatus>("/api/youtube", { action: "switch", id: c.id }));
     if (r === false) return;
     setYt(r);
-    onSwitched?.();
+    onSwitched?.(r.state);
     // «Bekor qilish»: oldingi faol kanalga qaytariladi.
     toast(`Faol kanal: ${c.title || c.id}`, false, prev ? { label: "Bekor qilish", run: () => revert(prev) } : undefined);
   }
@@ -75,7 +78,7 @@ export default function YouTubeChannels({ yt, setYt, toast, blocked, onSwitched,
     try {
       const r = await api<YtStatus>("/api/youtube", { action: "switch", id: prev.id });
       setYt(r);
-      onSwitched?.();
+      onSwitched?.(r.state);
       toast(`Faol kanal: ${prev.title || prev.id}`);
     } catch (e) { toast(e instanceof Error ? e.message : String(e), true); }
   }
@@ -97,7 +100,7 @@ export default function YouTubeChannels({ yt, setYt, toast, blocked, onSwitched,
     setYt(r);
     setChecks((m) => without(m, c.id));
     toast(`«${name}» uzildi.`);
-    onSwitched?.();
+    onSwitched?.(r.state);
   }
 
   const head = (

@@ -2,20 +2,29 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Check, ChevronsUpDown, LoaderCircle, Settings2 } from "lucide-react";
-import { api, haptic } from "@/lib/client";
+import { api, cache, haptic } from "@/lib/client";
+import type { State } from "@/lib/types";
 import type { YtStatus } from "./YouTubeChannels";
 import ys from "./YouTubeChannels.module.css";
 import s from "./ChannelMenu.module.css";
 
 /**
  * Videolar ekranining tepasidagi kanal tugmasi: bosilsa shu yerning o'zida kanallar ro'yxati ochiladi va tanlangan kanal faol bo'ladi
- * (sozlamalarga o'tish shart emas). Ro'yxat ochilganda /api/youtube dan olinadi; oxirida «Kanallarni boshqarish».
+ * (sozlamalarga o'tish shart emas). Oxirida «Kanallarni boshqarish».
+ *
+ * Tezlik: ro'yxat oxirgi ma'lum holatdan (localStorage) DARHOL chiqadi, /api/youtube fonda yangilaydi. Kanal tanlanganda menyu
+ * darhol yopiladi va tugmada yangi kanal nomi ko'rinadi (optimistik); server javobida ilovaning yangi holati keladi - alohida
+ * /api/state so'rovi yo'q. Xato bo'lsa nom qaytadi va xabar chiqadi.
  */
+type Listed = Pick<YtStatus, "channels">;
+const CACHE_KEY = "channels";
 export default function ChannelMenu({ title, total, onSwitched, onManage }: {
-  title: string | null; total: number; onSwitched: () => void; onManage: () => void;
+  title: string | null; total: number; onSwitched: (s?: State) => void; onManage: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [yt, setYt] = useState<YtStatus | null>(null);
+  const [yt, setYt] = useState<Listed | null>(null);
+  /** Tanlangan, server hali tasdiqlamagan kanal nomi (optimistik). */
+  const [pendingTitle, setPendingTitle] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [switching, setSwitching] = useState<string | null>(null);
   const wrap = useRef<HTMLDivElement>(null);
@@ -26,7 +35,12 @@ export default function ChannelMenu({ title, total, onSwitched, onManage }: {
     if (!open) return;
     const away = (e: PointerEvent) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener("pointerdown", away);
-    api<YtStatus>("/api/youtube").then((r) => { setYt(r); setErr(null); }).catch((e) => setErr(e instanceof Error ? e.message : String(e)));
+    // Oxirgi ma'lum ro'yxat darhol (localStorage faqat ochilganda o'qiladi), yangisi fonda.
+    const cached = cache.get<Listed>(CACHE_KEY);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- tashqi kesh menyu ochilganda o'qiladi
+    if (cached?.channels) setYt((y) => y ?? cached);
+    api<YtStatus>("/api/youtube").then((r) => { setYt(r); cache.set(CACHE_KEY, { channels: r.channels }); setErr(null); })
+      .catch((e) => setErr(e instanceof Error ? e.message : String(e)));
     return () => document.removeEventListener("pointerdown", away);
   }, [open]);
 
@@ -35,15 +49,20 @@ export default function ChannelMenu({ title, total, onSwitched, onManage }: {
   async function pick(id: string, active: boolean) {
     if (active) { setOpen(false); btn.current?.focus(); return; }
     haptic.tap();
+    const chosen = yt?.channels.find((c) => c.id === id);
+    // Optimistik: menyu darhol yopiladi, tugmada yangi kanal nomi va kichik spinner.
     setSwitching(id);
+    setPendingTitle(chosen?.title || id);
+    setOpen(false);
+    btn.current?.focus();
     try {
       const r = await api<YtStatus>("/api/youtube", { action: "switch", id });
       setYt(r);
+      cache.set(CACHE_KEY, { channels: r.channels });
       haptic.ok();
-      setOpen(false);
-      onSwitched();
-    } catch (e) { haptic.fail(); setErr(e instanceof Error ? e.message : String(e)); }
-    finally { setSwitching(null); }
+      onSwitched(r.state); // javobdagi yangi holat (mavzular, kanal) - alohida so'rovsiz
+    } catch (e) { haptic.fail(); setErr(e instanceof Error ? e.message : String(e)); setOpen(true); }
+    finally { setSwitching(null); setPendingTitle(null); }
   }
 
   function key(e: KeyboardEvent<HTMLDivElement>) {
@@ -55,12 +74,13 @@ export default function ChannelMenu({ title, total, onSwitched, onManage }: {
     else if (e.key === "Tab") setOpen(false);
   }
 
-  const name = title || "Kanal tanlanmagan";
+  const shown = pendingTitle ?? title;
+  const name = shown || "Kanal tanlanmagan";
   return (
     <div className={s.wrap} ref={wrap}>
       <button type="button" ref={btn} className={`${s.chip}${open ? " " + s.open : ""}`} aria-haspopup="listbox" aria-expanded={open}
-        aria-label={title ? `Kanal: ${title}. Almashtirish` : "Kanal tanlash"} onClick={() => { haptic.tap(); setOpen((o) => !o); }}>
-        <span className={s.avatar} aria-hidden>{(title || "?").trim().charAt(0).toUpperCase() || "?"}</span>
+        aria-label={shown ? `Kanal: ${shown}. Almashtirish` : "Kanal tanlash"} aria-busy={!!switching} onClick={() => { haptic.tap(); setOpen((o) => !o); }}>
+        <span className={s.avatar} aria-hidden>{(shown || "?").trim().charAt(0).toUpperCase() || "?"}</span>
         <span className={s.name}>{name}</span>
         {total > 1 ? <span className={s.total}>{total} ta</span> : null}
         {switching ? <LoaderCircle size={16} className="spin" /> : <ChevronsUpDown size={16} />}

@@ -140,10 +140,13 @@ async function lockList() {
  */
 async function writeList(l: ChannelList) {
   if (isDemo()) { demoList = l; return; }
-  await putSetting(LIST_KEY, JSON.stringify(l));
   const a = l.channels.find((c) => c.id === l.active);
-  await putSetting(KEY, a ? JSON.stringify({ refreshToken: a.refreshToken, channelTitle: a.title, channelId: a.id, scope: a.scope, connectedAt: a.connectedAt, client: a.client ?? "own" }) : null);
-  await putSetting(BLOCKS_KEY, a ? await getSetting(blocksKey(a.id)) : null);
+  // Uchala yozuv bir-biriga bog'liq emas - birga yuboriladi (pipelining, bitta tranzaksiya ichida).
+  await Promise.all([
+    putSetting(LIST_KEY, JSON.stringify(l)),
+    putSetting(KEY, a ? JSON.stringify({ refreshToken: a.refreshToken, channelTitle: a.title, channelId: a.id, scope: a.scope, connectedAt: a.connectedAt, client: a.client ?? "own" }) : null),
+    (a ? getSetting(blocksKey(a.id)) : Promise.resolve(null)).then((v) => putSetting(BLOCKS_KEY, v)),
+  ]);
 }
 
 /** Kanal id'si va nomi (refresh token bilan). Token yaroqsiz bo'lsa null. */
@@ -291,17 +294,34 @@ export async function channelDefaults(id = ""): Promise<ChannelDefaults> {
   return { tags: y.defaultTags ?? "", description: y.defaultDescription ?? "" };
 }
 
+/** Hamma kanallarning teg/tavsifi bitta so'rovda (kanal soniga qarab N ta so'rov emas). Ko'chirish kerak bo'lsa - bir marta. */
+async function defaultsFor(l: ChannelList): Promise<Map<string, ChannelDefaults>> {
+  const out = new Map<string, ChannelDefaults>();
+  if (!l.channels.length) return out;
+  if (isDemo()) { for (const c of l.channels) out.set(c.id, await channelDefaults(c.id)); return out; }
+  const read = async () => new Map((await sql()`SELECT key, value FROM ytauto.shared_settings
+    WHERE key IN ${sql()([DEFAULTS_MIGRATED, ...l.channels.map((c) => defaultsKey(c.id))])}`).map((r) => [r.key as string, r.value as string]));
+  let kv = await read();
+  if (!kv.has(DEFAULTS_MIGRATED)) { await migrateDefaults(l); kv = await read(); }
+  let account: ChannelDefaults | null = null;
+  for (const c of l.channels) {
+    let d = parseDefaults(kv.get(defaultsKey(c.id)) ?? null);
+    if (!d) { account ??= await channelDefaults("__none__"); d = account; }
+    out.set(c.id, d);
+  }
+  return out;
+}
+
 export async function getYouTubeStatus(origin: string): Promise<YouTubeStatus> {
   const [l, c] = await Promise.all([channelList(), connectClient()]);
-  await migrateDefaults(l);
-  const defaults = new Map<string, ChannelDefaults>();
-  for (const x of l.channels) defaults.set(x.id, await channelDefaults(x.id));
+  // Teg/tavsif va navbatdagi videolar soni birga (pipelining).
+  const [defaults, rows] = await Promise.all([
+    defaultsFor(l),
+    !isDemo() && l.channels.length ? sql()`SELECT channel_id, count(*)::int AS n FROM ytauto.jobs
+      WHERE youtube_video_id IS NULL AND status NOT IN ${sql()([Status.Published, Status.Cancelled])} GROUP BY channel_id` : Promise.resolve([]),
+  ]);
   const pending = new Map<string, number>();
-  if (!isDemo() && l.channels.length) {
-    const rows = await sql()`SELECT channel_id, count(*)::int AS n FROM ytauto.jobs
-      WHERE youtube_video_id IS NULL AND status NOT IN ${sql()([Status.Published, Status.Cancelled])} GROUP BY channel_id`;
-    for (const r of rows) pending.set(r.channel_id as string, r.n as number);
-  }
+  for (const r of rows) pending.set(r.channel_id as string, r.n as number);
   const a = l.channels.find((x) => x.id === l.active);
   return {
     connected: !!a, channelId: a?.id ?? "", channelTitle: a?.title ?? "", connectedAt: a?.connectedAt || null,
