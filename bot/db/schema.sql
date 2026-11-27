@@ -1,4 +1,4 @@
--- ytauto-schema-version: 8
+-- ytauto-schema-version: 9
 -- YtAuto online bazasi (Supabase PostgreSQL, "ytauto" sxemasi) - YAGONA manba. Bot (bot/src/lib/schema.ts) ham, desktop ilova
 -- (PostgresJobStore, egasi huquqi bilan ulanganda) ham shu faylni ishga tushiradi. Fayl idempotent: qayta ishga tushirish xavfsiz.
 -- Yuqoridagi versiya o'zgarmasa, fayl qayta bajarilmaydi (ytauto.schema_meta). O'zgartirganda versiyani oshiring.
@@ -131,6 +131,39 @@ ALTER TABLE ytauto.topic_suggestions ADD COLUMN IF NOT EXISTS channel_id TEXT NO
 ALTER TABLE ytauto.jobs ADD COLUMN IF NOT EXISTS hook TEXT;
 ALTER TABLE ytauto.topic_suggestions ADD COLUMN IF NOT EXISTS hook TEXT NOT NULL DEFAULT '';
 
+-- ------------------------------------------------------------------ v9: umumiy rasm kutubxonasi
+-- Kutubxona zavodi (library/ - Python) litsenziyasi tekshirilgan tiniq rasmlarni (Wikimedia Quality/Featured, NASA, Poly Haven
+-- renderlari, cutout PNG'lar, 3dicons...) shu jadvalga yozadi. Bu HISOBGA BOG'LANMAGAN umumiy katalog: barcha qurilma va bot faqat
+-- o'qiydi (yozish - faqat egasi, ya'ni zavod ulanishi). Qidiruv - to'liq matn (search: sarlavha A, teglar B, tavsif C).
+-- file_url - yuklab olinadigan to'liq fayl (manba CDN'i yoki kutubxona ombori), preview_url - kontakt varaq uchun kichik nusxa.
+-- Faqat tijoratda ishlatish mumkin bo'lgan litsenziyalar kiradi; needs_credit - muallifni video tavsifida ko'rsatish shart (CC BY).
+CREATE TABLE IF NOT EXISTS ytauto.assets (
+  id BIGSERIAL PRIMARY KEY,
+  source TEXT NOT NULL, source_id TEXT NOT NULL,
+  kind TEXT NOT NULL,                              -- photo | cutout | render | icon | texture
+  title TEXT NOT NULL DEFAULT '', tags TEXT NOT NULL DEFAULT '', description TEXT NOT NULL DEFAULT '',
+  file_url TEXT NOT NULL, preview_url TEXT NOT NULL DEFAULT '',
+  width INT NOT NULL DEFAULT 0, height INT NOT NULL DEFAULT 0, has_alpha BOOLEAN NOT NULL DEFAULT FALSE,
+  bytes BIGINT NOT NULL DEFAULT 0, phash TEXT NOT NULL DEFAULT '', sharpness REAL NOT NULL DEFAULT 0, quality REAL NOT NULL DEFAULT 0.5,
+  license TEXT NOT NULL, license_url TEXT NOT NULL DEFAULT '', author TEXT NOT NULL DEFAULT '', page_url TEXT NOT NULL DEFAULT '',
+  needs_credit BOOLEAN NOT NULL DEFAULT FALSE,
+  parent_id BIGINT REFERENCES ytauto.assets(id) ON DELETE CASCADE,
+  disabled BOOLEAN NOT NULL DEFAULT FALSE,
+  added_at_utc TIMESTAMPTZ NOT NULL DEFAULT now(),
+  search TSVECTOR GENERATED ALWAYS AS (
+    setweight(to_tsvector('english'::regconfig, coalesce(title, '')), 'A') ||
+    setweight(to_tsvector('english'::regconfig, coalesce(tags, '')), 'B') ||
+    setweight(to_tsvector('english'::regconfig, coalesce(description, '')), 'C')) STORED,
+  UNIQUE (source, source_id, kind)
+);
+CREATE INDEX IF NOT EXISTS ix_assets_search ON ytauto.assets USING GIN (search);
+CREATE INDEX IF NOT EXISTS ix_assets_phash ON ytauto.assets(phash) WHERE phash <> '';
+-- Qaysi rasm qaysi kanal videosida ishlatilgan: bir kanalda bir rasm tez-tez takrorlanmasin (hisob bo'yicha, RLS - pastda).
+CREATE TABLE IF NOT EXISTS ytauto.asset_usage (
+  asset_id BIGINT NOT NULL REFERENCES ytauto.assets(id) ON DELETE CASCADE,
+  channel_id TEXT NOT NULL DEFAULT '', job_id BIGINT, used_at_utc TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ------------------------------------------------------------------ v2: hisoblar va izolyatsiya
 CREATE TABLE IF NOT EXISTS ytauto.accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -200,7 +233,7 @@ DO $$
 DECLARE
   t TEXT;
   tables TEXT[] := ARRAY['jobs','job_stages','job_events','owned_processes','worker_runs','shared_settings','machines','machine_commands','templates','template_uploads',
-                         'channel_profile','topic_suggestions'];
+                         'channel_profile','topic_suggestions','asset_usage'];
   legacy_id UUID;
   orphan BOOLEAN := FALSE;
   has BOOLEAN;
@@ -251,6 +284,7 @@ CREATE INDEX IF NOT EXISTS ix_jobs_account_queue ON ytauto.jobs(account_id, stat
 CREATE INDEX IF NOT EXISTS ix_worker_runs_account ON ytauto.worker_runs(account_id, started_at_utc DESC);
 CREATE INDEX IF NOT EXISTS ix_machine_commands_account ON ytauto.machine_commands(account_id, machine) WHERE NOT done;
 CREATE INDEX IF NOT EXISTS ix_template_uploads_account ON ytauto.template_uploads(account_id, machine, status);
+CREATE INDEX IF NOT EXISTS ix_asset_usage_account ON ytauto.asset_usage(account_id, channel_id, used_at_utc DESC);
 
 -- Hisob jadvallari: faqat egasi (bot) ko'radi; qurilmalarga faqat quyidagi funksiyalar orqali.
 ALTER TABLE ytauto.accounts ENABLE ROW LEVEL SECURITY;
@@ -259,6 +293,10 @@ ALTER TABLE ytauto.telegram_links ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ytauto.login_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ytauto.mcp_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ytauto.schema_meta ENABLE ROW LEVEL SECURITY;
+-- Umumiy kutubxona: hamma o'qiydi (o'chirilganlardan tashqari), yozish faqat egasida (qurilma/bot rollariga INSERT berilmaydi).
+ALTER TABLE ytauto.assets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS assets_read ON ytauto.assets;
+CREATE POLICY assets_read ON ytauto.assets FOR SELECT USING (NOT disabled);
 
 -- ------------------------------------------------------------------ hisob funksiyalari (faqat egasi chaqiradi)
 -- Yangi qurilma roli: tasodifiy nom, berilgan parol, ytauto_device guruhida, ulanishlar soni cheklangan.
@@ -357,8 +395,9 @@ GRANT EXECUTE ON FUNCTION ytauto.hosted_accounts() TO ytauto_device;
 GRANT USAGE ON SCHEMA ytauto TO ytauto_device, ytauto_bot;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ytauto.jobs, ytauto.job_stages, ytauto.job_events, ytauto.owned_processes, ytauto.worker_runs,
   ytauto.shared_settings, ytauto.machines, ytauto.machine_commands, ytauto.templates, ytauto.template_uploads,
-  ytauto.channel_profile, ytauto.topic_suggestions TO ytauto_device, ytauto_bot;
+  ytauto.channel_profile, ytauto.topic_suggestions, ytauto.asset_usage TO ytauto_device, ytauto_bot;
+GRANT SELECT ON ytauto.assets TO ytauto_device, ytauto_bot;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA ytauto TO ytauto_device, ytauto_bot;
 REVOKE ALL ON ytauto.accounts, ytauto.account_roles, ytauto.telegram_links, ytauto.login_attempts, ytauto.schema_meta, ytauto.mcp_tokens FROM ytauto_device, ytauto_bot;
 
-INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '8') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
+INSERT INTO ytauto.schema_meta(key, value) VALUES ('version', '9') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
