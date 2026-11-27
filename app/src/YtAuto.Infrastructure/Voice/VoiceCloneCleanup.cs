@@ -13,8 +13,16 @@ public static class VoiceCloneCleanup
     public static async Task RunAsync(AppServices svc, CancellationToken ct)
     {
         if (!svc.IsOnline) return;
-        var c = SqliteSettingsStore.ReadVoiceClone(svc.Store.GetSetting(SqliteSettingsStore.VoiceCloneKey));
-        if (!c.Deleted || c.ProfileName.Length == 0) return;
+        // Umumiy va har kanalning namunasi alohida o'chiriladi.
+        foreach (var (_, c) in SqliteSettingsStore.ReadVoiceClones(svc.Store.GetSetting).ToList())
+        {
+            ct.ThrowIfCancellationRequested();
+            if (c.Deleted && c.ProfileName.Length > 0) await RunOneAsync(svc, c, ct).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task RunOneAsync(AppServices svc, Core.Domain.VoiceCloneSettings c, CancellationToken ct)
+    {
         var files = VoiceCloneCache.Files(svc.Paths, c.ProfileName).ToList();
         if (files.Count == 0) return;
         if (files.Any(f => f.EndsWith(".applied", StringComparison.OrdinalIgnoreCase)))

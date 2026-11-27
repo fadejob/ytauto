@@ -54,7 +54,8 @@ public sealed partial class JobRunner
         var v = c.S.FindVoice(c.Job.VoiceProfileName);
         var h = Hashing.Sha256Text("voice-v2", s.SubtitleText, v?.Model, v?.Voice, v?.Speed.ToString(), c.S.VoiceStudio.ChunkChars.ToString(), c.S.VoiceStudio.PauseBetweenChunksSec.ToString());
         // Klon ovoz namunasi almashsa ovoz qayta yaratiladi (boshqa ovozlar uchun hash o'zgarmaydi).
-        return (c.S.VoiceClone.Matches(v) ? h + ":clone-" + c.S.VoiceClone.Version : h) + FitHashSuffix(c);
+        var clone = c.S.CloneFor(v);
+        return (clone is not null ? h + ":clone-" + clone.Version : h) + FitHashSuffix(c);
     }
 
     private string AlignInputHash(JobContext c, VideoScript s) =>
@@ -243,7 +244,8 @@ public sealed partial class JobRunner
         var chunks = TextChunker.Split(script.SubtitleText, Math.Max(150, c.S.VoiceStudio.ChunkChars));
         var manifestPath = Path.Combine(c.VoiceChunksDir, "chunks.json");
         var prevManifest = File.Exists(manifestPath) ? JsonSerializer.Deserialize<List<ChunkInfo>>(File.ReadAllText(manifestPath)) ?? new() : new();
-        var cloneTag = c.S.VoiceClone.Matches(voice) ? c.S.VoiceClone.Version : "";
+        var clone = c.S.CloneFor(voice);
+        var cloneTag = clone?.Version ?? "";
         var manifest = chunks.Select((t, i) => new ChunkInfo { Index = i, TextHash = Hashing.Sha256Text(t, voice.Model, voice.Voice, voice.Speed.ToString(), cloneTag), Chars = t.Length }).ToList();
         var paths = manifest.Select(m => Path.Combine(c.VoiceChunksDir, $"chunk_{m.Index:000}.wav")).ToList();
         var todo = new List<int>();
@@ -261,7 +263,7 @@ public sealed partial class JobRunner
             await using var session = await _x.Tts.OpenAsync(_x.Settings.Load().VoiceStudio, c.Log, c.Ct).ConfigureAwait(false);
             c.Snapshot.IntegrationVersions["voicestudio"] = session.Version;
             await session.EnsureModelAvailableAsync(voice.Model, c.Ct).ConfigureAwait(false);
-            if (c.S.VoiceClone.Matches(voice)) await PrepareVoiceCloneAsync(c, session).ConfigureAwait(false);
+            if (clone is not null) await PrepareVoiceCloneAsync(c, session, clone).ConfigureAwait(false);
             foreach (var i in todo)
             {
                 var text = chunks[i];

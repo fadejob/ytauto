@@ -114,6 +114,79 @@ public class VoiceCloneTests
         Assert.Empty(reports);
     }
 
+    // ------------------------------------------------------------------ har kanalning o'z namunasi
+    private const string ChA = "YtAuto u-abcd1234-0000000a", ChB = "YtAuto u-abcd1234-0000000b";
+    private const string ChannelsJson = """{"active":"UCa","channels":[{"id":"UCa","title":"A","refreshToken":"r1"},{"id":"UCb","title":"B","refreshToken":"r2"}]}""";
+    private static string CloneJson(string profile, string version) =>
+        $$"""{"version":"{{version}}","profileName":"{{profile}}","url":"https://x.supabase.co/{{version}}.wav","refText":"","status":"pending"}""";
+
+    [Fact]
+    public async Task ChannelClone_JobUsesSampleOfItsVoiceProfile()
+    {
+        var (h, tts, imp, reports) = Setup("shared1");
+        using var _ = h;
+        h.Settings.S.VoiceProfiles.Add(new VoiceProfile { Name = "Mening ovozim · A", Model = TtsVoices.Model, Voice = ChA });
+        h.Settings.S.VoiceProfiles.Add(new VoiceProfile { Name = "Mening ovozim · B", Model = TtsVoices.Model, Voice = ChB });
+        h.Settings.S.VoiceClones =
+        [
+            h.Settings.S.VoiceClone,
+            new VoiceCloneSettings { ProfileName = ChA, Url = "https://x.supabase.co/a.wav", Version = "va" },
+            new VoiceCloneSettings { ProfileName = ChB, Url = "https://x.supabase.co/b.wav", Version = "vb" },
+        ];
+        var j = h.AddJob();
+        j.VoiceProfileName = "Mening ovozim · B";
+        h.Store.Update(j);
+        var r = await h.Run();
+        Assert.Equal(RunOutcome.Completed, r.Outcome);
+        var e = Assert.Single(tts.Ensured);
+        Assert.Equal((ChB, "vb"), (e.Name, e.Version)); // B kanali namunasi, umumiy yoki A emas
+        Assert.All(tts.Voices, v => Assert.Equal(ChB, v));
+        Assert.Contains(reports, x => x.V == "vb" && x.S == "ready");
+        Assert.Equal(1, imp.Calls);
+    }
+
+    [Fact]
+    public void ReadVoiceClones_SharedAndEveryConnectedChannel()
+    {
+        var d = new Dictionary<string, string>
+        {
+            [SqliteSettingsStore.ChannelsKey] = ChannelsJson,
+            ["voice.clone"] = CloneJson(Profile, "s1"),
+            ["voice.clone:UCb"] = CloneJson(ChB, "vb"),
+            ["voice.clone:UCgone"] = CloneJson("YtAuto u-abcd1234-0000000c", "vc"), // uzilgan kanal - o'qilmaydi
+        };
+        var all = SqliteSettingsStore.ReadVoiceClones(k => d.GetValueOrDefault(k)).ToList();
+        Assert.Equal(["voice.clone", "voice.clone:UCb"], all.Select(x => x.Key));
+        Assert.Equal(ChB, all[1].Clone.ProfileName);
+    }
+
+    [Fact]
+    public void WriteStatus_GoesToTheKeyHoldingThatVersion()
+    {
+        using var h = new Harness();
+        h.Store.SetSetting(SqliteSettingsStore.ChannelsKey, ChannelsJson);
+        h.Store.SetSetting("voice.clone", CloneJson(Profile, "s1"));
+        h.Store.SetSetting("voice.clone:UCa", CloneJson(ChA, "va"));
+        SqliteSettingsStore.WriteVoiceCloneStatus(h.Store, "va", "ready", "ok");
+        Assert.Contains("\"ready\"", h.Store.GetSetting("voice.clone:UCa"));
+        Assert.Contains("\"pending\"", h.Store.GetSetting("voice.clone")); // umumiy namuna tegilmaydi
+    }
+
+    [Fact]
+    public void CacheFiles_SharedProfileDoesNotClaimChannelFiles()
+    {
+        using var h = new Harness();
+        var dir = VoiceCloneCache.Dir(h.Paths);
+        Directory.CreateDirectory(dir);
+        var shared = VoiceCloneCache.WavPath(h.Paths, new VoiceCloneSettings { ProfileName = Profile, Version = "s1" });
+        var channel = VoiceCloneCache.WavPath(h.Paths, new VoiceCloneSettings { ProfileName = ChA, Version = "va" });
+        foreach (var f in new[] { shared, shared + ".applied", channel, channel + ".applied" }) File.WriteAllText(f, "x");
+        var files = VoiceCloneCache.Files(h.Paths, Profile).ToList();
+        Assert.Equal(2, files.Count);
+        Assert.DoesNotContain(files, f => f.StartsWith(channel, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(2, VoiceCloneCache.Files(h.Paths, ChA).Count());
+    }
+
     [Fact]
     public async Task RegisterFailure_StopsJob_AndReportsError()
     {

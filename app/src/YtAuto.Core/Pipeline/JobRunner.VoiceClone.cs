@@ -15,12 +15,17 @@ public static class VoiceCloneCache
     public static string WavPath(IAppPaths paths, VoiceCloneSettings c) => Path.Combine(Dir(paths), $"{Safe(c.ProfileName)}-{Regex.Replace(c.Version, "[^A-Za-z0-9]", "")}.wav");
     public static string AppliedMarker(string wav) => wav + ".applied";
 
-    /// <summary>Shu profilning barcha keshlangan fayllari (keep'dan tashqari).</summary>
+    /// <summary>
+    /// Shu profilning barcha keshlangan fayllari (keep'dan tashqari). Faqat aynan shu profilniki: umumiy profil ("YtAuto u-abcd1234")
+    /// kanal profillarining ("YtAuto u-abcd1234-0f1e2d3c") fayllarini ushlamaydi.
+    /// </summary>
     public static IEnumerable<string> Files(IAppPaths paths, string profileName, string? keepWav = null)
     {
         var dir = Dir(paths);
         if (!Directory.Exists(dir)) return Array.Empty<string>();
+        var own = new Regex("^" + Regex.Escape(Safe(profileName)) + @"-[A-Za-z0-9]+\.wav", RegexOptions.IgnoreCase);
         return Directory.GetFiles(dir, Safe(profileName) + "-*")
+            .Where(f => own.IsMatch(Path.GetFileName(f)))
             .Where(f => keepWav is null || (!string.Equals(f, keepWav, StringComparison.OrdinalIgnoreCase) && !string.Equals(f, AppliedMarker(keepWav), StringComparison.OrdinalIgnoreCase)));
     }
 }
@@ -31,9 +36,8 @@ public sealed partial class JobRunner
     /// Vazifa egasining ovoz namunasini (bot Storage) yuklab WAV'ga o'tkazadi va VoiceStudio'da klon profilini tayyorlaydi.
     /// Xato bo'lsa ish to'xtaydi (foydalanuvchi o'z ovozini tanlagan - boshqa ovozda jimgina chiqarilmaydi), holat botga yoziladi.
     /// </summary>
-    private async Task PrepareVoiceCloneAsync(JobContext c, ITtsSession session)
+    private async Task PrepareVoiceCloneAsync(JobContext c, ITtsSession session, VoiceCloneSettings clone)
     {
-        var clone = c.S.VoiceClone;
         var wav = VoiceCloneCache.WavPath(_x.Paths, clone);
         try
         {

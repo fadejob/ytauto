@@ -737,8 +737,12 @@ public sealed class SqliteSettingsStore : ISettingsStore
             {
                 try { s.Schedule = System.Text.Json.JsonSerializer.Deserialize<ScheduleSettings>(sch, AppSettings.Json) ?? s.Schedule; } catch { }
             }
-            // «Mening ovozim» namunasi - hisob doirasida (mehmon vazifasiga mehmonning o'z ovozi).
-            s.VoiceClone = ReadVoiceClone(_shared.GetSetting(VoiceCloneKey));
+            // «Mening ovozim» namunalari - hisob doirasida (mehmon vazifasiga mehmonning o'z ovozi): umumiy + har kanalniki.
+            // VoiceClone - vazifa (yoki faol) kanalining o'z namunasi, bo'lmasa umumiy.
+            var clones = ReadVoiceClones(_shared.GetSetting).ToList();
+            s.VoiceClones = clones.Select(x => x.Clone).Where(x => x.Active).ToList();
+            var chClone = s.YouTube.ChannelId.Length > 0 ? clones.FirstOrDefault(x => x.Key == VoiceCloneKey + ":" + s.YouTube.ChannelId).Clone : null;
+            s.VoiceClone = chClone is { Active: true } ? chClone : clones.FirstOrDefault(x => x.Key == VoiceCloneKey).Clone ?? new();
             // Fon musiqasi kutubxonasi - hisob doirasida (mehmon vazifasiga mehmonning o'z musiqasi).
             s.Music = ReadMusic(_shared.GetSetting(MusicKey));
             // Faqat MOSS-TTS-Nano ishlatiladi: botdagi eski (KittenTTS va h.k.) profillar MOSS ayol/erkak bilan almashtiriladi
@@ -856,8 +860,29 @@ public sealed class SqliteSettingsStore : ISettingsStore
     /// <summary>Worker video chiqqanini belgilaydi: bot kanal kontekstini qayta o'rganadi.</summary>
     public const string ChannelStaleKey = "channel.context.stale";
 
-    /// <summary>Bot «Mening ovozim»: {version, profileName, url, status, …} yoki o'chirilgandan keyin {deleted:true, profileName}.</summary>
+    /// <summary>
+    /// Bot «Mening ovozim»: {version, profileName, url, status, …} yoki o'chirilgandan keyin {deleted:true, profileName}.
+    /// "voice.clone" - umumiy namuna, "voice.clone:&lt;kanal id&gt;" - shu kanalning o'z namunasi.
+    /// </summary>
     public const string VoiceCloneKey = "voice.clone";
+
+    /// <summary>Umumiy va har ulangan kanalning namuna kalitlari (kanal ro'yxati - bot "youtube.channels").</summary>
+    public static IEnumerable<string> VoiceCloneKeys(Func<string, string?> get)
+    {
+        yield return VoiceCloneKey;
+        foreach (var ch in ReadChannels(get(ChannelsKey))?.Channels ?? Array.Empty<YtChannel>())
+            if (ch.Id.Length > 0) yield return VoiceCloneKey + ":" + ch.Id;
+    }
+
+    /// <summary>Barcha namunalar (o'chirilganlari ham - tozalash uchun) kaliti bilan; kalit bo'sh bo'lsa o'tkazib yuboriladi.</summary>
+    public static IEnumerable<(string Key, VoiceCloneSettings Clone)> ReadVoiceClones(Func<string, string?> get)
+    {
+        foreach (var k in VoiceCloneKeys(get))
+        {
+            var json = get(k);
+            if (!string.IsNullOrWhiteSpace(json)) yield return (k, ReadVoiceClone(json));
+        }
+    }
 
     /// <summary>Bot fon musiqasi kutubxonasi: {enabled, volume, tracks:[{id,title,creator,license,licenseVersion,licenseUrl,landingUrl,durationSec,url,…}]}.</summary>
     public const string MusicKey = "music.library";
@@ -918,13 +943,18 @@ public sealed class SqliteSettingsStore : ISettingsStore
     /// </summary>
     public static void WriteVoiceCloneStatus(IAppStore store, string version, string status, string message)
     {
-        if (System.Text.Json.Nodes.JsonNode.Parse(store.GetSetting(VoiceCloneKey) ?? "null") is not System.Text.Json.Nodes.JsonObject o) return;
-        if (o["deleted"]?.GetValue<bool>() == true || o["version"]?.ToString() != version) return;
-        o["status"] = status;
-        o["message"] = message.Length > 400 ? message[..400] : message;
-        o["machine"] = Environment.MachineName;
-        if (status == "ready") o["readyAt"] = DateTimeOffset.UtcNow.ToString("o");
-        store.SetSetting(VoiceCloneKey, o.ToJsonString());
+        // Versiya tasodifiy va namunaga xos: qaysi kalitda (umumiy yoki kanal) shu versiya bo'lsa, o'shanga yoziladi.
+        foreach (var key in VoiceCloneKeys(store.GetSetting))
+        {
+            if (System.Text.Json.Nodes.JsonNode.Parse(store.GetSetting(key) ?? "null") is not System.Text.Json.Nodes.JsonObject o) continue;
+            if (o["deleted"]?.GetValue<bool>() == true || o["version"]?.ToString() != version) continue;
+            o["status"] = status;
+            o["message"] = message.Length > 400 ? message[..400] : message;
+            o["machine"] = Environment.MachineName;
+            if (status == "ready") o["readyAt"] = DateTimeOffset.UtcNow.ToString("o");
+            store.SetSetting(key, o.ToJsonString());
+            return;
+        }
     }
 
     internal static ChannelContextSettings ReadChannelContext(string? json)

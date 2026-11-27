@@ -24,10 +24,19 @@ public sealed class AppSettings
     public ChannelContextSettings ChannelContext { get; set; } = new();
     /// <summary>Video sifati: shablon uslubi tahlili, ochiq manbalardan real rasm/ikonlar va shablonga moslik tekshiruvi.</summary>
     public VisualSettings Visuals { get; set; } = new();
-    /// <summary>Hisobning o'z ovoz namunasi («Mening ovozim», bot: shared_settings['voice.clone']); job snapshot'iga tushadi.</summary>
+    /// <summary>
+    /// Hisobning ovoz namunasi («Mening ovozim»): vazifa kanalining o'z namunasi (bot: shared_settings['voice.clone:&lt;kanal&gt;']),
+    /// bo'lmasa umumiy namuna (shared_settings['voice.clone']); job snapshot'iga tushadi.
+    /// </summary>
     public VoiceCloneSettings VoiceClone { get; set; } = new();
+    /// <summary>Hisobning barcha faol namunalari (umumiy + har kanalniki): vazifa ovoz profili qaysi namunaniki bo'lsa, o'sha ishlatiladi.</summary>
+    public List<VoiceCloneSettings> VoiceClones { get; set; } = new();
     /// <summary>Fon musiqasi kutubxonasi (bot: shared_settings['music.library']); job snapshot'iga tushadi - qayta urinishda o'sha trek.</summary>
     public MusicSettings Music { get; set; } = new();
+
+    /// <summary>Ovoz profili «Mening ovozim» namunalaridan biriga tegishli bo'lsa - o'sha namuna (aks holda null).</summary>
+    public VoiceCloneSettings? CloneFor(VoiceProfile? v) =>
+        VoiceClones.FirstOrDefault(c => c.Matches(v)) ?? (VoiceClone.Matches(v) ? VoiceClone : null);
 
     public VoiceProfile? FindVoice(string name) =>
         VoiceProfiles.FirstOrDefault(v => string.Equals(v.Name, name, StringComparison.OrdinalIgnoreCase))

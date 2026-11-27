@@ -17,8 +17,16 @@ public static class VoiceClonePrefetch
     public static async Task RunAsync(AppServices svc, CancellationToken ct)
     {
         if (!svc.IsOnline) return;
-        var c = SqliteSettingsStore.ReadVoiceClone(svc.Store.GetSetting(SqliteSettingsStore.VoiceCloneKey));
-        if (!c.Active) return;
+        // Umumiy va har kanalning namunasi - har biri alohida VoiceStudio profili.
+        foreach (var (_, c) in SqliteSettingsStore.ReadVoiceClones(svc.Store.GetSetting).ToList())
+        {
+            ct.ThrowIfCancellationRequested();
+            if (c.Active) await RunOneAsync(svc, c, ct).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task RunOneAsync(AppServices svc, Core.Domain.VoiceCloneSettings c, CancellationToken ct)
+    {
         var wav = VoiceCloneCache.WavPath(svc.Paths, c);
         var marker = VoiceCloneCache.AppliedMarker(wav);
         if (File.Exists(marker) && File.ReadAllText(marker).Trim() == c.Version) return; // shu namuna allaqachon qo'shilgan
