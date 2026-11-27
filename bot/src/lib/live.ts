@@ -69,6 +69,8 @@ class LiveHub {
 
   private schedule() {
     if (this.timer !== null) return;
+    // Sahifa yashirin bo'lsa qayta urinilmaydi: ko'rinishga qaytganda visibilitychange darhol ulaydi (retryNow).
+    if (document.visibilityState !== "visible") return;
     const wait = this.backoff;
     this.backoff = Math.min(this.backoff * 2, 60_000);
     this.timer = window.setTimeout(() => { this.timer = null; void this.start(); }, wait);

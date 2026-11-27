@@ -57,8 +57,19 @@ export async function commitUpload(i: { groupId: string; path: string; name: str
   return { ok: true };
 }
 
+/** Tozalash (muddati o'tganlar + Storage'dan o'chirish) hisob bo'yicha minutiga ko'pi bilan bir marta - ro'yxat har 4 s so'raladi. */
+const lastCleanup = new Map<string, number>();
+
 export async function listUploads(): Promise<TemplateUpload[]> {
   if (isDemo()) return demoList();
+  const acc = currentAccountId();
+  if (Date.now() - (lastCleanup.get(acc) ?? 0) > 60_000) { lastCleanup.set(acc, Date.now()); await cleanupUploads(); }
+  const rows = await sql()`SELECT id::int AS id, name, kind, machine, status, progress, message, created_at_utc, size_bytes::float8 AS size
+                           FROM ytauto.template_uploads ORDER BY id DESC LIMIT 30`;
+  return mapUploads(rows);
+}
+
+async function cleanupUploads() {
   // Muddati o'tgan (imzolangan havola 24 soat) kutayotganlar xato deb belgilanadi.
   await sql()`UPDATE ytauto.template_uploads SET status = 'error', message = 'Muddati o''tdi (kompyuter 24 soat ichida olmadi)', updated_at_utc = now()
               WHERE status = 'pending' AND created_at_utc < now() - interval '23 hours'`;
@@ -68,13 +79,15 @@ export async function listUploads(): Promise<TemplateUpload[]> {
     GROUP BY group_id HAVING bool_and(status IN ('done', 'error')) AND bool_or(NOT cleaned)`;
   if (done.length) {
     const { url, headers } = cfg();
-    for (const g of done) {
-      const r = await fetch(`${url}/storage/v1/object/${BUCKET}`, { method: "DELETE", headers, body: JSON.stringify({ prefixes: [g.path] }) });
-      if (r.ok) await sql()`UPDATE ytauto.template_uploads SET cleaned = TRUE WHERE group_id = ${g.group_id}`;
-    }
+    // Guruhlar parallel (har biri Storage'ga alohida HTTP so'rovi).
+    await Promise.all(done.map(async (g) => {
+      const r = await fetch(`${url}/storage/v1/object/${BUCKET}`, { method: "DELETE", headers, body: JSON.stringify({ prefixes: [g.path] }) }).catch(() => null);
+      if (r?.ok) await sql()`UPDATE ytauto.template_uploads SET cleaned = TRUE WHERE group_id = ${g.group_id}`;
+    }));
   }
-  const rows = await sql()`SELECT id::int AS id, name, kind, machine, status, progress, message, created_at_utc, size_bytes::float8 AS size
-                           FROM ytauto.template_uploads ORDER BY id DESC LIMIT 30`;
+}
+
+function mapUploads(rows: Record<string, unknown>[]): TemplateUpload[] {
   return rows.map((r) => ({
     id: r.id as number, name: r.name as string, kind: r.kind as TemplateUpload["kind"], machine: r.machine as string,
     status: r.status as TemplateUpload["status"], progress: r.progress as number, message: (r.message as string | null) ?? null,

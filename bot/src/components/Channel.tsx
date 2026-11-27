@@ -48,7 +48,7 @@ export default function Channel({ toast, onTopicsChanged, openSettings }: { toas
   const waiting = st?.status === "running" || !!st?.suggestionsPending;
   useEffect(() => {
     if (!waiting) return;
-    const t = window.setInterval(() => void load(), 8000);
+    const t = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 8000);
     return () => window.clearInterval(t);
   }, [waiting, load]);
 
@@ -56,10 +56,11 @@ export default function Channel({ toast, onTopicsChanged, openSettings }: { toas
   const act = (key: string, body: Record<string, unknown>, ok?: () => void) =>
     busy.run(key, async () => {
       haptic.tap();
-      const r = await api<ActionResult>("/api/channel", body);
+      // Javobda kanalning yangi holati ham keladi - alohida GET kutilmaydi.
+      const r = await api<ActionResult & { channel?: ChannelState }>("/api/channel", body);
       toast(r.message, !r.ok);
       if (r.ok) { haptic.ok(); ok?.(); } else haptic.fail();
-      await load();
+      if (r.channel) { setSt(r.channel); cache.set("channel", r.channel); } else await load();
       return r.ok;
     });
 

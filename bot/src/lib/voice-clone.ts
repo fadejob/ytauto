@@ -57,8 +57,22 @@ export async function getVoiceClone(): Promise<VoiceClone & { listenUrl: string 
   const { path, url: _url, ...pub } = s;
   void _url;
   let listenUrl: string | null = null;
-  if (!isDemo()) { try { listenUrl = await signDownload(path, 3600); } catch { /* Storage vaqtincha ishlamasa ham holat ko'rinadi */ } }
+  if (!isDemo()) { try { listenUrl = await listenLink(path); } catch { /* Storage vaqtincha ishlamasa ham holat ko'rinadi */ } }
   return { ...pub, listenUrl };
+}
+
+/**
+ * Tinglash havolasi (1 soat) muddati tugashiga 10 daqiqa qolguncha qayta ishlatiladi: holat har 15 s so'ralganda Storage'ga
+ * HTTP so'rovi ketmaydi va havola o'zgarmagani uchun pleer qayta boshlanib ketmaydi.
+ */
+const links = new Map<string, { url: string; until: number }>();
+async function listenLink(path: string): Promise<string> {
+  const hit = links.get(path);
+  if (hit && hit.until > Date.now()) return hit.url;
+  const url = await signDownload(path, 3600);
+  if (links.size > 2000) links.clear();
+  links.set(path, { url, until: Date.now() + 50 * 60_000 });
+  return url;
 }
 
 const samplePathRe = () => new RegExp(`^acc/${currentAccountId()}/voice/[0-9a-f]{16}/sample\\.[a-z0-9]{2,5}$`);

@@ -58,12 +58,12 @@ async function loadCatalog(keys: string[]): Promise<void> {
  */
 export async function geminiGenerate(
   body: Record<string, unknown>,
-  opts: { model?: string; timeoutMs?: number; /** Tranzaksiyadan tashqarida (fon ishi): kalitlar oldindan o'qilgan. */ keys?: GeminiKeys } = {},
+  opts: { model?: string; timeoutMs?: number; /** Tranzaksiyadan tashqarida (fon ishi): kalitlar oldindan o'qilgan. */ keys?: GeminiKeys; /** AI yordamchi: GEMINI_CHAT_MODEL ham sinaladi (kalitlar oldindan o'qilgan bo'lsa ham). */ chat?: boolean } = {},
 ): Promise<{ data: GeminiResponse; model: string }> {
   const cfg = opts.keys ?? (await getGeminiKeys());
   const { keys } = cfg;
   if (!keys.length) throw new Error("Gemini API kaliti kiritilmagan (Sozlamalar → Gemini).");
-  const envModel = opts.keys ? "" : process.env.GEMINI_CHAT_MODEL?.trim() ?? "";
+  const envModel = opts.keys && !opts.chat ? "" : process.env.GEMINI_CHAT_MODEL?.trim() ?? "";
   const names = opts.model ? [opts.model] : envModel ? [envModel, ...cfg.models] : cfg.models;
   if (names.some((n) => /\s/.test(n)) && (!catalog || Date.now() - catalog.at > 6 * 3600_000)) await loadCatalog(keys);
 

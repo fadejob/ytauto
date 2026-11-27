@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import { Check, Cog, History as HistoryIcon, Laptop, Lock, Monitor, Play, RotateCw, Stethoscope, TriangleAlert, X, Zap } from "lucide-react";
 import { api, confirmBox, haptic } from "@/lib/client";
-import { useLiveRefresh } from "@/lib/live";
+import { setMachines, useMachineStore } from "@/lib/machines-store";
 import type { CheckItem, Machine } from "@/lib/types";
 import type { Toast } from "./App";
 import { Alert, Btn, Empty, Skel, Status, useBusy } from "./ui";
@@ -41,34 +40,11 @@ export const checkPending = (m: Machine) =>
   m.check.requested && (!m.check.finishedAt || (!!m.check.requestedAt && m.check.finishedAt < m.check.requestedAt));
 
 /**
- * Kompyuterlar ro'yxati: har 15 soniyada yangilanadi ("necha soniya oldin" yozuvlari ham shu paytda yangilanadi).
- * enabled=false (qo'shimcha token) bo'lsa so'rov yuborilmaydi: kompyuter asosiy hisob egasiniki.
+ * Kompyuterlar ro'yxati - butun ilova uchun bitta umumiy manba (lib/machines-store): bitta polling, faqat sahifa ko'rinib turganda.
+ * enabled=false (qo'shimcha token) bo'lsa so'rov yuborilmaydi: kompyuter asosiy hisob egasiniki. Xato shu bo'limda ko'rsatiladi.
  */
-export function useMachines(toast: Toast, enabled: boolean) {
-  const [list, setList] = useState<Machine[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [, tick] = useState(0);
-
-  const reload = useCallback(async () => {
-    try { setList(await api<Machine[]>("/api/machines")); setError(null); }
-    catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-      toast(msg, true);
-    }
-  }, [toast]);
-
-  // Real vaqt: agent worker band/bo'sh bo'lganini yuborsa darhol yangilanadi.
-  useLiveRefresh((e) => enabled && e.type === "machine", () => void reload(), 800);
-
-  useEffect(() => {
-    if (!enabled) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount'da bir marta yuklanadi
-    void reload();
-    const t = window.setInterval(() => { void reload(); tick((n) => n + 1); }, 15000);
-    return () => window.clearInterval(t);
-  }, [reload, enabled]);
-
+export function useMachines(_toast: Toast, enabled: boolean) {
+  const { list, error, reload } = useMachineStore(enabled);
   return { list, error, reload };
 }
 
@@ -100,8 +76,9 @@ export default function Machines({ list, error, reload, toast, part }: { list: M
   async function check(name: string) {
     haptic.tap();
     const r = await busy.run(`check:${name}`, async () => {
-      const r = await api<{ ok: boolean; message: string }>("/api/machines/check", { machine: name });
-      await reload();
+      // Javobda yangilangan ro'yxat ham keladi - alohida GET kutilmaydi.
+      const r = await api<{ ok: boolean; message: string; machines?: Machine[] }>("/api/machines/check", { machine: name });
+      if (r.machines) setMachines(r.machines); else await reload();
       if (!r.ok) throw new Error(r.message);
       return r;
     });
@@ -112,8 +89,8 @@ export default function Machines({ list, error, reload, toast, part }: { list: M
     if (!(await confirmBox(`${name}: ishni hozir boshlaymi? Worker jadvalni kutmasdan, navbatdagi barcha mavzulardan video tayyorlaydi (chiqish vaqti yaqinlari birinchi).`))) return;
     haptic.tap();
     const r = await busy.run(`run:${name}`, async () => {
-      const r = await api<{ ok: boolean; message: string }>("/api/machines/run", { machine: name });
-      await reload();
+      const r = await api<{ ok: boolean; message: string; machines?: Machine[] }>("/api/machines/run", { machine: name });
+      if (r.machines) setMachines(r.machines); else await reload();
       if (!r.ok) throw new Error(r.message);
       return r;
     });

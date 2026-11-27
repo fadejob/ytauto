@@ -45,7 +45,7 @@ export function useVoiceClone(toast: Toast) {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (st?.status !== "pending") return;
-    const t = window.setInterval(() => void load(), 15000);
+    const t = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 15000);
     return () => window.clearInterval(t);
   }, [st?.status, load]);
   return { st, setSt, load };

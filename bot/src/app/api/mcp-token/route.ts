@@ -22,9 +22,10 @@ async function channelMcps(accountId: string, guest: boolean, url: string): Prom
 
 export const GET = handler(async (req, viewer): Promise<Res> => {
   const url = `${originOf(req)}/api/mcp`;
-  const channels = await channelMcps(viewer.accountId, viewer.guest, url);
-  if (isDemo()) return { exists: false, createdAt: null, lastUsedAt: null, url, channels };
-  return { ...(await mcpTokenInfo(viewer.accountId)), url, channels };
+  if (isDemo()) return { exists: false, createdAt: null, lastUsedAt: null, url, channels: await channelMcps(viewer.accountId, viewer.guest, url) };
+  // Ikkalasi mustaqil - birga.
+  const [channels, info] = await Promise.all([channelMcps(viewer.accountId, viewer.guest, url), mcpTokenInfo(viewer.accountId)]);
+  return { ...info, url, channels };
 }, { ownerOnly: true });
 
 export const POST = handler(async (req, viewer): Promise<Res> => {

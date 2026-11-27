@@ -1,5 +1,5 @@
 import "server-only";
-import { currentAccountId, sql } from "./db";
+import { sql } from "./db";
 import { isDemo } from "./demo";
 import { BUCKET, removeObjects, signDownload, storageCfg } from "./storage";
 import type { MusicLibrary, MusicTrack } from "./types";
@@ -124,11 +124,15 @@ async function download(url: string): Promise<{ bytes: Uint8Array; type: string 
 
 const extOf = (type: string) => (type === "audio/mpeg" || type === "audio/mp3" ? ".mp3" : type === "audio/ogg" ? ".ogg" : type === "audio/wav" || type === "audio/x-wav" ? ".wav" : type === "audio/flac" ? ".flac" : ".mp3");
 
-/** «Ishlatish»: trek serverga (Storage) yuklanadi va kutubxonaga qo'shiladi. */
-export async function addTrack(idRaw: string): Promise<{ library: MusicLibrary; message: string }> {
+/**
+ * «Ishlatish»: trek serverga (Storage) yuklanadi va kutubxonaga qo'shiladi.
+ * Openverse so'rovi, faylni yuklab olish (40 MB gacha) va Storage'ga yuklash baza tranzaksiyasidan TASHQARIDA (1–10 s) - ulanish
+ * band turmaydi; bazaga faqat boshida (tekshiruv) va oxirida (yozish) qisqa murojaat (run).
+ */
+export async function addTrack(idRaw: string, run: <T>(fn: () => Promise<T>) => Promise<T>, accountId: string): Promise<{ library: MusicLibrary; message: string }> {
   const id = String(idRaw ?? "").trim().toLowerCase();
   if (!/^[0-9a-f-]{36}$/.test(id)) throw new Error("Trek identifikatori noto'g'ri.");
-  const before = await read();
+  const before = await run(() => read());
   if (before.tracks.some((t) => t.id === id)) return { library: before, message: "Bu trek allaqachon kutubxonada." };
   if (before.tracks.length >= MAX_TRACKS) throw new Error(`Kutubxonada ko'pi bilan ${MAX_TRACKS} ta trek bo'ladi — avval keraksizini o'chiring.`);
 
@@ -144,7 +148,7 @@ export async function addTrack(idRaw: string): Promise<{ library: MusicLibrary; 
     track = { ...base, storagePath: "", url: t.url, urlExpiresAt: new Date(Date.now() + URL_DAYS * 86400_000).toISOString() };
   } else {
     const file = await download(t.url);
-    const path = `acc/${currentAccountId()}/music/${id}${extOf(file.type)}`;
+    const path = `acc/${accountId}/music/${id}${extOf(file.type)}`;
     const { url, headers } = storageCfg();
     const up = await fetch(`${url}/storage/v1/object/${BUCKET}/${path}`, {
       method: "POST", headers: { apikey: headers.apikey, "Content-Type": file.type, "x-upsert": "true" }, body: Buffer.from(file.bytes),
@@ -153,12 +157,15 @@ export async function addTrack(idRaw: string): Promise<{ library: MusicLibrary; 
     track = { ...base, storagePath: path, url: await signDownload(path, URL_DAYS * 86400), urlExpiresAt: new Date(Date.now() + URL_DAYS * 86400_000).toISOString() };
   }
 
-  const lib = await read(true); // yuklash vaqtida boshqa qurilmadan o'zgargan bo'lishi mumkin
-  if (!lib.tracks.some((x) => x.id === id)) {
-    if (lib.tracks.length >= MAX_TRACKS) { if (track.storagePath) await removeObjects([track.storagePath]); throw new Error(`Kutubxona to'lgan (${MAX_TRACKS} ta).`); }
-    lib.tracks.push(track);
-    await write(lib);
-  }
+  const lib = await run(async () => {
+    const l = await read(true); // yuklash vaqtida boshqa qurilmadan o'zgargan bo'lishi mumkin
+    if (!l.tracks.some((x) => x.id === id)) {
+      if (l.tracks.length >= MAX_TRACKS) { if (track.storagePath) await removeObjects([track.storagePath]); throw new Error(`Kutubxona to'lgan (${MAX_TRACKS} ta).`); }
+      l.tracks.push(track);
+      await write(l);
+    }
+    return l;
+  });
   return { library: lib, message: `Qo'shildi: «${track.title}». Kompyuter keyingi videolarda fon musiqasi sifatida ishlatadi.` };
 }
 

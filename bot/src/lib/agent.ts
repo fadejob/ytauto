@@ -121,13 +121,16 @@ export async function mediaLinksWhy(accountId: string, jobId: number): Promise<{
   if (!agents.length) return { links: null, reason: listed.length ? "agent manzili yaroqsiz" : "kompyuter agenti online emas (kompyuter o'chiq yoki YtAuto eski versiya)" };
   const errors: string[] = [];
   const has = await Promise.all(agents.map(async (a) => {
-    const r = await call(a, accountId, `/v1/has?job=${jobId}`, { method: "GET", timeoutMs: 6000 }, errors);
+    // Qisqa kutish: pleer shu javobni kutadi (oldin 6 s). Yagona kompyuter javob bermasa ham havola beriladi (pastda).
+    const r = await call(a, accountId, `/v1/has?job=${jobId}`, { method: "GET", timeoutMs: 2500 }, errors);
     if (r && !r.ok) errors.push(`${a.machine}: HTTP ${r.status}`);
     const j = r?.ok ? ((await r.json().catch(() => null)) as { video?: boolean; cover?: boolean; subtitles?: boolean } | null) : null;
     if (j && !j.video) errors.push(`${a.machine}: video fayli kompyuterda topilmadi`);
     return j?.video ? { a, cover: !!j.cover, subtitles: !!j.subtitles } : null;
   }));
-  const hit = has.find((x) => !!x);
+  // Yagona kompyuter va u "fayl yo'q" demagan bo'lsa (tunnel sekin/uzilgan) - havola baribir beriladi: pleer o'zi ochib ko'radi.
+  const notFound = errors.some((e) => e.includes("topilmadi"));
+  const hit = has.find((x) => !!x) ?? (agents.length === 1 && !notFound ? { a: agents[0], cover: false, subtitles: false } : null);
   if (!hit) return { links: null, reason: errors.join("; ") || "agent javob bermadi" };
   const { a } = hit;
   const acc = accountId.toLowerCase();

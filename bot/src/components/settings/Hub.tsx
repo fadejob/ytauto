@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Clapperboard, Lock, Mic, Monitor, Music, Sparkles, Tv, UserRound } from "lucide-react";
-import { api } from "@/lib/client";
+import { machinesSnapshot, reloadMachines } from "@/lib/machines-store";
 import { useBotConfig, useSchedule } from "@/lib/settings-data";
 import type { BotConfig, Machine, State } from "@/lib/types";
 import { SettingsRow, Skel, Status, type IconT } from "../ui";
@@ -78,7 +78,7 @@ export default function Hub({ state, open }: Pick<SettingsPageProps, "state" | "
   useEffect(() => {
     if (!owner) return;
     let alive = true;
-    api<Machine[]>("/api/machines").then((m) => { if (alive) setMachines(m); }).catch(() => { if (alive) setMachines([]); });
+    reloadMachines().then(() => { if (alive) setMachines(machinesSnapshot() ?? []); });
     return () => { alive = false; };
   }, [owner]);
 

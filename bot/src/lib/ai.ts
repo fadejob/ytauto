@@ -1,5 +1,6 @@
 import "server-only";
 import { isGuest } from "./db";
+import { getGeminiKeys, type GeminiKeys } from "./config";
 import { getCatalog, getPrompts, listTopics, previewPrompt } from "./topics";
 import { geminiGenerate, type GeminiContent } from "./gemini";
 import { readBlocks } from "./channel/store";
@@ -242,12 +243,26 @@ const DECLARATIONS = TOOLS.map((t) => t.function);
 /** Qo'shimcha (mehmon) tokenda «Hozir chiqarish» taklif qilinmaydi. */
 const GUEST_DECLARATIONS = DECLARATIONS.filter((d) => d.name !== "publish_now");
 
-export async function chat(history: ChatMessage[]): Promise<{ reply: string; proposals: Proposal[] }> {
+type Run = <T>(fn: () => Promise<T>) => Promise<T>;
+type ChatPrep = { keys: GeminiKeys; lib: MusicLib; system: string; guest: boolean };
+
+/** Bazadan kerakli hammasi - bitta qisqa tranzaksiyada (kalitlar, musiqa, tizim prompti). */
+export async function chatPrep(): Promise<ChatPrep> {
+  const [keys, lib] = await Promise.all([getGeminiKeys(), musicCatalog()]);
+  return { keys, lib, system: await systemPrompt(lib), guest: isGuest() };
+}
+
+/**
+ * AI yordamchi. Gemini chaqiruvlari (har biri 1–8 s, 4 aylanishgacha) baza tranzaksiyasidan TASHQARIDA - ulanish band turmaydi
+ * (aks holda hovuzdagi 3 ulanishdan biri 5–30 s ushlanib, boshqa so'rovlar navbatda qolardi). run - bazaga qisqa murojaat
+ * (taklif tavsifi, masalan prompt farqi uchun).
+ */
+export async function chat(history: ChatMessage[], prep: ChatPrep, run: Run): Promise<{ reply: string; proposals: Proposal[] }> {
   const contents: GeminiContent[] = history.slice(-12).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: clip(m.content, 6000) }] }));
-  const lib = await musicCatalog();
+  const { lib } = prep;
   const base = {
-    systemInstruction: { parts: [{ text: await systemPrompt(lib) }] },
-    tools: [{ functionDeclarations: isGuest() ? GUEST_DECLARATIONS : DECLARATIONS }],
+    systemInstruction: { parts: [{ text: prep.system }] },
+    tools: [{ functionDeclarations: prep.guest ? GUEST_DECLARATIONS : DECLARATIONS }],
     toolConfig: { functionCallingConfig: { mode: "AUTO" } },
     generationConfig: { temperature: 0.3, maxOutputTokens: 8192 },
   };
@@ -257,7 +272,7 @@ export async function chat(history: ChatMessage[]): Promise<{ reply: string; pro
   // so'rovdagi qolgan amallarni davom ettiradi. Hech narsa bajarilmaydi — faqat takliflar yig'iladi.
   // Kalit limiti (429) tugasa geminiGenerate keyingi kalit bilan davom etadi.
   for (let round = 0; round < 4; round++) {
-    const { data } = await geminiGenerate({ ...base, contents });
+    const { data } = await geminiGenerate({ ...base, contents }, { keys: prep.keys, chat: true });
     if (data.promptFeedback?.blockReason) throw new Error(`Gemini so'rovni blokladi: ${data.promptFeedback.blockReason}`);
     const content = data.candidates?.[0]?.content;
     const parts = content?.parts ?? [];
@@ -273,7 +288,7 @@ export async function chat(history: ChatMessage[]): Promise<{ reply: string; pro
       try {
         const action = toAction(call.name ?? "", (call.args ?? {}) as ToolArgs, lib);
         if (action) {
-          const d = await describe(action, lib);
+          const d = await run(() => describe(action, lib));
           proposals.push({ id: call.id || crypto.randomUUID(), action, ...d });
           if (d.error) note = `Bu taklifda xato: ${d.error}`;
         } else note = "Noma'lum tool.";

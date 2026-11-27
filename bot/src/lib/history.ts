@@ -26,14 +26,17 @@ export async function getRuns(limit = 40): Promise<WorkerRun[]> {
 /** Bitta video: bosqichlar va hodisalar (loglar) - desktop ilovadagi "Tafsilotlar" sahifasidek. */
 export async function getJobLogs(id: number, limit = 400): Promise<JobLogs | null> {
   if (isDemo()) return demoLogs(id);
-  const [job] = await sql()`SELECT id::int AS id, topic, status FROM ytauto.jobs WHERE id = ${id}`;
+  // Uchala o'qish birga (pipelining) - ketma-ket emas.
+  const [[job], events, stages] = await Promise.all([
+    sql()`SELECT id::int AS id, topic, status FROM ytauto.jobs WHERE id = ${id}`,
+    sql()`
+      SELECT id::int AS id, at_utc, level, stage, message FROM (
+        SELECT * FROM ytauto.job_events WHERE job_id = ${id} ORDER BY id DESC LIMIT ${limit}
+      ) x ORDER BY id`,
+    sql()`
+      SELECT stage, state, attempts, duration_ms::float8 AS duration_ms, error_message FROM ytauto.job_stages WHERE job_id = ${id} ORDER BY stage`,
+  ]);
   if (!job) return null;
-  const events = await sql()`
-    SELECT id::int AS id, at_utc, level, stage, message FROM (
-      SELECT * FROM ytauto.job_events WHERE job_id = ${id} ORDER BY id DESC LIMIT ${limit}
-    ) x ORDER BY id`;
-  const stages = await sql()`
-    SELECT stage, state, attempts, duration_ms::float8 AS duration_ms, error_message FROM ytauto.job_stages WHERE job_id = ${id} ORDER BY stage`;
   return {
     id: job.id as number, topic: job.topic as string, status: job.status as number,
     events: events.map((e) => ({ id: e.id as number, at: (e.at_utc as Date).toISOString(), level: e.level as string, stage: (e.stage as string | null) ?? null, message: e.message as string })),

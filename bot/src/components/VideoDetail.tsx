@@ -118,16 +118,33 @@ export default function VideoDetail({ state, id, back, run, toast, refresh }: { 
   const working = !!t && (t.claimed || (t.status >= 1 && t.status <= 9));
   const loadRef = useRef(loadLogs);
   useEffect(() => { loadRef.current = loadLogs; }, [loadLogs]);
-  useEffect(() => {
-    if (!working) return;
-    const h = window.setInterval(() => document.visibilityState === "visible" && void loadRef.current(), 10000);
-    return () => window.clearInterval(h);
-  }, [working]);
-
-  // Real vaqt: kompyuter agenti shu video bosqichi/hodisasi o'zgarganini yuborsa, darhol qayta yuklanadi (10 s kutilmaydi).
+  // Real vaqt: kompyuter agenti shu video bosqichi/hodisasi o'zgarganini yuboradi.
+  //  - Oddiy log qatori - ro'yxatga joyida qo'shiladi (so'rovsiz).
+  //  - Bosqich o'zgarsa - loglar va bosqichlar qayta olinadi (/api/logs).
+  //  - Faqat holat/band/video/YouTube o'zgarsa - butun ilova holati (/api/state, eng og'ir so'rov).
   const live = useLiveConnected();
   const liveJob = useLiveJob(id);
-  useLiveRefresh((e) => e.type === "job" && e.job.id === id, () => { void loadLogs(); void refresh(); }, 500);
+  useEffect(() => {
+    // Jonli ulanish bo'lsa hodisalar o'zi keladi - 10 s polling faqat ulanish yo'q paytda.
+    if (!working || live) return;
+    const h = window.setInterval(() => document.visibilityState === "visible" && void loadRef.current(), 10000);
+    return () => window.clearInterval(h);
+  }, [working, live]);
+  const seen = useRef({ stage: "", state: "" });
+  useLiveRefresh((e) => {
+    if (e.type !== "job" || e.job.id !== id) return false;
+    const j = e.job;
+    if (j.message && j.at) {
+      const row = { id: -Date.parse(j.at), at: j.at, level: j.level ?? "Info", stage: j.stage, message: j.message };
+      setLogs((l) => (l && !l.events.some((x) => x.at === row.at && x.message === row.message) ? { ...l, events: [...l.events, row] } : l));
+    }
+    const stage = `${j.stage ?? ""}|${j.stageRunning}|${j.doneStage ?? ""}`;
+    const state = `${j.status}|${j.claimed}|${j.hasVideo}|${j.youtubeId ?? ""}`;
+    const stageChanged = stage !== seen.current.stage, stateChanged = state !== seen.current.state;
+    seen.current = { stage, state };
+    if (stateChanged) void refresh();
+    return stageChanged;
+  }, () => { void loadLogs(); }, 500);
 
   const refreshAll = () => { haptic.tap(); void busy.run("refresh", () => Promise.all([refresh(), loadLogs()])); };
 

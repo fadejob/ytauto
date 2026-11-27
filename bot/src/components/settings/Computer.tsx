@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Globe, Lock, Monitor, MonitorOff, RotateCw } from "lucide-react";
-import { api, confirmBox, haptic } from "@/lib/client";
-import { useLiveRefresh } from "@/lib/live";
+import { confirmBox, haptic } from "@/lib/client";
+import { useMachineStore } from "@/lib/machines-store";
 import { differs, useSchedule, type Schedule } from "@/lib/settings-data";
 import type { Machine } from "@/lib/types";
 import { Alert, Btn, Card, Empty, Field, PageHead, SaveBtn, Skel, SkelCard, Status, ToggleRow, useBusy } from "../ui";
@@ -307,24 +307,9 @@ function lastCheck(m: Machine, now: number): string | null {
   return `Oxirgi tekshiruv ${ago(m.check.finishedAt, now)} · ${res}${m.check.stale ? " · eskirgan" : ""}`;
 }
 
-/** /api/machines: har 15 soniyada (sahifa ko'rinib turganda) yangilanadi. Xato shu bo'limda ko'rsatiladi (toast emas). */
+/** Kompyuterlar - umumiy manbadan (lib/machines-store: bitta polling butun ilova uchun). Xato shu bo'limda ko'rsatiladi. */
 function useMachineList() {
-  const [list, setList] = useState<Machine[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const reload = useCallback(async () => {
-    try { setList(await api<Machine[]>("/api/machines")); setError(null); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
-    setNow(Date.now());
-  }, []);
-  useLiveRefresh((e) => e.type === "machine", () => void reload(), 800);
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount'da bir marta yuklanadi (holat await'dan keyin o'rnatiladi)
-    void reload();
-    const t = window.setInterval(() => { if (document.visibilityState === "visible") void reload(); }, 15_000);
-    return () => window.clearInterval(t);
-  }, [reload]);
-  return { list, error, reload, now };
+  return useMachineStore(true);
 }
 
 function MachinesSection() {

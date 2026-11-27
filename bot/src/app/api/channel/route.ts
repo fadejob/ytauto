@@ -5,4 +5,8 @@ import { channelAction, getChannelState, type ChannelActionInput } from "@/lib/c
 export const maxDuration = 300;
 
 export const GET = handler(async () => getChannelState());
-export const POST = handler(async (req) => channelAction((await req.json()) as ChannelActionInput));
+/** Javobda kanalning yangi holati ham (shu tranzaksiyada) - ilova alohida GET /api/channel kutmaydi. */
+export const POST = handler(async (req) => {
+  const r = await channelAction((await req.json()) as ChannelActionInput);
+  return { ...r, channel: await getChannelState() };
+});

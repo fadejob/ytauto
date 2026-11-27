@@ -10,6 +10,9 @@ import { youtubeAccessToken, youtubeCredentialsFor } from "@/lib/youtube";
  * Mehmon vazifasi bo'lsa (guest) - faqat shu hisob mezbon bo'lgan mehmon, va AYNAN o'sha mehmon kanalining tokeni.
  * channelId - vazifa bog'langan kanal (bo'sh - faol kanal); faqat shu hisob ro'yxatidagi kanal.
  */
+/** Access token ~1 soat amal qiladi: shu server nusxasida 50 daqiqa qayta ishlatiladi (har worker so'rovida Google'ga bormaydi). */
+const tokens = new Map<string, { token: string; until: number; title: string }>();
+
 export const POST = publicHandler(async (req) => {
   const token = (req.headers.get("authorization") ?? "").match(/^Bearer\s+(\S+)$/i)?.[1] ?? "";
   const acc = token ? await accountForToken(token, clientIp(req)) : null;
@@ -26,8 +29,13 @@ export const POST = publicHandler(async (req) => {
   if (!creds) throw new AuthError(channelId
     ? "Bu video bog'langan YouTube kanali botda uzilgan: shu kanalni botda qayta ulang."
     : "YouTube kanali ulanmagan: botda Sozlamalar → YouTube'ni ulang.", 409);
+  const key = `${target}|${creds.channelId}|${creds.refreshToken.slice(-16)}`; // token yangilansa (qayta ulansa) kalit ham o'zgaradi
+  const hit = tokens.get(key);
+  if (hit && hit.until > Date.now() + 5 * 60_000) return { accessToken: hit.token, expiresIn: Math.floor((hit.until - Date.now()) / 1000), channelTitle: hit.title };
   try {
     const accessToken = await youtubeAccessToken(creds);
+    if (tokens.size > 2000) tokens.clear();
+    tokens.set(key, { token: accessToken, until: Date.now() + 50 * 60_000, title: creds.channelTitle });
     return { accessToken, expiresIn: 3000, channelTitle: creds.channelTitle };
   } catch (e) {
     // invalid_grant va h.k.: qayta ulash kerak - qayta urinish foyda bermaydi.

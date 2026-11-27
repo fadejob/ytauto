@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, FileArchive, FileVideo, Film, Monitor, Package, Upload as UploadIcon } from "lucide-react";
 import { api, haptic, putFile } from "@/lib/client";
+import { machinesSnapshot, reloadMachines } from "@/lib/machines-store";
 import type { Machine, PreparedUpload, TemplateUpload as Upload } from "@/lib/types";
 import type { Toast } from "./App";
 import { Btn, Field, Sheet, Skel } from "./ui";
@@ -29,7 +30,7 @@ export function useTemplateUploads(toast: Toast, enabled = true) {
 
   useEffect(() => {
     if (!enabled) return;
-    api<Machine[]>("/api/machines").then(setMachines).catch(() => setMachines([]));
+    void reloadMachines().then(() => setMachines(machinesSnapshot() ?? []));
     void load();
   }, [enabled, load]);
 
@@ -37,7 +38,7 @@ export function useTemplateUploads(toast: Toast, enabled = true) {
   const active = !!uploads?.some((u) => u.status === "pending" || u.status === "downloading" || u.status === "importing");
   useEffect(() => {
     if (!enabled || !active) return;
-    const t = window.setInterval(() => void load(), 4000);
+    const t = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 4000);
     return () => window.clearInterval(t);
   }, [enabled, active, load]);
 
