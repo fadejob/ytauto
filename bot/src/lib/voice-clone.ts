@@ -88,14 +88,17 @@ export async function prepareSampleUpload(i: { filename: string; size: number })
 }
 
 /**
- * Yuklangan namunani saqlaydi: rozilik majburiy, davomiylik 10–45 s, o'qilgan matn botdagi ro'yxatdan. Eski namuna Storage'dan o'chiriladi.
+ * Yuklangan namunani saqlaydi: rozilik majburiy, davomiylik 10–45 s, o'qilgan matn botdagi ro'yxatdan (tayyor audio faylda - bo'sh). Eski namuna Storage'dan o'chiriladi.
  * «Mening ovozim» profili bot ro'yxatiga qo'shiladi (xohlasa standart ovoz bo'ladi).
  */
 export async function saveSample(i: { path: string; durationSec: number; passage: number; consent: boolean; makeDefault: boolean; by: string }): Promise<VoiceClone> {
   if (!i.consent) throw new Error("Rozilikni belgilang: namuna sizning ovozingiz yoki egasi ruxsat bergan.");
   // O'qilgan matn - botdagi ro'yxatdan (ixtiyoriy matn qabul qilinmaydi); VoiceStudio'ga ref_text bo'lib beriladi.
-  const refText = VOICE_PASSAGES[Number(i.passage)];
-  if (!refText) throw new Error("O'qilgan matn topilmadi — sahifani yangilab qayta yozing.");
+  // Tayyor audio fayl yuklansa (passage < 0 yoki yo'q) matn noma'lum: ref_text bo'sh, model ovozni faqat audiodan ko'chiradi.
+  const p = Number(i.passage);
+  const uploaded = !Number.isInteger(p) || p < 0;
+  const refText = uploaded ? "" : VOICE_PASSAGES[p];
+  if (refText === undefined) throw new Error("O'qilgan matn topilmadi — sahifani yangilab qayta yozing.");
   const dur = Number(i.durationSec);
   if (!Number.isFinite(dur) || dur < MIN_SEC || dur > MAX_SEC) throw new Error(`Namuna ${MIN_SEC}–${MAX_SEC} soniya bo'lsin (eng yaxshisi 10–30 s toza nutq).`);
   const accountId = isDemo() ? "00000000-0000-0000-0000-000000000000" : currentAccountId();

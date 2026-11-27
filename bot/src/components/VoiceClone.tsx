@@ -3,6 +3,7 @@
 /**
  * «Mening ovozim» (dizayn: Ovoz · yozish vecihh, Ovoz · yuborish wGmITJ).
  * Foydalanuvchi ekrandagi oson inglizcha matnni (15–20 s) ovoz chiqarib o'qiydi, bot o'zi yozib oladi va yuboradi.
+ * Yoki tayyor audio faylni (10–45 s toza nutq) yuklaydi - unda o'qilgan matn noma'lum, model ovozni faqat audiodan ko'chiradi.
  * Model kompyuterda bitta (MOSS-TTS-Nano); har foydalanuvchining videolari o'z namunasi bilan o'qiladi. O'qilgan matn ham saqlanadi —
  * model namunada nima aytilganini bilsa ovozni aniqroq ko'chiradi.
  */
@@ -18,6 +19,30 @@ import s from "./VoiceClone.module.css";
 export type CloneState = (VC & { listenUrl: string | null }) | null;
 /** Matn ~15–20 s o'qiladi: juda qisqa yozuv - o'qib tugatilmagan, juda uzun - ortiqcha sukut/shovqin. */
 const MIN_SEC = 10, MAX_SEC = 40;
+/** Yuklanadigan tayyor audio: server chegaralari (lib/voice-clone.ts SAMPLE_EXT, 15 MB, 10–45 s) bilan bir xil. */
+const FILE_MAX_SEC = 45, FILE_MAX_MB = 15;
+const FILE_EXT = [".wav", ".mp3", ".m4a", ".ogg", ".opus", ".webm", ".flac", ".aac"];
+
+/** Audio faylning davomiyligi (brauzer o'qiy olmasa - xato). */
+function audioDuration(file: Blob): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const a = new Audio();
+    let settled = false;
+    const done = (fn: () => void) => { if (settled) return; settled = true; URL.revokeObjectURL(url); a.removeAttribute("src"); fn(); };
+    const ok = () => Number.isFinite(a.duration) && a.duration > 0;
+    a.preload = "metadata";
+    a.onloadedmetadata = () => {
+      if (ok()) { done(() => resolve(a.duration)); return; }
+      // Ba'zi fayllarda (webm) davomiylik oxirigacha o'tilgandagina ma'lum bo'ladi.
+      a.ondurationchange = () => { if (ok()) done(() => resolve(a.duration)); };
+      try { a.currentTime = 1e7; } catch { done(() => reject(new Error("davomiylik aniqlanmadi"))); }
+    };
+    a.onerror = () => done(() => reject(new Error("bu formatni brauzer o'qiy olmadi")));
+    window.setTimeout(() => done(() => reject(new Error("davomiylik aniqlanmadi"))), 15000);
+    a.src = url;
+  });
+}
 
 /** Namuna holati: to'liq matn (namuna kartasida) va qisqa so'z (plitkada). */
 export const CLONE_STATUS: Record<VC["status"], { text: string; short: string; tone: "accent" | "ok" | "bad" }> = {
@@ -120,7 +145,9 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
   const { st, setSt } = clone;
   const busy = useBusy((m) => { haptic.fail(); toast(m, true); });
   const [passage, setPassage] = useState(0);
+  /** Yuborishga tayyor namuna: passage < 0 - yozilmagan, tayyor fayl yuklangan. */
   const [take, setTake] = useState<{ blob: Blob; name: string; sec: number; passage: number } | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [consent, setConsent] = useState(false);
   const [makeDefault, setMakeDefault] = useState(true);
   const [progress, setProgress] = useState<number | null>(null);
@@ -218,6 +245,24 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
     }
   }
 
+  /** Tayyor audio faylni tanlash: format, hajm va davomiylik shu yerda tekshiriladi (server ham tekshiradi). */
+  async function pickFile(f: File | undefined) {
+    if (!f) return;
+    const ext = (f.name.match(/\.[A-Za-z0-9]+$/)?.[0] ?? "").toLowerCase();
+    if (!FILE_EXT.includes(ext)) { haptic.fail(); toast(`Audio formati: ${FILE_EXT.join(", ")}.`, true); return; }
+    if (f.size > FILE_MAX_MB * 1048576) { haptic.fail(); toast(`Fayl ${FILE_MAX_MB} MB dan oshmasin — 10–45 soniyalik parcha yetadi.`, true); return; }
+    let sec: number;
+    try { sec = await audioDuration(f); } catch (e) { haptic.fail(); toast(`Audio o'qilmadi: ${errText(e)}. WAV yoki MP3 yuklang.`, true); return; }
+    if (!mounted.current) return;
+    if (sec < MIN_SEC || sec > FILE_MAX_SEC) {
+      haptic.fail();
+      toast(`Audio ${Math.round(sec)} s. ${MIN_SEC}–${FILE_MAX_SEC} soniyalik toza nutq kerak — ${sec < MIN_SEC ? "uzunroq yozuv" : "faylni qisqartirib"} yuklang.`, true);
+      return;
+    }
+    setTake({ blob: f, name: `ovoz${ext}`, sec, passage: -1 });
+    haptic.ok();
+  }
+
   async function send() {
     if (!take) return;
     if (!consent) { toast("Rozilikni belgilang.", true); return; }
@@ -225,7 +270,7 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
     const ok = await busy.run("save", async () => {
       try {
         const prep = await api<{ path: string; uploadUrl: string }>("/api/voice-clone", { action: "prepare", filename: t.name, size: t.blob.size });
-        if (prep.uploadUrl) { setProgress(0); await putFile(prep.uploadUrl, new File([t.blob], t.name, { type: t.blob.type }), setProgress); }
+        if (prep.uploadUrl) { setProgress(0); await putFile(prep.uploadUrl, new File([t.blob], t.name, { type: t.blob.type || "application/octet-stream" }), setProgress); }
         return await api<CloneState>("/api/voice-clone", { action: "save", path: prep.path, durationSec: t.sec, passage: t.passage, consent, makeDefault });
       } finally { setProgress(null); }
     });
@@ -249,13 +294,17 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
   const recording = !!rec;
   const nextPassage = () => { haptic.tap(); setTake(null); setPassage((p) => (p + 1) % VOICE_PASSAGES.length); };
   const status = st ? CLONE_STATUS[st.status] : null;
+  const uploaded = !!take && take.passage < 0;
   const sub = recording ? "Matnni ovoz chiqarib o'qing — bot o'zi yozib oladi"
-    : take ? "Yozuvni tinglab ko'ring va yuboring"
-    : "Videolaringiz sizning ovozingizda o'qilishi uchun matnni ovoz chiqarib o'qing — bot o'zi yozib oladi (15–20 soniya)";
+    : take ? (uploaded ? "Audioni tinglab ko'ring va yuboring" : "Yozuvni tinglab ko'ring va yuboring")
+    : "Videolaringiz sizning ovozingizda o'qilishi uchun matnni ovoz chiqarib o'qing (15–20 soniya) yoki tayyor audio faylni yuklang";
+  const openFile = () => { haptic.tap(); fileInput.current?.click(); };
 
   return (
     <div className="page narrow">
       <PageHead back={{ label: "Ovoz", onClick: back }} title="Mening ovozim" sub={sub} />
+      <input ref={fileInput} type="file" hidden accept={`audio/*,${FILE_EXT.join(",")}`}
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void pickFile(f); }} />
 
       {/* Joriy namuna: holat, xabar, tinglash, o'chirish */}
       {st === undefined ? (
@@ -274,13 +323,11 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
           </div>
           {st.message && st.status !== "ready" ? <div className={st.status === "error" ? s.err : "hint"}>{st.message}</div> : null}
           {st.listenUrl ? <AudioPlayer key={st.listenUrl} src={st.listenUrl} durationSec={st.durationSec} preload="none" label="Joriy namuna" /> : null}
-          {!take && !recording ? <div className="hint">Qayta yozish uchun matnni yana o&apos;qing — yangi ovoz eskisining o&apos;rnini egallaydi.</div> : null}
+          {!take && !recording ? <div className="hint">Qayta yozing yoki boshqa audio yuklang — yangi ovoz eskisining o&apos;rnini egallaydi.</div> : null}
         </section>
       ) : null}
 
-      {!canRecord ? (
-        <Alert>Bu qurilmada mikrofon bilan yozib bo&apos;lmaydi. Telegram&apos;ni yangilang yoki boshqa telefondan oching.</Alert>
-      ) : recording ? (
+      {recording ? (
         /* Yozilmoqda */
         <section className="card" aria-live="polite">
           <div className={s.recHead}>
@@ -306,13 +353,16 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
         /* Yangi yozuv: tinglash, rozilik, yuborish */
         <section className={`card ${s.takeCard}`} aria-label="Yangi yozuv">
           <div className={s.takeHead}>
-            <span className={s.takeLabel}>Yangi yozuv · {Math.round(take.sec)} s</span>
+            <span className={s.takeLabel}>{uploaded ? "Yuklangan audio" : "Yangi yozuv"} · {Math.round(take.sec)} s</span>
             <div className={s.takeActions}>
-              <Btn tone="ghost" size="sm" icon={Mic} disabled={busy.is("save")} onClick={startRec}>Qayta yozish</Btn>
+              {uploaded || !canRecord
+                ? <Btn tone="ghost" size="sm" icon={Upload} disabled={busy.is("save")} onClick={openFile}>Boshqa fayl</Btn>
+                : <Btn tone="ghost" size="sm" icon={Mic} disabled={busy.is("save")} onClick={startRec}>Qayta yozish</Btn>}
               <button type="button" className={s.iconBtn} aria-label="Yozuvni bekor qilish" disabled={busy.is("save")} onClick={() => { haptic.tap(); setTake(null); }}><X size={18} /></button>
             </div>
           </div>
-          {previewUrl ? <AudioPlayer key={previewUrl} src={previewUrl} durationSec={take.sec} label="Yangi yozuv" /> : null}
+          {previewUrl ? <AudioPlayer key={previewUrl} src={previewUrl} durationSec={take.sec} label={uploaded ? "Yuklangan audio" : "Yangi yozuv"} /> : null}
+          {uploaded ? <div className="hint">Audioda faqat sizning ovozingiz bo&apos;lsin: musiqa, shovqin va boshqa odamlar ovozisiz.</div> : null}
           <div className={s.toggles}>
             <ToggleRow label="Bu mening ovozim va uni videolarim uchun ishlatishga roziman" title={<span className={s.toggleText}>Bu mening ovozim va uni videolarim uchun ishlatishga roziman</span>} on={consent} onChange={setConsent} disabled={busy.is("save")} />
             <ToggleRow label="Yangi mavzular uchun standart ovoz qilish" title={<span className={s.toggleText}>Yangi mavzular uchun standart ovoz qilish</span>} on={makeDefault} onChange={setMakeDefault} disabled={busy.is("save")} />
@@ -325,13 +375,20 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
       ) : (
         /* O'qiladigan matn va yozishni boshlash */
         <section className="card" aria-label="O'qiladigan matn">
-          <div className={s.recHead}>
-            <span className="label">O&apos;qiladigan matn</span>
-            <button type="button" className="linkbtn" onClick={nextPassage}><RefreshCw size={14} />Boshqa matn</button>
-          </div>
-          <div className={s.passage}>{VOICE_PASSAGES[passage]}</div>
-          <Btn block icon={Mic} disabled={busy.is("save") || busy.is("delete")} onClick={startRec}>{st ? "Qayta yozish" : "Yozishni boshlash"}</Btn>
-          <div className="hint">Ovoz faqat sizning hisobingizda saqlanadi.</div>
+          {canRecord ? (
+            <>
+              <div className={s.recHead}>
+                <span className="label">O&apos;qiladigan matn</span>
+                <button type="button" className="linkbtn" onClick={nextPassage}><RefreshCw size={14} />Boshqa matn</button>
+              </div>
+              <div className={s.passage}>{VOICE_PASSAGES[passage]}</div>
+              <Btn block icon={Mic} disabled={busy.is("save") || busy.is("delete")} onClick={startRec}>{st ? "Qayta yozish" : "Yozishni boshlash"}</Btn>
+            </>
+          ) : (
+            <Alert>Bu qurilmada mikrofon bilan yozib bo&apos;lmaydi — tayyor audio faylni yuklang yoki Telegram&apos;ni yangilang.</Alert>
+          )}
+          <Btn block tone={canRecord ? "secondary" : "primary"} icon={Upload} disabled={busy.is("save") || busy.is("delete")} onClick={openFile}>Audio fayl yuklash</Btn>
+          <div className="hint">Fayl: {MIN_SEC}–{FILE_MAX_SEC} soniyalik toza nutq (WAV, MP3, M4A, OGG…, {FILE_MAX_MB} MB gacha). Ovoz faqat sizning hisobingizda saqlanadi.</div>
         </section>
       )}
 
