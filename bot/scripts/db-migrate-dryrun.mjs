@@ -49,7 +49,7 @@ try {
     ok &&= t4.p && t4.s;
     if (accs.length >= 1) {
       await tx`select set_config('ytauto_ctx.account', ${accs[0].id}, true)`;
-      await tx`insert into ytauto.channel_profile(channel_title) values ('dryrun') on conflict (account_id) do update set channel_title = 'dryrun'`;
+      await tx`insert into ytauto.channel_profile(channel_title) values ('dryrun') on conflict (account_id, channel_id) do update set channel_title = 'dryrun'`;
       await tx`insert into ytauto.topic_suggestions(for_date, topic) values (current_date, 'dryrun')`;
       const [own] = await tx`select count(*)::int as n from ytauto.channel_profile where channel_title = 'dryrun'`;
       ok &&= own.n === 1;
