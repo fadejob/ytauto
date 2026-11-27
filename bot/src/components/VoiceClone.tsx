@@ -6,11 +6,12 @@
  * Yoki tayyor audio faylni (10–45 s toza nutq) yuklaydi - unda o'qilgan matn noma'lum, model ovozni faqat audiodan ko'chiradi.
  * Model kompyuterda bitta (MOSS-TTS-Nano); har foydalanuvchining videolari o'z namunasi bilan o'qiladi. O'qilgan matn ham saqlanadi —
  * model namunada nima aytilganini bilsa ovozni aniqroq ko'chiradi.
+ * Har YouTube kanalining o'z namunasi bo'ladi (ekranda kanal tanlanadi); o'z namunasi yo'q kanalda umumiy namuna ishlatiladi.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AudioLines, ChevronRight, Mic, Pause, Play, RefreshCw, Square, Trash2, Upload, VolumeX, X } from "lucide-react";
 import { api, confirmBox, haptic, putFile } from "@/lib/client";
-import type { VoiceClone as VC } from "@/lib/types";
+import type { VoiceClone as VC, VoiceCloneOverview } from "@/lib/types";
 import { VOICE_PASSAGES } from "@/lib/voice-passages";
 import type { Toast } from "./App";
 import { Alert, Btn, PageHead, Skel, SkelCard, Status, ToggleRow, useBusy } from "./ui";
@@ -57,23 +58,39 @@ const clock = (sec: number) => {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 };
 
+const EMPTY: VoiceCloneOverview = { channel: "", clone: null, shared: null, channels: [], sharedProfileName: null };
+
 /**
- * Namuna holati (/api/voice-clone): Ovoz sahifasi (plitka, kirish kartasi) va «Mening ovozim» ekrani shu bitta manbadan o'qiydi.
- * undefined - yuklanmoqda, null - namuna yo'q. Kompyuter namunani qo'shayotganda holat 15 s da yangilanadi.
+ * Namunalar holati (/api/voice-clone): Ovoz sahifasi (plitkalar, kirish kartasi) va «Mening ovozim» ekrani shu bitta manbadan o'qiydi.
+ * ov: undefined - yuklanmoqda. target: qaysi kanal namunasi ko'rsatiladi (null - faol kanal, "" - umumiy).
+ * Kompyuter biror namunani qo'shayotganda holat 15 s da yangilanadi.
  */
 export function useVoiceClone(toast: Toast) {
-  const [st, setSt] = useState<CloneState | undefined>(undefined);
-  const load = useCallback(async () => {
-    try { setSt(await api<CloneState>("/api/voice-clone")); } catch (e) { toast(errText(e), true); setSt((x) => (x === undefined ? null : x)); }
-  }, [toast]);
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- mount'da bir marta serverdan yuklanadi
+  const [ov, setOv] = useState<VoiceCloneOverview | undefined>(undefined);
+  const [target, setTarget] = useState<string | null>(null);
+  const load = useCallback(async (ch: string | null = target) => {
+    try { setOv(await api<VoiceCloneOverview>(`/api/voice-clone${ch === null ? "" : `?channel=${encodeURIComponent(ch)}`}`)); }
+    catch (e) { toast(errText(e), true); setOv((x) => x ?? EMPTY); }
+  }, [toast, target]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- mount'da (va kanal almashganda) serverdan yuklanadi
   useEffect(() => { void load(); }, [load]);
+  const pending = !!ov && (ov.clone?.status === "pending" || ov.shared?.status === "pending" || ov.channels.some((c) => c.status === "pending"));
   useEffect(() => {
-    if (st?.status !== "pending") return;
+    if (!pending) return;
     const t = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 15000);
     return () => window.clearInterval(t);
-  }, [st?.status, load]);
-  return { st, setSt, load };
+  }, [pending, load]);
+  /** Ekranda boshqa kanalni tanlash (namuna shu kanalga yuklanadi). */
+  const pick = useCallback((ch: string) => { setTarget(ch); setOv((x) => (x ? { ...x, channel: ch, clone: null, shared: null } : x)); }, []);
+  /** VoiceStudio profil nomi (ovoz profilining voice maydoni) bo'yicha namuna holati - ovoz plitkalari uchun. */
+  const statusOf = useCallback((voice: string | undefined): VC["status"] | null => {
+    if (!ov || !voice) return null;
+    const ch = ov.channels.find((c) => c.profileName === voice);
+    if (ch) return ch.status;
+    if (voice === ov.sharedProfileName) return (ov.channel ? ov.shared : ov.clone)?.status ?? null;
+    return ov.clone?.profileName === voice ? ov.clone.status : null;
+  }, [ov]);
+  return { ov, setOv, load, pick, statusOf };
 }
 export type VoiceCloneData = ReturnType<typeof useVoiceClone>;
 
@@ -123,16 +140,23 @@ export function AudioPlayer({ src, durationSec, preload = "metadata", label = "Y
 }
 
 // ------------------------------------------------------------------ Ovoz sahifasidagi kirish kartasi
-/** Ovoz sahifasida: namuna holati va «Mening ovozim» ekranini ochish. */
-export function VoiceCloneEntry({ st, onOpen }: { st: CloneState | undefined; onOpen: () => void }) {
-  if (st === undefined) return <SkelCard lines={1} />;
+/** Ovoz sahifasida: faol kanal namunasi holati (kanallar bo'yicha qisqacha) va «Mening ovozim» ekranini ochish. */
+export function VoiceCloneEntry({ ov, onOpen }: { ov: VoiceCloneOverview | undefined; onOpen: () => void }) {
+  if (ov === undefined) return <SkelCard lines={1} />;
+  const own = ov.clone, shared = ov.shared;
+  const st = own ?? shared;
   const status = st ? CLONE_STATUS[st.status] : null;
+  const withOwn = ov.channels.filter((c) => c.status).length;
+  const title = ov.channels.find((c) => c.id === ov.channel)?.title;
+  const line = own ? `${title ? `«${title}» · ` : ""}namuna · ${own.durationSec} s`
+    : shared ? `${title ? `«${title}» kanalida ` : ""}umumiy namuna · ${shared.durationSec} s`
+    : "Videolaringiz sizning ovozingizda o'qilsin — 15–20 soniyalik yozuv yoki audio fayl";
   return (
     <button type="button" className={`card ${s.entry}`} onClick={onOpen}>
       <span className={s.iconTile}><Mic size={20} /></span>
       <span className={s.entryText}>
         <b>Mening ovozim</b>
-        <span>{st ? `Namuna · ${st.durationSec} s` : "Videolaringiz sizning ovozingizda o'qilsin — 15–20 soniyalik yozuv"}</span>
+        <span>{line}{ov.channels.length > 1 ? ` · ${withOwn}/${ov.channels.length} kanalda o'z ovozi` : ""}</span>
       </span>
       {status ? <Status tone={status.tone}>{status.short}</Status> : <span className={s.entryCta}>Yozish</span>}
       <ChevronRight size={18} className={s.chev} />
@@ -142,7 +166,11 @@ export function VoiceCloneEntry({ st, onOpen }: { st: CloneState | undefined; on
 
 // ------------------------------------------------------------------ «Mening ovozim» ekrani
 export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: VoiceCloneData; toast: Toast; back: () => void; onChanged?: () => void }) {
-  const { st, setSt } = clone;
+  const { ov, setOv, pick } = clone;
+  /** Tanlangan kanalning o'z namunasi (undefined - yuklanmoqda). */
+  const st: CloneState | undefined = ov === undefined ? undefined : ov.clone;
+  const channel = ov?.channel ?? "";
+  const channelTitle = ov?.channels.find((c) => c.id === channel)?.title ?? "";
   const busy = useBusy((m) => { haptic.fail(); toast(m, true); });
   const [passage, setPassage] = useState(0);
   /** Yuborishga tayyor namuna: passage < 0 - yozilmagan, tayyor fayl yuklangan. */
@@ -271,22 +299,23 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
       try {
         const prep = await api<{ path: string; uploadUrl: string }>("/api/voice-clone", { action: "prepare", filename: t.name, size: t.blob.size });
         if (prep.uploadUrl) { setProgress(0); await putFile(prep.uploadUrl, new File([t.blob], t.name, { type: t.blob.type || "application/octet-stream" }), setProgress); }
-        return await api<CloneState>("/api/voice-clone", { action: "save", path: prep.path, durationSec: t.sec, passage: t.passage, consent, makeDefault });
+        return await api<VoiceCloneOverview>("/api/voice-clone", { action: "save", channel, path: prep.path, durationSec: t.sec, passage: t.passage, consent, makeDefault });
       } finally { setProgress(null); }
     });
     if (ok === false) return;
-    setSt(ok);
+    setOv(ok);
     setTake(null); setConsent(false);
     haptic.ok();
-    toast("Ovozingiz yuborildi. Kompyuter uni qo'shgach, videolaringiz shu ovozda o'qiladi.");
+    toast(`Ovozingiz yuborildi${channelTitle ? ` («${channelTitle}» kanali uchun)` : ""}. Kompyuter uni qo'shgach, ${channelTitle ? "shu kanal " : ""}videolari shu ovozda o'qiladi.`);
     onChanged?.();
   }
 
-  async function remove() {
-    if (!(await confirmBox("Ovoz namunasi o'chirilsinmi? Yangi videolar standart ovozda o'qiladi. Namuna bulutdan darhol, kompyuterdan (VoiceStudio) keyingi tekshiruvda o'chiriladi."))) return;
-    const ok = await busy.run("delete", () => api("/api/voice-clone", { action: "delete" }));
+  async function remove(ch: string) {
+    const what = ch ? `«${ov?.channels.find((c) => c.id === ch)?.title ?? ""}» kanali` : "Umumiy";
+    if (!(await confirmBox(`${what} ovoz namunasi o'chirilsinmi? Yangi videolar standart ovozda o'qiladi. Namuna bulutdan darhol, kompyuterdan (VoiceStudio) keyingi tekshiruvda o'chiriladi.`))) return;
+    const ok = await busy.run("delete", () => api<VoiceCloneOverview>("/api/voice-clone", { action: "delete", channel: ch }));
     if (ok === false) return;
-    setSt(null);
+    if (ch === channel) setOv(ok); else void clone.load(channel);
     toast("Namuna o'chirildi.");
     onChanged?.();
   }
@@ -306,6 +335,36 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
       <input ref={fileInput} type="file" hidden accept={`audio/*,${FILE_EXT.join(",")}`}
         onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void pickFile(f); }} />
 
+      {/* Kanal tanlovi: har kanalning o'z namunasi; «Umumiy» - o'z namunasi yo'q kanallarda ishlatiladigan namuna */}
+      {ov && ov.channels.length > 0 ? (
+        <section className="card" aria-label="Qaysi kanal uchun">
+          <span className="label">Qaysi kanal uchun</span>
+          <div className="chips" role="radiogroup" aria-label="Kanal">
+            {ov.channels.map((c) => {
+              const cs = c.status ? CLONE_STATUS[c.status] : null;
+              return (
+                <button key={c.id} type="button" role="radio" aria-checked={c.id === channel} className={c.id === channel ? "on" : undefined}
+                  disabled={recording || busy.is("save") || busy.is("delete")} onClick={() => { haptic.tap(); pick(c.id); }}>
+                  {c.title || "Kanal"}{cs ? ` · ${cs.short}` : ""}
+                </button>
+              );
+            })}
+            <button type="button" role="radio" aria-checked={channel === ""} className={channel === "" ? "on" : undefined}
+              disabled={recording || busy.is("save") || busy.is("delete")} onClick={() => { haptic.tap(); pick(""); }}>
+              Umumiy
+            </button>
+          </div>
+          <div className="hint">
+            {channel ? "Shu kanal videolari shu namuna bilan o'qiladi. Har kanalga alohida ovoz yuklash mumkin."
+              : "Umumiy namuna o'z ovozi yuklanmagan kanallarda ishlatiladi."}
+          </div>
+        </section>
+      ) : null}
+
+      {ov && channel && !st && ov.shared ? (
+        <Alert tone="note">Bu kanalda hozir umumiy «Mening ovozim» namunasi ({ov.shared.durationSec} s) ishlatiladi. Shu kanal uchun alohida ovoz yozing yoki audio yuklang.</Alert>
+      ) : null}
+
       {/* Joriy namuna: holat, xabar, tinglash, o'chirish */}
       {st === undefined ? (
         <div className="card" aria-busy="true" aria-label="Yuklanmoqda">
@@ -316,10 +375,10 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
           <div className={s.head}>
             <span className={s.iconTile}><AudioLines size={20} /></span>
             <div className={s.nameCol}>
-              <b>Joriy namuna · {st.durationSec} s</b>
+              <b>{channelTitle ? `«${channelTitle}» namunasi` : "Joriy namuna"} · {st.durationSec} s</b>
               <Status tone={status.tone}>{status.text}</Status>
             </div>
-            <Btn tone="ghost" size="sm" icon={Trash2} loading={busy.is("delete")} disabled={recording || busy.is("save")} onClick={remove}>O&apos;chirish</Btn>
+            <Btn tone="ghost" size="sm" icon={Trash2} loading={busy.is("delete")} disabled={recording || busy.is("save")} onClick={() => remove(channel)}>O&apos;chirish</Btn>
           </div>
           {st.message && st.status !== "ready" ? <div className={st.status === "error" ? s.err : "hint"}>{st.message}</div> : null}
           {st.listenUrl ? <AudioPlayer key={st.listenUrl} src={st.listenUrl} durationSec={st.durationSec} preload="none" label="Joriy namuna" /> : null}
@@ -365,10 +424,10 @@ export function VoiceCloneScreen({ clone, toast, back, onChanged }: { clone: Voi
           {uploaded ? <div className="hint">Audioda faqat sizning ovozingiz bo&apos;lsin: musiqa, shovqin va boshqa odamlar ovozisiz.</div> : null}
           <div className={s.toggles}>
             <ToggleRow label="Bu mening ovozim va uni videolarim uchun ishlatishga roziman" title={<span className={s.toggleText}>Bu mening ovozim va uni videolarim uchun ishlatishga roziman</span>} on={consent} onChange={setConsent} disabled={busy.is("save")} />
-            <ToggleRow label="Yangi mavzular uchun standart ovoz qilish" title={<span className={s.toggleText}>Yangi mavzular uchun standart ovoz qilish</span>} on={makeDefault} onChange={setMakeDefault} disabled={busy.is("save")} />
+            <ToggleRow label="Yangi mavzular uchun standart ovoz qilish" title={<span className={s.toggleText}>{channelTitle ? `«${channelTitle}» kanalining yangi mavzulari uchun standart ovoz qilish` : "Yangi mavzular uchun standart ovoz qilish"}</span>} on={makeDefault} onChange={setMakeDefault} disabled={busy.is("save")} />
           </div>
           <Btn block icon={Upload} loading={busy.is("save")} disabled={!consent} onClick={send}>
-            {busy.is("save") ? (progress !== null && progress < 100 ? `Yuborilmoqda… ${progress}%` : "Yuborilmoqda…") : "Ovozni yuborish"}
+            {busy.is("save") ? (progress !== null && progress < 100 ? `Yuborilmoqda… ${progress}%` : "Yuborilmoqda…") : channelTitle ? `«${channelTitle}» uchun yuborish` : "Ovozni yuborish"}
           </Btn>
           {!consent ? <div className="hint">Yuborish uchun rozilikni yoqing.</div> : null}
         </section>

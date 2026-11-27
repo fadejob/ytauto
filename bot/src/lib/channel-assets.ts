@@ -119,7 +119,11 @@ export async function forgetAssets(kind: AssetKind, names: string[]): Promise<vo
 
 /** So'rov kanalining standart shablon/ovozi (undefined - o'zgarmaydi). Kanal yo'q bo'lsa false (umumiy standart saqlansin). */
 export async function setActiveDefaults(d: ChannelDefaults): Promise<boolean> {
-  const ch = await activeChannelId();
+  return setChannelDefaults(await activeChannelId(), d);
+}
+
+/** Berilgan kanalning standart shablon/ovozi (undefined - o'zgarmaydi). Kanal ulanmagan bo'lsa false. */
+export async function setChannelDefaults(ch: string, d: ChannelDefaults): Promise<boolean> {
   if (!ch || !(await channelList()).channels.some((c) => c.id === ch)) return false;
   await update((s) => {
     const cur = { ...(s.defaults?.[ch] ?? {}) };

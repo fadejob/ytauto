@@ -57,7 +57,7 @@ export default function Voice({ state, toast, back, onChanged, setSubBack }: Set
   const profiles = showAll ? allProfiles : allProfiles.filter((x) => assetAllowed(assets, "voice", x.name));
   const activeTitle = assets?.channels.find((c) => c.id === assets.channel)?.title ?? "";
   const defaultProfile = config?.defaults.voiceProfile ?? "";
-  const tiles = config ? buildTiles(allProfiles.filter((x) => assetAllowed(assets, "voice", x.name)), cat?.known ? cat.voiceProfiles : [], clone.st) : [];
+  const tiles = config ? buildTiles(allProfiles.filter((x) => assetAllowed(assets, "voice", x.name)), cat?.known ? cat.voiceProfiles : [], clone.statusOf) : [];
   const localProfiles = info?.[0]?.profiles ?? [];
 
   /** Saqlash + umumiy holatni yangilash (Hub qisqa matni, mavzu oynasidagi ovozlar). Xato bo'lsa throw - chaqirgan tugma toast qiladi. */
@@ -170,7 +170,7 @@ export default function Voice({ state, toast, back, onChanged, setSubBack }: Set
       {/* Mening ovozim */}
       <section className={p.section} aria-label="Mening ovozim">
         <div className="section-label"><span>Mening ovozim</span></div>
-        <VoiceCloneEntry st={clone.st} onOpen={() => go("clone")} />
+        <VoiceCloneEntry ov={clone.ov} onOpen={() => go("clone")} />
       </section>
 
       {adding && config ? <AddProfileSheet info={info} profiles={allProfiles} toast={toast} onClose={() => setAdding(false)} onAdd={addProfile} /> : null}

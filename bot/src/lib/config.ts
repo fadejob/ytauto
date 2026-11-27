@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { assetScope, assignToActive, forgetAssets, setActiveDefaults } from "./channel-assets";
+import { assetScope, assignAsset, assignToActive, forgetAssets, setActiveDefaults, setChannelDefaults } from "./channel-assets";
 import { currentAccountId, isGuest, sql } from "./db";
 import { isDemo } from "./demo";
 import { DEFAULT_GEMINI_CHAIN, modelChain } from "./gemini-models";
@@ -127,8 +127,11 @@ export async function getConfig(): Promise<BotConfig> {
   return { ...cfg, defaults: { ...d, template: sc.allowed("template", template) ? template : "", voiceProfile: sc.allowed("voice", voice) ? voice : "" } };
 }
 
-/** «Mening ovozim» klon profili (VoiceStudio profil nomi "YtAuto u-<hisob>"): faqat voice-clone.ts boshqaradi. */
-const isCloneProfile = (p: { voice?: string }) => /^YtAuto u-[0-9a-f]{8}$/.test(p.voice ?? "");
+/**
+ * «Mening ovozim» klon profillari (VoiceStudio profil nomi "YtAuto u-<hisob>" - umumiy, "YtAuto u-<hisob>-<kanal>" - kanalniki):
+ * faqat voice-clone.ts boshqaradi.
+ */
+const isCloneProfile = (p: { voice?: string }) => /^YtAuto u-[0-9a-f]{8}(-[0-9a-f]{8})?$/.test(p.voice ?? "");
 
 async function writeStored(next: Stored) {
   const json = JSON.stringify(next);
@@ -138,20 +141,26 @@ async function writeStored(next: Stored) {
 }
 
 /**
- * Klon profilini bot ro'yxatiga qo'yadi (null - olib tashlaydi). makeDefault - yangi mavzular standart ovozi shu bo'ladi.
+ * Klon profilini bot ro'yxatiga qo'yadi yoki (remove) olib tashlaydi. Profil VoiceStudio nomi (p.voice) bo'yicha topiladi: har kanalning
+ * o'z profili bor. Kanal profili faqat shu kanalga biriktiriladi (mavzularda boshqa kanalda ko'rinmaydi).
+ * makeDefault - yangi mavzular standart ovozi shu bo'ladi (kanal profili - shu kanal standarti, umumiysi - hisob standarti).
  * Olib tashlanganda standart ovoz shu profil bo'lsa, standart bo'shatiladi (kompyuter o'z standartini ishlatadi).
  */
-export async function setCloneProfile(p: { name: string; model: string; voice: string } | null, makeDefault: boolean): Promise<void> {
+export async function setCloneProfile(p: { name: string; model: string; voice: string }, makeDefault: boolean, channel = "", remove = false): Promise<void> {
   const cur = await readStored();
-  const old = (cur.voice?.profiles ?? []).find(isCloneProfile);
-  const profiles = (cur.voice?.profiles ?? []).filter((x) => !isCloneProfile(x) && (!p || x.name !== p.name));
+  const old = (cur.voice?.profiles ?? []).find((x) => isCloneProfile(x) && x.voice === p.voice);
+  const profiles = (cur.voice?.profiles ?? []).filter((x) => x.voice !== p.voice && (remove || x.name !== p.name));
   // Namuna almashtirilganda foydalanuvchi tanlagan tezlik va til saqlanadi.
-  if (p) profiles.push({ name: p.name, model: p.model, voice: p.voice, language: old?.language || "en", speed: old?.speed ?? 1 });
+  if (!remove) profiles.push({ name: p.name, model: p.model, voice: p.voice, language: old?.language || "en", speed: old?.speed ?? 1 });
   const defaults = { ...(cur.defaults ?? {}) };
-  // Standart - faol kanalniki (kanal ulanmagan bo'lsa - umumiy).
-  if (p && makeDefault && !(await setActiveDefaults({ voice: p.name }))) defaults.voiceProfile = p.name;
-  else if (!p && old && defaults.voiceProfile === old.name) defaults.voiceProfile = "";
-  if (!p && old) await forgetAssets("voice", [old.name]);
+  const gone = old && (remove || old.name !== p.name) ? old.name : ""; // o'chirilgan yoki nomi o'zgargan (kanal nomi o'zgargan) eski profil
+  if (gone && defaults.voiceProfile === gone) defaults.voiceProfile = remove ? "" : p.name;
+  if (gone) await forgetAssets("voice", [gone]); // kanal standarti ham tozalanadi - kerak bo'lsa pastda yangisi qo'yiladi
+  if (!remove && makeDefault) {
+    if (channel) await setChannelDefaults(channel, { voice: p.name });
+    else if (!(await setActiveDefaults({ voice: p.name }))) defaults.voiceProfile = p.name;
+  }
+  if (!remove && channel) await assignAsset("voice", p.name, channel);
   const next: Stored = { ...cur, voice: { ...(cur.voice ?? {}), profiles }, defaults };
   if (isDemo()) { demoStored = next; return; }
   await writeStored(next);

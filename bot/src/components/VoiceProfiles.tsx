@@ -9,14 +9,14 @@ import { useState } from "react";
 import { AudioLines, Check, ChevronDown, Languages, LoaderCircle, Mic, Minus, Monitor, Plus, Trash2 } from "lucide-react";
 import { confirmBox, haptic } from "@/lib/client";
 import { differs } from "@/lib/settings-data";
-import type { VoiceInfo, VoiceProfileCfg } from "@/lib/types";
+import type { VoiceClone, VoiceInfo, VoiceProfileCfg } from "@/lib/types";
 import type { Toast } from "./App";
 import { Btn, Field, SaveBtn, Sheet, Status, useBusy } from "./ui";
-import { CLONE_STATUS, type CloneState } from "./VoiceClone";
+import { CLONE_STATUS } from "./VoiceClone";
 import s from "./VoiceProfiles.module.css";
 
 /** «Mening ovozim» profili: ovoz nomi server yasaydi (lib/config.ts isCloneProfile bilan bir xil). */
-export const isCloneProfile = (p: { voice?: string }) => /^YtAuto u-[0-9a-f]{8}$/.test(p.voice ?? "");
+export const isCloneProfile = (p: { voice?: string }) => /^YtAuto u-[0-9a-f]{8}(-[0-9a-f]{8})?$/.test(p.voice ?? "");
 
 // ------------------------------------------------------------------ tezlik
 const SPEED_MIN = 0.5, SPEED_MAX = 2, SPEED_STEP = 0.05;
@@ -96,10 +96,11 @@ function LangPicker({ value, onChange, disabled }: { value: string; onChange: (v
 export type Tile = { name: string; meta: string; kind: "profile" | "clone" | "machine"; dot?: "ok" | "accent" | "bad" };
 
 /** Plitkalar ro'yxati: botdagi profillar, so'ng faqat kompyuterda bor profillar (standart qilsa bo'ladi). */
-export function buildTiles(profiles: VoiceProfileCfg[], catalogNames: string[], clone: CloneState | undefined): Tile[] {
+export function buildTiles(profiles: VoiceProfileCfg[], catalogNames: string[], cloneStatus: (voice: string) => VoiceClone["status"] | null): Tile[] {
   const tiles: Tile[] = profiles.map((p) => {
     if (isCloneProfile(p)) {
-      const st = clone ? CLONE_STATUS[clone.status] : null;
+      const cs = cloneStatus(p.voice ?? "");
+      const st = cs ? CLONE_STATUS[cs] : null;
       return { name: p.name, kind: "clone", meta: `${p.language || "en"}${st ? ` · ${st.short}` : ` · ${fmtSpeed(p.speed)}×`}`, dot: st?.tone };
     }
     return { name: p.name, kind: "profile", meta: `${p.language || "en"} · ${fmtSpeed(p.speed)}×` };

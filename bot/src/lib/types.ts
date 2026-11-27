@@ -194,6 +194,19 @@ export type VoiceClone = {
   status: "pending" | "ready" | "error"; message: string; machine: string | null; readyAt: string | null;
 };
 
+/**
+ * /api/voice-clone javobi: tanlangan kanal ("" - umumiy) namunasi, umumiy namuna (o'z namunasi bo'lmagan kanallarda ishlatiladi)
+ * va har ulangan kanal namunasining qisqa holati (kanal tanlovi va ovoz plitkalari uchun).
+ */
+export type VoiceCloneOverview = {
+  channel: string;
+  clone: (VoiceClone & { listenUrl: string | null }) | null;
+  shared: (VoiceClone & { listenUrl: string | null }) | null;
+  channels: { id: string; title: string; status: VoiceClone["status"] | null; durationSec: number | null; profileName: string | null }[];
+  /** Umumiy namunaning VoiceStudio profil nomi (bo'lsa). */
+  sharedProfileName: string | null;
+};
+
 /** Asosiy hisob yaratgan qo'shimcha token (mehmon videolari ko'rsatilmaydi). */
 export type GuestToken = { id: string; label: string; createdAt: string; telegramUsers: number };
 
